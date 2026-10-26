@@ -1,0 +1,1900 @@
+{
+  "updatedAt": "2026-10-20T15:29:44.595Z",
+  "createdAt": "2026-10-15T14:19:16.634Z",
+  "id": "19nt9Msf87wMKTVF",
+  "name": "WhatsApp - Lembrete diario OS paradas T.I",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 10 * * 1-6"
+            }
+          ]
+        }
+      },
+      "name": "Todo dia 10h (seg-sab)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "id": "a68aac8a-f1ca-4a40-b524-b90ca0340f06",
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "name": "Executar manualmente",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "id": "d1c7d575-f5b8-4bf3-80db-4dda1eb768e0",
+      "position": [
+        0,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ===================== CONFIG — Lembrete diário de O.S. paradas =====================\n// ENVIO: 'NENHUM'  -> só monta (confira a saída do nó \"Montar mensagens\")\n//        'SIMULAR' -> manda só para RESUMO_PARA: o resumo + até 3 mensagens de amostra\n//        'REAL'    -> manda para os técnicos + resumo para RESUMO_PARA\nconst ENVIO = 'REAL';\nconst RESUMO_PARA = '55__TELEFONE__';            // seu WhatsApp, ex.: '55__TELEFONE__' (vazio = sem resumo)\nconst WAHA_SESSION = 'session_01m4xy9khpbqgnafzqhd9wchx1';\n\nconst DIAS_SEM_REGISTRO = 2;       // parado = sem mensagem na O.S. há N dias\nconst STATUS_PARADO = ['EN', 'AG', 'AN'];\nconst MAX_LINHAS_POR_TECNICO = 20; // acima disso: \"... e mais N\"\nconst MAX_MENSAGENS_DIA = 40;      // trava de segurança anti-bloqueio\nconst FORCAR_REENVIO_HOJE = false; // true = permite 2º envio REAL no mesmo dia\n\n// Assuntos: ativação (5) + documentação (último)\nconst ASSUNTOS = {\n  RESOLUTTO: [69, 83, 84, 86, 94, 85,30,14],\n  '4B':      [89, 90, 91, 93, 98, 92,86,0],\n  PONTO:     [65, 63, 62, 61, 70, 64,52,0],\n  CACTA:     [73, 74, 77, 75, 81, 76,68,0],\n  BUZZ:      [83, 84, 85, 87, 91, 86,80,0],\n};\n\n// Pessoa -> WhatsApp e id de colaborador EM CADA BASE (ids mudam por base).\n// whatsapp vazio = não recebe (aparece no resumo como \"sem WhatsApp\").\nconst PESSOAS = [\n  { nome: 'Técnico 6',            whatsapp: '55__TELEFONE__',             ids: { RESOLUTTO: [6],  CACTA: [6] } },\n  { nome: 'Técnico 12',           whatsapp: '55__TELEFONE__', ids: { RESOLUTTO: [12], '4B': [12] } },\n  { nome: 'Técnico 13',                     whatsapp: '55__TELEFONE__', ids: { RESOLUTTO: [13], CACTA: [13] } },\n  { nome: 'Técnico 16',        whatsapp: '55__TELEFONE__', ids: { RESOLUTTO: [16], '4B': [16] } },\n  { nome: 'Técnico 17',          whatsapp: '55__TELEFONE__', ids: { RESOLUTTO: [17], PONTO: [17] } },\n  { nome: 'Técnico 18',       whatsapp: '55__TELEFONE__', ids: { RESOLUTTO: [18], '4B': [18] } },\n  { nome: 'Técnico 20',          whatsapp: '55__TELEFONE__', ids: { RESOLUTTO: [20], PONTO: [20] } },\n  { nome: 'Técnico 21',                    whatsapp: '55__TELEFONE__', ids: { RESOLUTTO: [21], PONTO: [21] } },\n  { nome: 'Técnico 22',         whatsapp: '55__TELEFONE__', ids: { RESOLUTTO: [22], '4B': [22], PONTO: [22], CACTA: [22], BUZZ: [22] } },\n  { nome: 'Técnico 25',             whatsapp: '55__TELEFONE__',             ids: { RESOLUTTO: [25], '4B': [25] } },\n  { nome: 'Técnico 31',            whatsapp: '55__TELEFONE__', ids: { RESOLUTTO: [31], CACTA: [31] } },\n  { nome: 'Técnico 56',             whatsapp: '55__TELEFONE__', ids: { RESOLUTTO: [56], PONTO: [62] } },\n  { nome: 'Técnico 52',           whatsapp: '55__TELEFONE__', ids: { RESOLUTTO: [52], '4B': [46], PONTO: [52], CACTA: [62], BUZZ: [58] } },\n  { nome: 'Técnico 32',          whatsapp: '55__TELEFONE__', ids: { RESOLUTTO: [32], CACTA: [32] } },\n  { nome: 'Técnico 54',            whatsapp: '55__TELEFONE__', ids: { RESOLUTTO: [54], CACTA: [46] } },\n  { nome: 'Técnico 51',       whatsapp: '55__TELEFONE__', ids: { RESOLUTTO: [51], '4B': [61], PONTO: [59], CACTA: [49], BUZZ: [60] } },\n  { nome: 'Técnico 35',                  whatsapp: '55__TELEFONE__', ids: { RESOLUTTO: [35], CACTA: [35] } },\n  { nome: 'Técnico 37',         whatsapp: '55__TELEFONE__', ids: { RESOLUTTO: [37], PONTO: [37] } },\n  { nome: 'Técnico 55',     whatsapp: '55__TELEFONE__', ids: { RESOLUTTO: [55], '4B': [48] } },\n  { nome: 'Técnico 38', whatsapp: '55__TELEFONE__', ids: { RESOLUTTO: [38], CACTA: [38] } },\n  { nome: 'Técnico 48',             whatsapp: '',             ids: { RESOLUTTO: [48] } },\n  { nome: 'Técnico 57',           whatsapp: '55__TELEFONE__', ids: { RESOLUTTO: [57], BUZZ: [46] } },\n  { nome: 'Técnico 41',   whatsapp: '55__TELEFONE__', ids: { RESOLUTTO: [41], '4B': [41] } },\n  { nome: 'Técnico 42',             whatsapp: '55__TELEFONE__', ids: { RESOLUTTO: [42], '4B': [42], PONTO: [42], CACTA: [42], BUZZ: [42] } },\n  { nome: 'Técnico PONTO-61',    whatsapp: '55__TELEFONE__', ids: { PONTO: [61] } },\n  { nome: 'Técnico 43',         whatsapp: '55__TELEFONE__', ids: { RESOLUTTO: [43], '4B': [43], PONTO: [43], CACTA: [43], BUZZ: [43] } },\n  { nome: 'Técnico 44',   whatsapp: '55__TELEFONE__', ids: { RESOLUTTO: [44], CACTA: [44] } }, // RESOLUTTO 44 marcado com (?) na lista\n  { nome: 'Técnico 45',    whatsapp: '55__TELEFONE__', ids: { RESOLUTTO: [45], '4B': [45] } },\n];\n// =====================================================================================\n\nconst BASES = ['RESOLUTTO', '4B', 'PONTO', 'CACTA', 'BUZZ'];\nconst agora = DateTime.now().setZone('America/Sao_Paulo');\nconst LIMITE = agora.minus({ days: DIAS_SEM_REGISTRO }).toFormat('yyyy-MM-dd HH:mm:ss');\n\n// Validações que travam o workflow (melhor parar do que avisar a pessoa errada)\nconst erros = [];\nconst visto = {};\nfor (const p of PESSOAS) {\n  for (const [b, ids] of Object.entries(p.ids)) {\n    if (!BASES.includes(b)) erros.push(`${p.nome}: base desconhecida ${b}`);\n    for (const id of ids) {\n      const k = `${b}:${id}`;\n      if (visto[k]) erros.push(`id ${id} da base ${b} aparece em ${visto[k]} e ${p.nome}`);\n      visto[k] = p.nome;\n    }\n  }\n  if (p.whatsapp && !/^55\\d{10,11}$/.test(p.whatsapp)) erros.push(`${p.nome}: WhatsApp inválido ${p.whatsapp}`);\n}\nif (!['NENHUM', 'SIMULAR', 'REAL'].includes(ENVIO)) erros.push(`ENVIO inválido: ${ENVIO}`);\nif (ENVIO === 'SIMULAR' && !RESUMO_PARA) erros.push('ENVIO SIMULAR exige RESUMO_PARA');\nconst qtd = new Set(BASES.map(b => (ASSUNTOS[b] || []).length));\nif (qtd.size !== 1) erros.push('Todas as bases precisam ter o mesmo número de assuntos em ASSUNTOS');\nif (erros.length) throw new Error('Config inválida: ' + erros.join(' | '));\n\nconst cfg = {\n  ENVIO, RESUMO_PARA, WAHA_SESSION, DIAS_SEM_REGISTRO, STATUS_PARADO,\n  MAX_LINHAS_POR_TECNICO, MAX_MENSAGENS_DIA, FORCAR_REENVIO_HOJE,\n  ASSUNTOS, PESSOAS, BASES, LIMITE,\n  HOJE: agora.toFormat('yyyy-MM-dd'), AGORA: agora.toFormat('dd/MM HH:mm'),\n};\n// Um item por assunto (índice): os nós \"OS <BASE>\" fazem uma chamada por item.\nreturn ASSUNTOS.RESOLUTTO.map((_, i) => ({ json: { indice: i, ...(i === 0 ? { cfg } : {}) } }));\n"
+      },
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "id": "5160c15b-4135-4094-a203-b69e87e34dd1",
+      "position": [
+        224,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.resolutto.com.br/webservice/v1/su_oss_chamado",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'su_oss_chamado.id_assunto', query: String($('Config').first().json.cfg.ASSUNTOS['RESOLUTTO'][$itemIndex]), oper: '=', page: '1', rp: '2000', sortname: 'su_oss_chamado.id', sortorder: 'desc', grid_param: JSON.stringify([{TB:'su_oss_chamado.status',OP:'!=',P:'F'},{TB:'su_oss_chamado.id_tecnico',OP:'!=',P:'0'}]) }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "OS RESOLUTTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "id": "c3aeac26-763e-4e97-8c8d-52d16876b1ad",
+      "position": [
+        448,
+        0
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "ixcApiAutomacao1",
+          "name": "IXC API (RESOLUTTO)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.4btelecom.com.br/webservice/v1/su_oss_chamado",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'su_oss_chamado.id_assunto', query: String($('Config').first().json.cfg.ASSUNTOS['4B'][$itemIndex]), oper: '=', page: '1', rp: '2000', sortname: 'su_oss_chamado.id', sortorder: 'desc', grid_param: JSON.stringify([{TB:'su_oss_chamado.status',OP:'!=',P:'F'},{TB:'su_oss_chamado.id_tecnico',OP:'!=',P:'0'}]) }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "OS 4B",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "id": "27bf3ae7-f663-4c7e-97a8-fa53969ef65b",
+      "position": [
+        640,
+        0
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Sar2wecxMvwt297d",
+          "name": "IXC API (4BTELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.pontotelecom.com/webservice/v1/su_oss_chamado",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'su_oss_chamado.id_assunto', query: String($('Config').first().json.cfg.ASSUNTOS['PONTO'][$itemIndex]), oper: '=', page: '1', rp: '2000', sortname: 'su_oss_chamado.id', sortorder: 'desc', grid_param: JSON.stringify([{TB:'su_oss_chamado.status',OP:'!=',P:'F'},{TB:'su_oss_chamado.id_tecnico',OP:'!=',P:'0'}]) }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "OS PONTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "id": "2e39a6ba-6f80-4485-953c-b29d08758729",
+      "position": [
+        848,
+        0
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "SQr92hzbZKnat5kl",
+          "name": "IXC API (Ponto telecom)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.cactatelecom.com.br/webservice/v1/su_oss_chamado",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'su_oss_chamado.id_assunto', query: String($('Config').first().json.cfg.ASSUNTOS['CACTA'][$itemIndex]), oper: '=', page: '1', rp: '2000', sortname: 'su_oss_chamado.id', sortorder: 'desc', grid_param: JSON.stringify([{TB:'su_oss_chamado.status',OP:'!=',P:'F'},{TB:'su_oss_chamado.id_tecnico',OP:'!=',P:'0'}]) }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "OS CACTA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "id": "7e68199c-a498-45e3-8fd2-40e0678732f7",
+      "position": [
+        1040,
+        0
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "00ORMvXflPQheEJ1",
+          "name": "IXC API (CACTA TELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.buzztelecom.com.br/webservice/v1/su_oss_chamado",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'su_oss_chamado.id_assunto', query: String($('Config').first().json.cfg.ASSUNTOS['BUZZ'][$itemIndex]), oper: '=', page: '1', rp: '2000', sortname: 'su_oss_chamado.id', sortorder: 'desc', grid_param: JSON.stringify([{TB:'su_oss_chamado.status',OP:'!=',P:'F'},{TB:'su_oss_chamado.id_tecnico',OP:'!=',P:'0'}]) }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "OS BUZZ",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "id": "27cbaac0-93ff-42df-a5d0-b94cc712d7fe",
+      "position": [
+        1248,
+        0
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "CYZcvcYaydyP88Uu",
+          "name": "IXC API (BUZZ TELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.resolutto.com.br/webservice/v1/su_oss_chamado_mensagem",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'su_oss_chamado_mensagem.data', query: $('Config').first().json.cfg.LIMITE, oper: '>=', page: '1', rp: '20000', sortname: 'su_oss_chamado_mensagem.id', sortorder: 'desc' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Msg RESOLUTTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "executeOnce": true,
+      "id": "649e804f-da76-444d-ab64-5962f704adca",
+      "position": [
+        448,
+        208
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "ixcApiAutomacao1",
+          "name": "IXC API (RESOLUTTO)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.4btelecom.com.br/webservice/v1/su_oss_chamado_mensagem",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'su_oss_chamado_mensagem.data', query: $('Config').first().json.cfg.LIMITE, oper: '>=', page: '1', rp: '20000', sortname: 'su_oss_chamado_mensagem.id', sortorder: 'desc' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Msg 4B",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "executeOnce": true,
+      "id": "dba46366-a1a3-4608-af1d-b9cb969730e1",
+      "position": [
+        640,
+        208
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Sar2wecxMvwt297d",
+          "name": "IXC API (4BTELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.pontotelecom.com/webservice/v1/su_oss_chamado_mensagem",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'su_oss_chamado_mensagem.data', query: $('Config').first().json.cfg.LIMITE, oper: '>=', page: '1', rp: '20000', sortname: 'su_oss_chamado_mensagem.id', sortorder: 'desc' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Msg PONTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "executeOnce": true,
+      "id": "725e53b9-2410-4043-97bc-6d5b986f81ad",
+      "position": [
+        848,
+        208
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "SQr92hzbZKnat5kl",
+          "name": "IXC API (Ponto telecom)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.cactatelecom.com.br/webservice/v1/su_oss_chamado_mensagem",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'su_oss_chamado_mensagem.data', query: $('Config').first().json.cfg.LIMITE, oper: '>=', page: '1', rp: '20000', sortname: 'su_oss_chamado_mensagem.id', sortorder: 'desc' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Msg CACTA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "executeOnce": true,
+      "id": "71571f33-c5df-4fd6-907e-0d1670456b90",
+      "position": [
+        1040,
+        208
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "00ORMvXflPQheEJ1",
+          "name": "IXC API (CACTA TELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.buzztelecom.com.br/webservice/v1/su_oss_chamado_mensagem",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'su_oss_chamado_mensagem.data', query: $('Config').first().json.cfg.LIMITE, oper: '>=', page: '1', rp: '20000', sortname: 'su_oss_chamado_mensagem.id', sortorder: 'desc' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Msg BUZZ",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "executeOnce": true,
+      "id": "99ab5e40-a23d-49b7-9158-d74f3dc3b841",
+      "position": [
+        1248,
+        208
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "CYZcvcYaydyP88Uu",
+          "name": "IXC API (BUZZ TELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.resolutto.com.br/webservice/v1/funcionarios",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'funcionarios.id', query: '0', oper: '>', page: '1', rp: '5000', sortname: 'funcionarios.id', sortorder: 'asc' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Func RESOLUTTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "executeOnce": true,
+      "id": "e0b15f87-c55a-4fa8-b6c5-05544b5b51d2",
+      "position": [
+        432,
+        384
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "ixcApiAutomacao1",
+          "name": "IXC API (RESOLUTTO)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.4btelecom.com.br/webservice/v1/funcionarios",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'funcionarios.id', query: '0', oper: '>', page: '1', rp: '5000', sortname: 'funcionarios.id', sortorder: 'asc' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Func 4B",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "executeOnce": true,
+      "id": "341f8b79-12c8-4a74-a67f-6115dc5a50d0",
+      "position": [
+        624,
+        384
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Sar2wecxMvwt297d",
+          "name": "IXC API (4BTELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.pontotelecom.com/webservice/v1/funcionarios",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'funcionarios.id', query: '0', oper: '>', page: '1', rp: '5000', sortname: 'funcionarios.id', sortorder: 'asc' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Func PONTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "executeOnce": true,
+      "id": "500ff5ba-9068-40e7-b29e-528175d915f3",
+      "position": [
+        832,
+        384
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "SQr92hzbZKnat5kl",
+          "name": "IXC API (Ponto telecom)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.cactatelecom.com.br/webservice/v1/funcionarios",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'funcionarios.id', query: '0', oper: '>', page: '1', rp: '5000', sortname: 'funcionarios.id', sortorder: 'asc' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Func CACTA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "executeOnce": true,
+      "id": "22e4d4c9-4fc0-41bb-9c66-6d34bef83fb7",
+      "position": [
+        1024,
+        384
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "00ORMvXflPQheEJ1",
+          "name": "IXC API (CACTA TELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.buzztelecom.com.br/webservice/v1/funcionarios",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'funcionarios.id', query: '0', oper: '>', page: '1', rp: '5000', sortname: 'funcionarios.id', sortorder: 'asc' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Func BUZZ",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "executeOnce": true,
+      "id": "9448b28a-44e2-4f55-aa76-7a258f00b2de",
+      "position": [
+        1232,
+        384
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "CYZcvcYaydyP88Uu",
+          "name": "IXC API (BUZZ TELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.resolutto.com.br/webservice/v1/su_oss_assunto",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'su_oss_assunto.id', query: '0', oper: '>', page: '1', rp: '5000', sortname: 'su_oss_assunto.id', sortorder: 'asc' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Assuntos RESOLUTTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "executeOnce": true,
+      "id": "9680f89c-8798-4aeb-b1b6-f0945da81955",
+      "position": [
+        432,
+        576
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "ixcApiAutomacao1",
+          "name": "IXC API (RESOLUTTO)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.4btelecom.com.br/webservice/v1/su_oss_assunto",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'su_oss_assunto.id', query: '0', oper: '>', page: '1', rp: '5000', sortname: 'su_oss_assunto.id', sortorder: 'asc' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Assuntos 4B",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "executeOnce": true,
+      "id": "c1cdbc15-0632-4f06-a863-022e7d547337",
+      "position": [
+        624,
+        576
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Sar2wecxMvwt297d",
+          "name": "IXC API (4BTELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.pontotelecom.com/webservice/v1/su_oss_assunto",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'su_oss_assunto.id', query: '0', oper: '>', page: '1', rp: '5000', sortname: 'su_oss_assunto.id', sortorder: 'asc' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Assuntos PONTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "executeOnce": true,
+      "id": "ca438309-b917-4a92-abe3-397b10f746f9",
+      "position": [
+        832,
+        576
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "SQr92hzbZKnat5kl",
+          "name": "IXC API (Ponto telecom)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.cactatelecom.com.br/webservice/v1/su_oss_assunto",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'su_oss_assunto.id', query: '0', oper: '>', page: '1', rp: '5000', sortname: 'su_oss_assunto.id', sortorder: 'asc' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Assuntos CACTA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "executeOnce": true,
+      "id": "b3f3f32b-0939-4b40-a0c7-229ae7d51d4e",
+      "position": [
+        1024,
+        576
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "00ORMvXflPQheEJ1",
+          "name": "IXC API (CACTA TELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.buzztelecom.com.br/webservice/v1/su_oss_assunto",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'su_oss_assunto.id', query: '0', oper: '>', page: '1', rp: '5000', sortname: 'su_oss_assunto.id', sortorder: 'asc' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Assuntos BUZZ",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "executeOnce": true,
+      "id": "64104c67-50e3-4a1e-8b3a-3f91bd7dece5",
+      "position": [
+        1232,
+        576
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "CYZcvcYaydyP88Uu",
+          "name": "IXC API (BUZZ TELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Monta 1 mensagem por técnico (todas as bases juntas) + o resumo.\n// ===== AUSÊNCIAS (férias, folga, atestado...) — quem estiver aqui NÃO recebe aviso =====\n// pessoa: nome como está em PESSOAS (pode ser o começo do nome, se for único: 'Técnico 42')\n// de / ate: AAAA-MM-DD ou DD/MM/AAAA (os dois dias entram). Sem 'ate' = até alguém tirar da lista.\nconst AUSENCIAS = [\n    //{ pessoa: 'Técnico 42', de: '15/10/2026', ate: '15/10/2026', motivo: 'Teste' },\n  // { pessoa: 'Técnico 17', de: '17/10/2026', ate: '17/10/2026', motivo: 'Folga' },\n];\nconst cfg = $('Config').first().json.cfg;\nconst { BASES, ASSUNTOS, PESSOAS, LIMITE } = cfg;\n\n// Regras do aviso:\n//  - status em STATUS_SEM_REGISTRO e sem mensagem há DIAS_SEM_REGISTRO dias -> \"atualize e use o botão de agendamento\"\n//  - status AGENDADA com data de agendamento ANTERIOR A HOJE (ou sem data) -> \"faça um novo agendamento\"\n//  - status AGENDADA com agendamento de hoje em diante -> ignorada\nconst STATUS_SEM_REGISTRO = ['EN'];   // para incluir \"Em análise\" também: ['EN', 'AN']\nconst STATUS_AGENDADA = 'AG';\nconst STATUS_NOME = { EN: 'Encaminhada', AG: 'Agendada', AN: 'Em análise' };\nconst HOJE_INI = DateTime.now().setZone('America/Sao_Paulo').toFormat('yyyy-MM-dd') + ' 00:00:00';\nconst dataValida = s => !!(s && s.length >= 10 && !s.startsWith('0000'));\nconst fmtDataHora = s => dataValida(s) ? `${s.slice(8, 10)}/${s.slice(5, 7)}${s.length >= 16 && s.slice(11, 16) !== '00:00' ? ' ' + s.slice(11, 16) : ''}` : 'sem data';\n// ===== Escala (planilha \"Quem trabalha hoje\") =====\n// Só as pessoas abaixo dependem da escala; as demais recebem sempre.\n// chaves = como o nome aparece na planilha (sem acento, maiúsculas, palavra inteira).\nconst ESCALA = [\n  { pessoa: 'Técnico 25',             chaves: ['Técnico 25'] },          // PALLADIUM CURITIBA - Técnico 25\n  { pessoa: 'Técnico 18',       chaves: ['Técnico 18'] },       // PALLADIUM CURITIBA - Técnico 18\n  { pessoa: 'Técnico 32',          chaves: ['Técnico 32'] },   // JOCKEY - Técnico 32\n  { pessoa: 'Técnico 54',            chaves: ['Técnico 54'] },       // JOCKEY - Técnico 54\n  { pessoa: 'Técnico 45',    chaves: ['Técnico 45'] },          // FOZ - Técnico 45\n  { pessoa: 'Técnico 55',     chaves: ['Técnico 55'] },          // FOZ - Técnico 55\n  { pessoa: 'Técnico 31',            chaves: ['Técnico 31'] }, // CASCAVEL - Técnico 31\n  { pessoa: 'Técnico 38', chaves: ['Técnico 38'] },        // CASCAVEL - Técnico 38\n  { pessoa: 'Técnico 21',                    chaves: ['Técnico 21'] },        // quadro Porto Belo e Tijucas\n  { pessoa: 'Técnico 56',             chaves: ['Técnico 56'] },    // quadro Porto Belo e Tijucas\n];\nconst norm = t => String(t || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toUpperCase().replace(/\\s+/g, ' ').trim();\nfunction parseCSV(txt) {\n  const rows = []; let row = [], cell = '', q = false;\n  for (let i = 0; i < txt.length; i++) {\n    const c = txt[i];\n    if (q) { if (c === '\"') { if (txt[i + 1] === '\"') { cell += '\"'; i++; } else q = false; } else cell += c; }\n    else if (c === '\"') q = true;\n    else if (c === ',') { row.push(cell); cell = ''; }\n    else if (c === '\\n' || c === '\\r') { if (c === '\\r' && txt[i + 1] === '\\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }\n    else cell += c;\n  }\n  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }\n  return rows;\n}\n// Lê a planilha: devolve { ok, trabalhando: Set(pessoa), detalhe } — ok=false se não der para confiar nela\nfunction lerEscala() {\n  const it = $('Escala').first();\n  const j = (it && it.json) || {};\n  if (j.error) return { ok: false, detalhe: 'planilha não lida: ' + (j.error.message || j.error) };\n  const txt = typeof j.data === 'string' ? j.data : '';\n  if (!txt || /<html/i.test(txt.slice(0, 200))) return { ok: false, detalhe: 'planilha não lida (link CSV inválido ou não publicado)' };\n  const g = parseCSV(txt);\n  const acha = re => { for (let r = 0; r < g.length; r++) for (let c = 0; c < g[r].length; c++) if (re.test(norm(g[r][c]))) return [r, c]; return null; };\n  const pos = acha(/QUEM TRABALHA HOJE/);\n  if (!pos) return { ok: false, detalhe: 'planilha sem o quadro \"QUEM TRABALHA HOJE\"' };\n  const [r0, c0] = pos;\n  let data = null;\n  for (let c = c0; c < Math.min(c0 + 4, g[r0].length); c++) { const m = norm(g[r0][c]).match(/(\\d{1,2})\\/(\\d{1,2})/); if (m) { data = m[1].padStart(2, '0') + '/' + m[2].padStart(2, '0'); break; } }\n  const hoje = DateTime.now().setZone('America/Sao_Paulo').toFormat('dd/MM');\n  if (data !== hoje) return { ok: false, detalhe: `planilha desatualizada: \"Quem trabalha hoje\" está com data ${data || '(sem data)'}, hoje é ${hoje}` };\n  const linhas = [];\n  for (let r = r0 + 1; r < Math.min(r0 + 20, g.length); r++) { const v = norm(g[r][c0]); if (!v) { if (linhas.length) break; else continue; } if (/QUEM TRABALHA/.test(v)) break; linhas.push(v); }\n  const pb = acha(/HOJE EM PORTO BELO/);\n  let portoBelo = '';\n  if (pb) for (let r = pb[0] + 1; r < Math.min(pb[0] + 4, g.length); r++) { const v = norm(g[r][pb[1]]); if (v) { portoBelo = v; break; } }\n  const texto = ' ' + [...linhas, portoBelo].join(' | ') + ' ';\n  const trabalhando = new Set(ESCALA.filter(e => e.chaves.some(k => new RegExp(`[^A-Z]${norm(k)}[^A-Z]`).test(texto))).map(e => e.pessoa));\n  return { ok: true, trabalhando, detalhe: `escala ${data}: ${linhas.join(' / ')}${portoBelo ? ' / Porto Belo e Tijucas: ' + portoBelo : ' / (quadro Porto Belo e Tijucas não encontrado)'}` };\n}\n\n// Link de acesso de cada base (só vão na mensagem as bases que o técnico tem O.S. parada)\nconst LINKS = {\n  RESOLUTTO: 'https://ixc.resolutto.com.br/app/login',\n  '4B':      'https://ixc.4btelecom.com.br/app/login',\n  PONTO:     'https://ixc.pontotelecom.com/app/login',\n  CACTA:     'https://ixc.cactatelecom.com.br/app/login',\n  BUZZ:      'https://ixc.buzztelecom.com.br/app/login',\n};\n\nfunction parse(item) {\n  const j = (item && item.json) || {};\n  if (j.error) return { erro: String(j.error.message || j.error) };\n  let d = j.data !== undefined ? j.data : j;\n  if (typeof d === 'string') {\n    try { d = JSON.parse(d.replace(/[\\u0000-\\u001F]+/g, ' ')); }\n    catch (e) { return { erro: 'resposta não é JSON: ' + d.slice(0, 120) }; }\n  }\n  if (d && d.type === 'error') return { erro: String(d.message || 'erro da API') };\n  return { total: Number(d.total || 0), registros: Array.isArray(d.registros) ? d.registros : [] };\n}\nconst fmtData = s => (s && s.length >= 10 && !s.startsWith('0000')) ? `${s.slice(8, 10)}/${s.slice(5, 7)}` : '?';\n\n// índice base:id -> pessoa\nconst porId = {};\nfor (const p of PESSOAS) for (const [b, ids] of Object.entries(p.ids)) for (const id of ids) porId[`${b}:${id}`] = p;\n\nconst panorama = { limite_sem_registro: LIMITE, por_base: {}, avisos: [] };\nconst linhasPorPessoa = new Map();   // pessoa -> [linhas]\nconst semCadastro = {};              // \"BASE id\" -> {nome, qtd}\n\nfor (const base of BASES) {\n  const pb = panorama.por_base[base] = { lidas: 0, paradas: 0, erro: null };\n  // 1) O.S. dos assuntos\n  const osItems = $(`OS ${base}`).all();\n  const os = [];\n  let erroOS = null;\n  osItems.forEach((it, i) => {\n    const r = parse(it);\n    if (r.erro) { erroOS = `assunto ${ASSUNTOS[base][i]}: ${r.erro}`; return; }\n    if (r.total > r.registros.length) panorama.avisos.push(`${base} assunto ${ASSUNTOS[base][i]}: ${r.total} O.S., lidas só ${r.registros.length} (aumentar rp)`);\n    os.push(...r.registros);\n  });\n  // 2) mensagens recentes (O.S. com registro depois do LIMITE não estão paradas)\n  const rm = parse($(`Msg ${base}`).first());\n  // 3) nomes de colaboradores e assuntos (só para deixar o texto legível)\n  const rf = parse($(`Func ${base}`).first());\n  const ra = parse($(`Assuntos ${base}`).first());\n  if (erroOS || rm.erro) { pb.erro = erroOS || ('mensagens: ' + rm.erro); continue; } // base pulada inteira\n  if (rm.total > rm.registros.length) { pb.erro = `mensagens: ${rm.total} registros, lidos ${rm.registros.length} (aumentar rp)`; continue; }\n  if (rm.registros.length && rm.registros[0].id_chamado === undefined) { pb.erro = 'mensagens sem campo id_chamado: ' + Object.keys(rm.registros[0]).join(','); continue; }\n\n  const recentes = new Set(rm.registros.map(m => String(m.id_chamado)));\n  const nomeFunc = {}; (rf.registros || []).forEach(f => nomeFunc[String(f.id)] = f.funcionario || f.nome);\n  \n     const nomeAssunto = {}; (ra.registros || []).forEach(a => nomeAssunto[String(a.id)] = a.assunto || a.descricao);\n    if (ra.erro || rf.erro) panorama.avisos.push(`${base}: nomes de ${ra.erro ? 'assunto' : 'colaborador'} não lidos (${ra.erro || rf.erro})`);\nconst nomeCliente = {};\n  try { $(`Cliente ${base}`).all().forEach(it => { const c = (parse(it).registros || [])[0]; if (c && c.id) nomeCliente[String(c.id)] = String(c.fantasia || c.razao || '').trim(); }); }\n  catch (e) { if (!panorama.avisos.includes('nós \"Cliente <BASE>\" não encontrados — mensagens sem nome do cliente')) panorama.avisos.push('nós \"Cliente <BASE>\" não encontrados — mensagens sem nome do cliente'); }\n\n  \n\n  \n  const vistos = new Set();\n  for (const o of os) {\n    const id = String(o.id);\n    if (vistos.has(id)) continue; vistos.add(id);\n    pb.lidas++;\n    const tec = String(o.id_tecnico || '0');\n    if (tec === '0') continue;\n    let tipo = null, detalhe = '';\n    if (STATUS_SEM_REGISTRO.includes(o.status)) {\n      if (recentes.has(id)) continue;                                                // teve registro recente\n      if (dataValida(o.data_abertura) && o.data_abertura > LIMITE) continue;         // aberta há pouco\n      tipo = 'sem_registro'; detalhe = `${o.status === 'EN' ? '' : (STATUS_NOME[o.status] || o.status) + ' · '}aberta ${fmtData(o.data_abertura)}`;\n    } else if (o.status === STATUS_AGENDADA) {\n      if (dataValida(o.data_agenda) && o.data_agenda >= HOJE_INI) continue;         // agendamento em dia\n      tipo = 'agenda_vencida'; detalhe = dataValida(o.data_agenda) ? `agendada p/ ${fmtDataHora(o.data_agenda)}` : 'agendada sem data';\n    } else continue;\n    pb.paradas++;\n    pb[tipo] = (pb[tipo] || 0) + 1;\n    const linha = {\n      base, os: id, tipo, abertura: o.data_abertura || '', agenda: o.data_agenda || '',\n            texto: `• *${base}* · O.S. ${id} · ${((n) => n.length > 45 ? n.slice(0, 44) + '…' : n)(nomeCliente[String(o.id_cliente)] || 'cliente ' + o.id_cliente)} · ${nomeAssunto[String(o.id_assunto)] || 'assunto ' + o.id_assunto} · ${detalhe}`,\n    };\n    const p = porId[`${base}:${tec}`];\n    if (p && p.whatsapp) {\n      if (!linhasPorPessoa.has(p)) linhasPorPessoa.set(p, []);\n      linhasPorPessoa.get(p).push(linha);\n    } else {\n      const k = p ? `${p.nome} (${base} ${tec})` : `${nomeFunc[tec] || 'id ' + tec} (${base} ${tec})`;\n      semCadastro[k] = (semCadastro[k] || 0) + 1;\n    }\n  }\n}\n\n// Mensagens por técnico\nconst envios = [];\nconst ordenadas = [...linhasPorPessoa.entries()].sort((a, b) => b[1].length - a[1].length);\nfor (const [p, linhas] of ordenadas) {\n  const semReg = linhas.filter(l => l.tipo === 'sem_registro').sort((a, b) => a.abertura.localeCompare(b.abertura));\n  const vencidas = linhas.filter(l => l.tipo === 'agenda_vencida').sort((a, b) => a.agenda.localeCompare(b.agenda));\n  const n = linhas.length;\n  let resta = cfg.MAX_LINHAS_POR_TECNICO;\n  const bloco = (titulo, lista) => {\n    if (!lista.length) return [];\n    const vis = lista.slice(0, Math.max(resta, 0)); resta -= vis.length;\n    const out = ['', titulo, ...vis.map(l => l.texto)];\n    if (lista.length > vis.length) out.push(`… e mais ${lista.length - vis.length}`);\n    return out;\n  };\n  const mostrar = [\n    ...bloco(`*${semReg.length === 1 ? 'Encaminhada sem registro' : 'Encaminhadas sem registro'} há mais de ${cfg.DIAS_SEM_REGISTRO} dias* – atualize e use o botão *Agendar*:`, semReg),\n    ...bloco(`*${vencidas.length === 1 ? 'Agendamento vencido' : 'Agendamentos vencidos'}* – faça um *novo agendamento*:`, vencidas),\n  ];\n  const basesDele = [...new Set([...semReg, ...vencidas].map(l => l.base))];   // na ordem em que aparecem na mensagem\n  const links = basesDele.map(b => LINKS[b]).filter(Boolean);\n  const blocoLinks = links.length ? [\n    '',\n    links.length === 1 ? 'Segue abaixo o link de acesso da base correspondente:' : 'Segue abaixo os links de acesso das bases correspondentes:',\n    ...links,\n  ] : [];\n  const texto = [\n    `Bom dia, ${p.nome.split(' ')[0]}!`,\n    `Você tem *${n} O.S.* ${n === 1 ? 'que precisa' : 'que precisam'} de atenção:`,\n    ...mostrar,\n    '',\n    'Por favor, atualize o andamento no IXC.',\n    ...blocoLinks,\n    '',\n    '_Aviso automático diário – Resolutto_',\n  ].join('\\n');\n  const porBase = {}; linhas.forEach(l => porBase[l.base] = (porBase[l.base] || 0) + 1);\n  envios.push({ tipo: 'tecnico', nome: p.nome, telefone: p.whatsapp, qtd: n, sem_registro: semReg.length, agenda_vencida: vencidas.length, por_base: porBase, texto });\n}\n\n// Escala: quem é de escala e não trabalha hoje (ou planilha inconsistente) não recebe\nconst escala = lerEscala();\nconst deEscala = new Set(ESCALA.map(e => e.pessoa));\nconst foraHoje = [];\nfor (let i = envios.length - 1; i >= 0; i--) {\n  const e = envios[i];\n  if (deEscala.has(e.nome) && (!escala.ok || !escala.trabalhando.has(e.nome))) { foraHoje.unshift(e); envios.splice(i, 1); }\n}\npanorama.escala = { ok: escala.ok, detalhe: escala.detalhe, trabalhando_hoje: escala.ok ? [...escala.trabalhando] : [], nao_avisados: foraHoje.map(e => `${e.nome} (${e.qtd})`) };\n\n// Ausências: tira da lista quem está de férias/folga hoje\nconst hojeISO = DateTime.now().setZone('America/Sao_Paulo').toFormat('yyyy-MM-dd');\nconst dataISO = v => { const t = String(v || '').trim(); let m, iso = null;\n  if ((m = t.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/))) iso = t;\n  else if ((m = t.match(/^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})$/))) iso = `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;\n  return iso && DateTime.fromISO(iso).isValid ? iso : null; };\nconst fmtBR = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;\nconst ausentesHoje = new Map();   // nome -> texto do motivo\nfor (const a of AUSENCIAS) {\n  const alvo = norm(a.pessoa);\n  const achados = PESSOAS.filter(p => norm(p.nome) === alvo || norm(p.nome).startsWith(alvo + ' '));\n  if (!alvo || achados.length === 0) { panorama.avisos.push(`AUSENCIAS: \"${a.pessoa}\" não encontrado em PESSOAS`); continue; }\n  if (achados.length > 1) { panorama.avisos.push(`AUSENCIAS: \"${a.pessoa}\" é ambíguo (${achados.map(p => p.nome).join(', ')}) — use o nome completo`); continue; }\n  const de = dataISO(a.de), ate = a.ate ? dataISO(a.ate) : null;\n  const motivo = a.motivo || 'Ausente';\n  if (!de || (a.ate && !ate)) {   // data inválida: por segurança considera ausente e avisa\n    ausentesHoje.set(achados[0].nome, `${motivo} (data inválida na lista)`);\n    panorama.avisos.push(`AUSENCIAS: data inválida para \"${a.pessoa}\" (use AAAA-MM-DD ou DD/MM/AAAA) — tratado como ausente`);\n    continue;\n  }\n  if (hojeISO >= de && (!ate || hojeISO <= ate)) ausentesHoje.set(achados[0].nome, `${motivo}${ate ? ' até ' + fmtBR(ate) : ''}`);\n}\nconst ausentes = [];\nfor (let i = envios.length - 1; i >= 0; i--) {\n  const e = envios[i];\n  if (ausentesHoje.has(e.nome)) { ausentes.unshift({ ...e, motivo: ausentesHoje.get(e.nome) }); envios.splice(i, 1); }\n}\nfor (let i = foraHoje.length - 1; i >= 0; i--) {   // quem já estava fora pela escala e também está ausente: mostra só como ausente\n  if (ausentesHoje.has(foraHoje[i].nome)) { ausentes.unshift({ ...foraHoje[i], motivo: ausentesHoje.get(foraHoje[i].nome) }); foraHoje.splice(i, 1); }\n}\npanorama.escala.nao_avisados = foraHoje.map(e => `${e.nome} (${e.qtd})`);\npanorama.ausencias = { hoje: [...ausentesHoje].map(([n, m]) => `${n} – ${m}`), nao_avisados: ausentes.map(e => `${e.nome} (${e.qtd})`) };\n// Resumo\nconst total = envios.reduce((s, e) => s + e.qtd, 0);\nconst erros = Object.entries(panorama.por_base).filter(([, v]) => v.erro).map(([b, v]) => `${b}: ${v.erro}`);\nconst resumoLinhas = [\n  `*Resumo O.S. paradas – ${cfg.AGORA}*`,\n  `${total} O.S. · ${envios.reduce((s, e) => s + e.sem_registro, 0)} encaminhadas sem registro · ${(n => `${n} agend. ${n === 1 ? 'vencido' : 'vencidos'}`)(envios.reduce((s, e) => s + e.agenda_vencida, 0))} · ${envios.length} ${envios.length === 1 ? 'técnico avisado' : 'técnicos avisados'}`,\n  '',\n  ...envios.map(e => `• ${e.nome}: ${e.qtd} – ${[e.sem_registro ? `${e.sem_registro} sem registro` : '', e.agenda_vencida ? `${e.agenda_vencida} agend. ${e.agenda_vencida === 1 ? 'vencido' : 'vencidos'}` : ''].filter(Boolean).join(', ')} (${Object.entries(e.por_base).map(([b, q]) => `${b} ${q}`).join(', ')})`),\n];\nif (!escala.ok) resumoLinhas.push('', '⚠️ *Escala com problema:* ' + escala.detalhe, foraHoje.length ? 'Técnicos de escala NÃO avisados hoje: ' + foraHoje.map(e => `${e.nome} (${e.qtd})`).join(', ') : 'Nenhum técnico de escala tinha O.S. para avisar.');\nelse if (foraHoje.length) resumoLinhas.push('', '*De folga hoje (não avisados):*', ...foraHoje.map(e => `• ${e.nome}: ${e.qtd}`));\nif (ausentes.length) resumoLinhas.push('', '*Ausentes (férias/folga) – não avisados:*', ...ausentes.map(e => `• ${e.nome}: ${e.qtd} (${e.motivo})`));\nconst sc = Object.entries(semCadastro);\nif (sc.length) resumoLinhas.push('', '*Sem WhatsApp cadastrado:*', ...sc.map(([k, q]) => `• ${k}: ${q}`));\nif (erros.length) resumoLinhas.push('', '*Bases com erro (puladas):*', ...erros.map(e => `• ${e}`));\nif (panorama.avisos.length) resumoLinhas.push('', '*Avisos:*', ...panorama.avisos.map(a => `• ${a}`));\nconst resumo = { tipo: 'resumo', nome: 'Resumo', telefone: cfg.RESUMO_PARA, qtd: total, texto: resumoLinhas.join('\\n') };\n\n// Decide o que é enviado\nconst sd = $getWorkflowStaticData('global');\nlet motivo = '';\nlet fila = [];\nif (cfg.ENVIO === 'NENHUM') motivo = 'ENVIO = NENHUM (só montagem)';\nelse if (cfg.ENVIO === 'REAL' && sd.ultimo_envio === cfg.HOJE && !cfg.FORCAR_REENVIO_HOJE) motivo = `já enviado hoje (${cfg.HOJE})`;\nelse if (cfg.ENVIO === 'REAL' && envios.length + 1 > cfg.MAX_MENSAGENS_DIA) motivo = `${envios.length} mensagens passa de MAX_MENSAGENS_DIA (${cfg.MAX_MENSAGENS_DIA}) — nada enviado`;\nelse if (cfg.ENVIO === 'SIMULAR') {\n  fila = [resumo, ...envios.slice(0, 11).map(e => ({ ...e, telefone: cfg.RESUMO_PARA, texto: `[SIMULAÇÃO → ${e.nome} ${e.telefone}]\\n\\n${e.texto}` }))];\n} else {\n  fila = [...(cfg.RESUMO_PARA ? [resumo] : []), ...envios];\n  sd.ultimo_envio = cfg.HOJE;\n}\n\nconst saida = [\n  { json: { tipo: 'panorama', enviar: false, envio: cfg.ENVIO, motivo_sem_envio: motivo || null, total_paradas: total, tecnicos: envios.length, ...panorama, sem_whatsapp: semCadastro, resumo_texto: resumo.texto } },\n  ...envios.map(e => ({ json: { ...e, enviar: false } })),\n];\n// itens da fila de envio (enviar: true) — os demais ficam só para conferência\nreturn [...saida, ...fila.filter(f => f.telefone).map(f => ({ json: { ...f, enviar: true } }))];"
+      },
+      "name": "Montar mensagens",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "id": "6f1c6e6f-1e98-49ac-a761-5aac66330829",
+      "position": [
+        1888,
+        976
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "4b32ae60-1387-4204-8f49-2708a5945da3",
+              "leftValue": "={{ $json.enviar }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "name": "Enviar?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "id": "15a96dd7-b47c-4a5d-bc30-3302d4a28226",
+      "position": [
+        2112,
+        976
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "name": "Um por vez",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "id": "a7acd512-1c2b-4a01-8099-3fdd8e6bc45e",
+      "position": [
+        2336,
+        976
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://waha:3000/api/contacts/check-exists",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "phone",
+              "value": "={{ $json.telefone }}"
+            },
+            {
+              "name": "session",
+              "value": "={{ $('Config').first().json.cfg.WAHA_SESSION }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "name": "Validar numero",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "id": "644ce050-96fe-4244-9b77-6abb621e4a52",
+      "position": [
+        2544,
+        1072
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wahaApiKey01",
+          "name": "WAHA API"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "66412ac6-1b15-42e0-8388-2058c97eecaf",
+              "leftValue": "={{ $json.numberExists }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "name": "Tem WhatsApp?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "id": "8bd4a0ab-1da8-4b58-bcf4-ce16c53b3222",
+      "position": [
+        2768,
+        1072
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://waha:3000/api/startTyping",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ session: $('Config').first().json.cfg.WAHA_SESSION, chatId: $('Validar numero').first().json.chatId }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "name": "Digitando",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "id": "7953a4b6-149f-4e61-bee5-d0631471765c",
+      "position": [
+        2992,
+        976
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wahaApiKey01",
+          "name": "WAHA API"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "amount": "={{ 4 + Math.floor(Math.random() * 5) }}"
+      },
+      "name": "Pausa digitando",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "webhookId": "205d765c-1d25-47be-8d49-328e7a93c87f",
+      "id": "5b122729-1346-4249-adf4-843f95df9098",
+      "position": [
+        3216,
+        976
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://waha:3000/api/sendText",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ session: $('Config').first().json.cfg.WAHA_SESSION, chatId: $('Validar numero').first().json.chatId, text: $('Um por vez').first().json.texto, linkPreview: false }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "name": "Enviar WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "id": "362e694f-ec3b-4237-bcf2-7a401133cf7c",
+      "position": [
+        3424,
+        976
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wahaApiKey01",
+          "name": "WAHA API"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "   https://docs.google.com/spreadsheets/d/__PLANILHA_ID__/export?format=csv&gid=1710179853",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "name": "Escala",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1376,
+        624
+      ],
+      "executeOnce": true,
+      "id": "6dfea63c-8e90-42b6-9921-ec94b130dc61",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Lista os clientes das O.S. que podem entrar no aviso, por base (1 consulta por cliente nos nós \"Cliente <BASE>\")\nconst cfg = $('Config').first().json.cfg;\nfunction parse(item) {\n  const j = (item && item.json) || {};\n  let d = j.data !== undefined ? j.data : j;\n  if (typeof d === 'string') { try { d = JSON.parse(d.replace(/[\\u0000-\\u001F]+/g, ' ')); } catch (e) { return []; } }\n  return (d && Array.isArray(d.registros)) ? d.registros : [];\n}\nconst ids = {};\nfor (const base of cfg.BASES) {\n  const set = new Set();\n  for (const it of $(`OS ${base}`).all())\n    for (const o of parse(it))\n      if (String(o.id_tecnico || '0') !== '0' && ['EN', 'AG', 'AN'].includes(o.status) && o.id_cliente && String(o.id_cliente) !== '0') set.add(String(o.id_cliente));\n  ids[base] = [...set].slice(0, 300);\n}\nconst n = Math.max(1, ...Object.values(ids).map(a => a.length));\nreturn Array.from({ length: n }, (_, i) => ({ json: { i, ...(i === 0 ? { ids } : {}) } }));\n"
+      },
+      "name": "Preparar clientes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1840,
+        656
+      ],
+      "id": "926530eb-9efb-4eb4-96dd-776a10bb5fd2"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.resolutto.com.br/webservice/v1/cliente",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'cliente.id', query: String(($('Preparar clientes').first().json.ids['RESOLUTTO'] || [])[$itemIndex] || '0'), oper: '=', page: '1', rp: '1', sortname: 'cliente.id', sortorder: 'asc' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Cliente RESOLUTTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2064,
+        656
+      ],
+      "id": "909f0da5-4187-4308-94de-4a5f5c4e5de1",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "ixcApiAutomacao1",
+          "name": "IXC API (RESOLUTTO)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.4btelecom.com.br/webservice/v1/cliente",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'cliente.id', query: String(($('Preparar clientes').first().json.ids['4B'] || [])[$itemIndex] || '0'), oper: '=', page: '1', rp: '1', sortname: 'cliente.id', sortorder: 'asc' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Cliente 4B",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2288,
+        656
+      ],
+      "id": "a365a8f8-70a0-4a21-8e31-7a6dee88bcbb",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Sar2wecxMvwt297d",
+          "name": "IXC API (4BTELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.pontotelecom.com/webservice/v1/cliente",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'cliente.id', query: String(($('Preparar clientes').first().json.ids['PONTO'] || [])[$itemIndex] || '0'), oper: '=', page: '1', rp: '1', sortname: 'cliente.id', sortorder: 'asc' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Cliente PONTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2512,
+        656
+      ],
+      "id": "70155f7c-32eb-4d99-adda-aa29917a91c9",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "SQr92hzbZKnat5kl",
+          "name": "IXC API (Ponto telecom)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.cactatelecom.com.br/webservice/v1/cliente",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'cliente.id', query: String(($('Preparar clientes').first().json.ids['CACTA'] || [])[$itemIndex] || '0'), oper: '=', page: '1', rp: '1', sortname: 'cliente.id', sortorder: 'asc' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Cliente CACTA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2720,
+        656
+      ],
+      "id": "91f38530-e601-475a-9e32-a85e63153a3e",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "00ORMvXflPQheEJ1",
+          "name": "IXC API (CACTA TELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.buzztelecom.com.br/webservice/v1/cliente",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'cliente.id', query: String(($('Preparar clientes').first().json.ids['BUZZ'] || [])[$itemIndex] || '0'), oper: '=', page: '1', rp: '1', sortname: 'cliente.id', sortorder: 'asc' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Cliente BUZZ",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2944,
+        656
+      ],
+      "id": "b7a6153f-a148-4cdf-9d36-0696a302b6ef",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "CYZcvcYaydyP88Uu",
+          "name": "IXC API (BUZZ TELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Diagnóstico de uma O.S.: troque BASE e OS e execute o workflow (ENVIO = 'NENHUM')\nconst BASE = 'RESOLUTTO', OS = '141';\nconst cfg = $('Config').first().json.cfg;\nfunction parse(it) { const j = (it && it.json) || {}; let d = j.data !== undefined ? j.data : j; if (typeof d === 'string') { try { d = JSON.parse(d.replace(/[\\u0000-\\u001F]+/g, ' ')); } catch (e) { return []; } } return (d && Array.isArray(d.registros)) ? d.registros : []; }\nconst achadas = [];\n$(`OS ${BASE}`).all().forEach((it, i) => parse(it).forEach(o => { if (String(o.id) === OS) achadas.push({ assunto_consultado: cfg.ASSUNTOS[BASE][i], id: o.id, status: o.status, id_tecnico: o.id_tecnico, id_assunto: o.id_assunto, data_abertura: o.data_abertura, data_agenda: o.data_agenda, id_cliente: o.id_cliente }); }));\nconst msgs = parse($(`Msg ${BASE}`).first()).filter(m => String(m.id_chamado) === OS).map(m => ({ data: m.data, mensagem: String(m.mensagem || '').slice(0, 150) }));\nconst pessoa = cfg.PESSOAS.find(p => (p.ids[BASE] || []).map(String).includes(String((achadas[0] || {}).id_tecnico)));\nconst naMensagem = $('Montar mensagens').all().filter(i => i.json.tipo === 'tecnico' && String(i.json.texto).includes(`O.S. ${OS} `)).map(i => i.json.nome);\nreturn [{ json: { base: BASE, os: OS, limite_sem_registro: cfg.LIMITE, encontrada_na_leitura: achadas.length > 0, registro: achadas[0] || null, aberta_antes_do_limite: achadas[0] ? achadas[0].data_abertura <= cfg.LIMITE : null, mensagens_ultimos_2_dias: msgs, tecnico_em_PESSOAS: pessoa ? pessoa.nome : 'NÃO ENCONTRADO', esta_na_mensagem_de: naMensagem } }];\n"
+      },
+      "name": "Diagnostico OS",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1968,
+        1200
+      ],
+      "id": "6e5b1fad-906b-4f96-95b5-c91a8aec320f"
+    },
+    {
+      "parameters": {
+        "amount": "={{ 30 + Math.floor(Math.random() * 26) }}"
+      },
+      "name": "Intervalo 30-55s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "webhookId": "ed6fcccd-0766-4af2-8e82-3c8326dc9e16",
+      "id": "c7602b69-63c6-4283-8c64-d48a629558f2",
+      "position": [
+        3648,
+        976
+      ]
+    }
+  ],
+  "connections": {
+    "Todo dia 10h (seg-sab)": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Executar manualmente": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "OS RESOLUTTO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OS RESOLUTTO": {
+      "main": [
+        [
+          {
+            "node": "OS 4B",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OS 4B": {
+      "main": [
+        [
+          {
+            "node": "OS PONTO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OS PONTO": {
+      "main": [
+        [
+          {
+            "node": "OS CACTA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OS CACTA": {
+      "main": [
+        [
+          {
+            "node": "OS BUZZ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OS BUZZ": {
+      "main": [
+        [
+          {
+            "node": "Msg RESOLUTTO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg RESOLUTTO": {
+      "main": [
+        [
+          {
+            "node": "Msg 4B",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg 4B": {
+      "main": [
+        [
+          {
+            "node": "Msg PONTO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg PONTO": {
+      "main": [
+        [
+          {
+            "node": "Msg CACTA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg CACTA": {
+      "main": [
+        [
+          {
+            "node": "Msg BUZZ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg BUZZ": {
+      "main": [
+        [
+          {
+            "node": "Func RESOLUTTO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Func RESOLUTTO": {
+      "main": [
+        [
+          {
+            "node": "Func 4B",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Func 4B": {
+      "main": [
+        [
+          {
+            "node": "Func PONTO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Func PONTO": {
+      "main": [
+        [
+          {
+            "node": "Func CACTA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Func CACTA": {
+      "main": [
+        [
+          {
+            "node": "Func BUZZ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Func BUZZ": {
+      "main": [
+        [
+          {
+            "node": "Assuntos RESOLUTTO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assuntos RESOLUTTO": {
+      "main": [
+        [
+          {
+            "node": "Assuntos 4B",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assuntos 4B": {
+      "main": [
+        [
+          {
+            "node": "Assuntos PONTO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assuntos PONTO": {
+      "main": [
+        [
+          {
+            "node": "Assuntos CACTA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assuntos CACTA": {
+      "main": [
+        [
+          {
+            "node": "Assuntos BUZZ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assuntos BUZZ": {
+      "main": [
+        [
+          {
+            "node": "Escala",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar mensagens": {
+      "main": [
+        [
+          {
+            "node": "Enviar?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar?": {
+      "main": [
+        [
+          {
+            "node": "Um por vez",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Um por vez": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Validar numero",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar numero": {
+      "main": [
+        [
+          {
+            "node": "Tem WhatsApp?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tem WhatsApp?": {
+      "main": [
+        [
+          {
+            "node": "Digitando",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Um por vez",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Digitando": {
+      "main": [
+        [
+          {
+            "node": "Pausa digitando",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pausa digitando": {
+      "main": [
+        [
+          {
+            "node": "Enviar WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Intervalo 30-55s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Escala": {
+      "main": [
+        [
+          {
+            "node": "Preparar clientes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar clientes": {
+      "main": [
+        [
+          {
+            "node": "Cliente RESOLUTTO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cliente RESOLUTTO": {
+      "main": [
+        [
+          {
+            "node": "Cliente 4B",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cliente 4B": {
+      "main": [
+        [
+          {
+            "node": "Cliente PONTO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cliente PONTO": {
+      "main": [
+        [
+          {
+            "node": "Cliente CACTA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cliente CACTA": {
+      "main": [
+        [
+          {
+            "node": "Cliente BUZZ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cliente BUZZ": {
+      "main": [
+        [
+          {
+            "node": "Montar mensagens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Diagnostico OS": {
+      "main": [
+        []
+      ]
+    },
+    "Intervalo 30-55s": {
+      "main": [
+        [
+          {
+            "node": "Um por vez",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "meta": null,
+  "nodeGroups": [],
+  "versionId": "c65d79db-b80c-4445-830d-a214688ead4f",
+  "activeVersionId": "c65d79db-b80c-4445-830d-a214688ead4f",
+  "versionCounter": 90,
+  "triggerCount": 1,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "versionMetadata": {
+    "name": "Version c65d79db",
+    "description": ""
+  }
+}

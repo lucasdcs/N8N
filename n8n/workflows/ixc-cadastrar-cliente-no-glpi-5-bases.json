@@ -1,0 +1,1220 @@
+{
+  "updatedAt": "2026-10-19T16:56:37.458Z",
+  "createdAt": "2026-10-19T16:44:48.379Z",
+  "id": "0gX3i3UG0N6mpDQb",
+  "name": "IXC - Cadastrar cliente no GLPI (5 bases)",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "741a8db4-aec5-4c9f-853f-b23c381c45d7",
+              "leftValue": "={{ $json.acao }}",
+              "rightValue": "criar",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "cc769e4c-148f-4abd-bcfa-46e46ea4b2d8",
+      "name": "Criar?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2992,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "id": "49ffb518-5b03-40e1-a118-36a10043ee7a",
+      "name": "A cada 5 min1",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        48,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ===================== CONFIGURACAO =====================\n// ASSUNTOS: ids dos assuntos de O.S. que disparam o cadastro, por base.\n// Base com lista vazia = ignorada. Ex.: PONTO: ['70'].\nconst ASSUNTOS = {\n  'RESOLUTTO': ['69'],\n  '4BTELECOM': ['89'],\n  'PONTO':     ['61'],\n  'CACTA':     ['73'],\n  'BUZZ':      ['83'],\n};\n\n// SIMULAR = true -> calcula tudo (login, nome, sobrenome) mas NAO cria no GLPI.\n// Confira a saida do no \"Decidir\" e depois troque para false.\nconst SIMULAR = false;\n\n// GLPI de TESTE (mesma VM do n8n de teste). Producao: https://support.resolutto.com.br\nconst GLPI_URL       = 'https://support.resolutto.com.br';\nconst GLPI_ENTIDADE  = 0;   // entidade do perfil do novo usuario\nconst GLPI_PERFIL    = 1;   // 0 = perfil padrao do GLPI (normalmente Self-Service)\nconst GLPI_RECURSIVO = 0;   // 1 = perfil recursivo nas sub-entidades\n\n// So olha O.S. abertas a partir de hoje menos N dias (00:00, horario de Brasilia).\nconst DIAS_RETROATIVOS = 2;\n// ========================================================\n\nconst desde = DateTime.now().setZone('America/Sao_Paulo')\n  .minus({ days: DIAS_RETROATIVOS }).startOf('day').toFormat('yyyy-LL-dd HH:mm:ss');\n\nreturn [{ json: {\n  ASSUNTOS, SIMULAR, GLPI_URL, GLPI_ENTIDADE, GLPI_PERFIL, GLPI_RECURSIVO,\n  DIAS_RETROATIVOS, desde,\n} }];\n"
+      },
+      "id": "79ef4ec7-8c42-402f-bcb4-36cb3e753e3e",
+      "name": "Config1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        272,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "numberInputs": 5
+      },
+      "id": "446d51df-7d78-45d9-815f-0339b57d7c78",
+      "name": "Juntar OS1",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        752,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.resolutto.com.br/webservice/v1/su_oss_chamado",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'su_oss_chamado.data_abertura', query: $('Config1').first().json.desde, oper: '>=', page: '1', rp: '2000', sortname: 'su_oss_chamado.id', sortorder: 'desc' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "id": "a5443eee-cab5-45eb-9710-e750dd649af9",
+      "name": "OS RESOLUTTO1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        512,
+        400
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "ixcApiAutomacao1",
+          "name": "IXC API (RESOLUTTO)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.4btelecom.com.br/webservice/v1/su_oss_chamado",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'su_oss_chamado.data_abertura', query: $('Config1').first().json.desde, oper: '>=', page: '1', rp: '2000', sortname: 'su_oss_chamado.id', sortorder: 'desc' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "id": "d825c48c-c7ca-450a-94a8-06dd47c89dd7",
+      "name": "OS 4BTELECOM1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        512,
+        560
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Sar2wecxMvwt297d",
+          "name": "IXC API (4BTELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.pontotelecom.com/webservice/v1/su_oss_chamado",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'su_oss_chamado.data_abertura', query: $('Config1').first().json.desde, oper: '>=', page: '1', rp: '2000', sortname: 'su_oss_chamado.id', sortorder: 'desc' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "id": "55a042cc-4fbb-4fa2-a57c-9bb7e886cd7e",
+      "name": "OS PONTO1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        512,
+        720
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "SQr92hzbZKnat5kl",
+          "name": "IXC API (Ponto telecom)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.cactatelecom.com.br/webservice/v1/su_oss_chamado",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'su_oss_chamado.data_abertura', query: $('Config1').first().json.desde, oper: '>=', page: '1', rp: '2000', sortname: 'su_oss_chamado.id', sortorder: 'desc' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "id": "3c68254b-bab1-474d-a4be-c273a5a0518b",
+      "name": "OS CACTA1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        512,
+        880
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "00ORMvXflPQheEJ1",
+          "name": "IXC API (CACTA TELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.buzztelecom.com.br/webservice/v1/su_oss_chamado",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'su_oss_chamado.data_abertura', query: $('Config1').first().json.desde, oper: '>=', page: '1', rp: '2000', sortname: 'su_oss_chamado.id', sortorder: 'desc' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "id": "8b351510-80c6-432c-85a2-4e6a86df1e2e",
+      "name": "OS BUZZ1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        512,
+        1040
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "CYZcvcYaydyP88Uu",
+          "name": "IXC API (BUZZ TELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Junta as O.S. das 5 bases, filtra pelos assuntos do Config,\n// tira clientes ja tratados e devolve 1 item por cliente novo.\nconst cfg = $('Config1').first().json;\nconst st = $getWorkflowStaticData('global');\nst.feitos = st.feitos || {};\nconst limite = Date.now() - (Number(cfg.DIAS_RETROATIVOS) + 3) * 86400000;\nfor (const k of Object.keys(st.feitos)) if (st.feitos[k] < limite) delete st.feitos[k];\n\nfunction parse(txt) {\n  if (txt && typeof txt === 'object') return txt;\n  const s = String(txt || '').replace(/[\\u0000-\\u001F]/g, ' ');\n  try { return JSON.parse(s); } catch (e) {\n    const a = s.indexOf('{'), b = s.lastIndexOf('}');\n    if (a >= 0 && b > a) { try { return JSON.parse(s.slice(a, b + 1)); } catch (e2) {} }\n    return null;\n  }\n}\n\n// $('Nome') precisa ser literal no n8n 2.x\nconst respostas = {\n  'RESOLUTTO': $('OS RESOLUTTO1').first().json,\n  '4BTELECOM': $('OS 4BTELECOM1').first().json,\n  'PONTO':     $('OS PONTO1').first().json,\n  'CACTA':     $('OS CACTA1').first().json,\n  'BUZZ':      $('OS BUZZ1').first().json,\n};\nconst ORDEM = ['RESOLUTTO', '4BTELECOM', 'PONTO', 'CACTA', 'BUZZ'];\n\nconst out = [];\nORDEM.forEach((base, saida) => {\n  const assuntos = (cfg.ASSUNTOS[base] || []).map(String);\n  if (!assuntos.length) return;\n  const r = respostas[base] || {};\n  const obj = parse(r.data);\n  if (!obj || obj.type === 'error') {\n    console.log(`[${base}] erro ao listar O.S.:`, r.error ? JSON.stringify(r.error) : String(r.data).slice(0, 300));\n    return;\n  }\n  const vistos = new Set();\n  for (const os of (obj.registros || [])) {\n    if (!assuntos.includes(String(os.id_assunto))) continue;\n    const idc = String(os.id_cliente || '');\n    if (!idc || idc === '0' || vistos.has(idc)) continue;\n    vistos.add(idc);\n    if (st.feitos[`${base}:${idc}`]) continue;\n    out.push({ json: {\n      base, saida, id_os: String(os.id), id_cliente: idc,\n      id_assunto: String(os.id_assunto), data_abertura: os.data_abertura,\n    } });\n  }\n});\nreturn out;\n"
+      },
+      "id": "9ea81eec-3549-44e5-b6ab-50cbac8a7e63",
+      "name": "Extrair OS1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "expression",
+        "numberOutputs": 5,
+        "output": "={{ $json.saida }}"
+      },
+      "id": "6dc0f46a-c30d-469f-8522-ed00e6f025e2",
+      "name": "Por base1",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1184,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const STOP = new Set(['da', 'de', 'do', 'das', 'dos', 'e']);\nfunction palavras(s) {\n  return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')\n    .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(Boolean);\n}\n// \"primeironome.l\": 1a palavra com letra da razao social + \".\" + 1a letra do nome fantasia.\n// Sem fantasia: usa a 1a letra da palavra seguinte da razao (ignorando da/de/do...).\nfunction gerarLogin(razao, fantasia) {\n  const p = palavras(razao);\n  const i = p.findIndex(w => /[a-z]/.test(w));      // pula o CNPJ no inicio de razao de MEI\n  const primeiro = i >= 0 ? p[i] : 'cliente';\n  const f = palavras(fantasia).filter(w => /[a-z]/.test(w) && !STOP.has(w));\n  let letra = f.length ? f[0][0] : '';\n  if (!letra) { const resto = p.slice(i + 1).filter(w => /[a-z]/.test(w) && !STOP.has(w)); letra = resto.length ? resto[0][0] : ''; }\n  return letra ? `${primeiro}.${letra}` : primeiro;\n}\n// Junta O.S. + cliente do IXC e monta os dados do usuario GLPI.\nfunction parse(txt) {\n  if (txt && typeof txt === 'object') return txt;\n  const s = String(txt || '').replace(/[\\u0000-\\u001F]/g, ' ');\n  try { return JSON.parse(s); } catch (e) {\n    const a = s.indexOf('{'), b = s.lastIndexOf('}');\n    if (a >= 0 && b > a) { try { return JSON.parse(s.slice(a, b + 1)); } catch (e2) {} }\n    return null;\n  }\n}\nconst limpa = s => String(s || '').replace(/\\s+/g, ' ').trim();\n\nconst out = [];\nconst itens = $input.all();\nfor (let i = 0; i < itens.length; i++) {\n  let os = null;\n  try { os = $('Extrair OS1').itemMatching(i).json; } catch (e) {}\n  const obj = parse(itens[i].json.data);\n  const cli = obj && Array.isArray(obj.registros) ? obj.registros[0] : null;\n  if (!os || !cli) { console.log('cliente nao encontrado', JSON.stringify(os), String(itens[i].json.data).slice(0, 200)); continue; }\n  const razao = limpa(cli.razao);\n  const fantasia = limpa(cli.fantasia);\n  if (!razao) { console.log(`[${os.base}] cliente ${cli.id} sem razao social`); continue; }\n  out.push({ json: {\n    base: os.base, id_os: os.id_os, id_cliente: String(cli.id),\n    razao, fantasia, cnpj_cpf: limpa(cli.cnpj_cpf),\n    registro: `IXC-${os.base}-${cli.id}`,\n    login_base: gerarLogin(razao, fantasia),\n  } });\n}\nreturn out;\n"
+      },
+      "id": "31284ec0-4961-4677-aeb2-96c1fc403bcc",
+      "name": "Montar cadastro1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1664,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.resolutto.com.br/webservice/v1/cliente",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'cliente.id', query: String($json.id_cliente), oper: '=', page: '1', rp: '1' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "id": "72eda7fc-e5bc-4788-bd9b-659b755a21ed",
+      "name": "Cliente RESOLUTTO1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1424,
+        400
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "ixcApiAutomacao1",
+          "name": "IXC API (RESOLUTTO)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.4btelecom.com.br/webservice/v1/cliente",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'cliente.id', query: String($json.id_cliente), oper: '=', page: '1', rp: '1' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "id": "5166b27d-79c7-4a82-9c3c-e4217050b008",
+      "name": "Cliente 4BTELECOM1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1424,
+        560
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Sar2wecxMvwt297d",
+          "name": "IXC API (4BTELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.pontotelecom.com/webservice/v1/cliente",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'cliente.id', query: String($json.id_cliente), oper: '=', page: '1', rp: '1' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "id": "97384030-df05-42f9-9b7a-fa2dc736706c",
+      "name": "Cliente PONTO1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1424,
+        720
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "SQr92hzbZKnat5kl",
+          "name": "IXC API (Ponto telecom)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.cactatelecom.com.br/webservice/v1/cliente",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'cliente.id', query: String($json.id_cliente), oper: '=', page: '1', rp: '1' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "id": "20f97dbe-e86e-445d-bf71-882d599d861a",
+      "name": "Cliente CACTA1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1424,
+        880
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "00ORMvXflPQheEJ1",
+          "name": "IXC API (CACTA TELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.buzztelecom.com.br/webservice/v1/cliente",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: 'cliente.id', query: String($json.id_cliente), oper: '=', page: '1', rp: '1' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "id": "065a5b8a-1b07-40b2-ac31-8aa0f09e3752",
+      "name": "Cliente BUZZ1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1424,
+        1040
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "CYZcvcYaydyP88Uu",
+          "name": "IXC API (BUZZ TELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Config1').first().json.GLPI_URL }}/api.php/v1/initSession",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "id": "14c65275-0fbb-474f-bb55-fa0fb3ca9396",
+      "name": "GLPI sessao1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1888,
+        720
+      ],
+      "executeOnce": true,
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "amEfvZPZVm9URFks",
+          "name": "GLPI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// a sessao roda uma vez so; aqui voltam os clientes do Montar cadastro\nreturn $('Montar cadastro1').all().map(i => ({ json: i.json }));"
+      },
+      "id": "cf13e740-59c4-4530-a4bb-d7fe41dfa258",
+      "name": "Reemitir1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2112,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Config1').first().json.GLPI_URL }}/api.php/v1/User",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "searchText[registration_number]",
+              "value": "=^{{ $json.registro }}$"
+            },
+            {
+              "name": "range",
+              "value": "0-4"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Session-Token",
+              "value": "={{ $('GLPI sessao1').first().json.session_token }}"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "id": "1978c390-5579-4b10-8291-1b48369a57b1",
+      "name": "GLPI buscar registro1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2320,
+        720
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "amEfvZPZVm9URFks",
+          "name": "GLPI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Config1').first().json.GLPI_URL }}/api.php/v1/User",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "searchText[name]",
+              "value": "=^{{ $('Reemitir1').item.json.login_base }}"
+            },
+            {
+              "name": "range",
+              "value": "0-999"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Session-Token",
+              "value": "={{ $('GLPI sessao1').first().json.session_token }}"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "id": "3c149e01-77f4-474d-a5d1-c099cafb5282",
+      "name": "GLPI buscar login1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2544,
+        720
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "amEfvZPZVm9URFks",
+          "name": "GLPI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Para cada cliente: ja existe no GLPI (pela matricula IXC-BASE-ID)? Se nao,\n// escolhe o login livre. Sai 1 item por cliente com 'acao':\n// criar | criar (simulado) | ja_existe | erro_glpi (com a resposta do GLPI).\n// escolhe o login livre (joao.s, joao.s2, joao.s3...) e monta o input.\nconst cfg = $('Config1').first().json;\nconst st = $getWorkflowStaticData('global');\nst.feitos = st.feitos || {};\n\nfunction lista(txt) {\n  let v = txt;\n  if (typeof v === 'string') { try { v = JSON.parse(v); } catch (e) { return null; } }\n  if (!Array.isArray(v)) return null;\n  if (v.length === 2 && typeof v[0] === 'string' && v[0].startsWith('ERROR')) return null;\n  return v;\n}\nconst esc = s => s.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\n\nconst clientes = $('Reemitir1').all();\nconst reg = $('GLPI buscar registro1').all();\nconst lg = $('GLPI buscar login1').all();\nconst reservados = new Set();\nconst out = [];\n\nfor (let i = 0; i < clientes.length; i++) {\n  const c = clientes[i].json;\n  const chave = `${c.base}:${c.id_cliente}`;\n  const existentes = lista(reg[i] && reg[i].json.data);\n  const logins = lista(lg[i] && lg[i].json.data);\n  if (existentes === null || logins === null) {\n    out.push({ json: { ...c, acao: 'erro_glpi',\n      resposta_registro: String((reg[i] || {}).json?.data ?? (reg[i] || {}).json?.error?.message).slice(0, 300),\n      resposta_login: String((lg[i] || {}).json?.data ?? (lg[i] || {}).json?.error?.message).slice(0, 300) } });\n    continue;\n  }\n  if (existentes.length) {\n    if (!cfg.SIMULAR) st.feitos[chave] = Date.now();\n    out.push({ json: { ...c, acao: 'ja_existe', glpi_login: existentes[0].name, glpi_user_id: existentes[0].id } });\n    continue;\n  }\n  const re = new RegExp('^' + esc(c.login_base) + '(\\\\d*)$');\n  const usados = new Set(logins.map(u => String(u.name || '').toLowerCase()).filter(n => re.test(n)));\n  let login = c.login_base, n = 2;\n  while (usados.has(login) || reservados.has(login)) login = c.login_base + n++;\n  reservados.add(login);\n\n  const input = {\n    name: login,\n    firstname: c.razao,          // \"Nome\" no GLPI\n    realname: c.fantasia,        // \"Sobrenome\" no GLPI\n    registration_number: c.registro,\n    comment: `Criado pelo n8n a partir da O.S. ${c.id_os} do IXC ${c.base} (cliente ${c.id_cliente}${c.cnpj_cpf ? ', ' + c.cnpj_cpf : ''}).`,\n    is_active: 1,\n    _entities_id: Number(cfg.GLPI_ENTIDADE),\n    _is_recursive: Number(cfg.GLPI_RECURSIVO),\n  };\n  if (Number(cfg.GLPI_PERFIL) > 0) input._profiles_id = Number(cfg.GLPI_PERFIL);\n  out.push({ json: { ...c, acao: cfg.SIMULAR ? 'criar (simulado)' : 'criar', login, input } });\n}\nreturn out;\n"
+      },
+      "id": "278dc7ba-bb25-4004-8803-093329ccbed6",
+      "name": "Decidir1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2768,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config1').first().json.GLPI_URL }}/api.php/v1/User",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Session-Token",
+              "value": "={{ $('GLPI sessao1').first().json.session_token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ input: $json.input }) }}",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "id": "9366a80d-138a-408d-b7d6-de46b4d8e1b5",
+      "name": "GLPI criar usuario1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3200,
+        816
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "amEfvZPZVm9URFks",
+          "name": "GLPI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Le a resposta do GLPI e marca o cliente como tratado.\nconst st = $getWorkflowStaticData('global');\nst.feitos = st.feitos || {};\nconst res = $input.all();\nreturn res.map((r, i) => {\n  const p = $('Decidir1').itemMatching(i).json;\n  let v = r.json.data;\n  try { v = JSON.parse(v); } catch (e) {}\n  const ok = v && !Array.isArray(v) && Number(v.id) > 0;\n  if (ok) st.feitos[`${p.base}:${p.id_cliente}`] = Date.now();\n  return { json: {\n    ok, base: p.base, id_os: p.id_os, id_cliente: p.id_cliente,\n    login: p.login, nome: p.input.firstname, sobrenome: p.input.realname,\n    glpi_user_id: ok ? Number(v.id) : null,\n    erro: ok ? null : String(r.json.data).slice(0, 300),\n  } };\n});\n"
+      },
+      "id": "0c9a7e37-7759-4451-864c-39659dcda6b6",
+      "name": "Resultado1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3424,
+        816
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Config1').first().json.GLPI_URL }}/api.php/v1/killSession",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Session-Token",
+              "value": "={{ $('GLPI sessao1').first().json.session_token }}"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "id": "494c3bf7-e8ff-46c2-8530-9b5523466b3b",
+      "name": "GLPI encerrar sessao1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3648,
+        816
+      ],
+      "executeOnce": true,
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "amEfvZPZVm9URFks",
+          "name": "GLPI API"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "content": "## IXC → GLPI de TESTE: cadastro de cliente\nGLPI: `http://10.120.100.54` (só lê o IXC)\n\nO.S. aberta com assunto do **Config** → cria usuário no GLPI:\n- **Nome** = razão social · **Sobrenome** = nome fantasia\n- **Login** = 1º nome + \".\" + 1ª letra do sobrenome (ex.: `claudio.c`; repetido → `claudio.c2`)\n- **Matrícula** = `IXC-<BASE>-<id cliente>` (evita duplicar)\n\n1. Preencha `ASSUNTOS` no Config.\n2. Credencial **GLPI API (cadastro)** (Custom Auth) nos 5 nós GLPI.\n3. Rode manual com `SIMULAR = true` e confira o nó **Decidir** (campo `acao`).\n4. `SIMULAR = false`, rode de novo, confira **Resultado** e ative.\n",
+        "height": 420,
+        "width": 420
+      },
+      "id": "a0f8d10f-d40e-4b00-80bc-e9b31fc39377",
+      "name": "Nota1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Criar?": {
+      "main": [
+        [
+          {
+            "node": "GLPI criar usuario1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A cada 5 min1": {
+      "main": [
+        [
+          {
+            "node": "Config1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config1": {
+      "main": [
+        [
+          {
+            "node": "OS RESOLUTTO1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "OS 4BTELECOM1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "OS PONTO1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "OS CACTA1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "OS BUZZ1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Juntar OS1": {
+      "main": [
+        [
+          {
+            "node": "Extrair OS1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OS RESOLUTTO1": {
+      "main": [
+        [
+          {
+            "node": "Juntar OS1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OS 4BTELECOM1": {
+      "main": [
+        [
+          {
+            "node": "Juntar OS1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "OS PONTO1": {
+      "main": [
+        [
+          {
+            "node": "Juntar OS1",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "OS CACTA1": {
+      "main": [
+        [
+          {
+            "node": "Juntar OS1",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "OS BUZZ1": {
+      "main": [
+        [
+          {
+            "node": "Juntar OS1",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "Extrair OS1": {
+      "main": [
+        [
+          {
+            "node": "Por base1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Por base1": {
+      "main": [
+        [
+          {
+            "node": "Cliente RESOLUTTO1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Cliente 4BTELECOM1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Cliente PONTO1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Cliente CACTA1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Cliente BUZZ1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar cadastro1": {
+      "main": [
+        [
+          {
+            "node": "GLPI sessao1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cliente RESOLUTTO1": {
+      "main": [
+        [
+          {
+            "node": "Montar cadastro1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cliente 4BTELECOM1": {
+      "main": [
+        [
+          {
+            "node": "Montar cadastro1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cliente PONTO1": {
+      "main": [
+        [
+          {
+            "node": "Montar cadastro1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cliente CACTA1": {
+      "main": [
+        [
+          {
+            "node": "Montar cadastro1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cliente BUZZ1": {
+      "main": [
+        [
+          {
+            "node": "Montar cadastro1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GLPI sessao1": {
+      "main": [
+        [
+          {
+            "node": "Reemitir1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reemitir1": {
+      "main": [
+        [
+          {
+            "node": "GLPI buscar registro1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GLPI buscar registro1": {
+      "main": [
+        [
+          {
+            "node": "GLPI buscar login1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GLPI buscar login1": {
+      "main": [
+        [
+          {
+            "node": "Decidir1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decidir1": {
+      "main": [
+        [
+          {
+            "node": "Criar?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GLPI criar usuario1": {
+      "main": [
+        [
+          {
+            "node": "Resultado1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resultado1": {
+      "main": [
+        [
+          {
+            "node": "GLPI encerrar sessao1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "meta": null,
+  "nodeGroups": [],
+  "versionId": "68f29a3f-04c4-413b-ab3c-c5d80e10bf59",
+  "activeVersionId": "68f29a3f-04c4-413b-ab3c-c5d80e10bf59",
+  "versionCounter": 6,
+  "triggerCount": 1,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "versionMetadata": {
+    "name": "Version 68f29a3f",
+    "description": ""
+  }
+}

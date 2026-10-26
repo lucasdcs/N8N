@@ -1,0 +1,2866 @@
+{
+  "updatedAt": "2026-10-26T17:30:13.166Z",
+  "createdAt": "2026-09-29T18:16:52.637Z",
+  "id": "8wut4cyepu07kjg1",
+  "name": "IXC - Encaminhar OS por condominio GLOBAL",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a7dda688-9aaa-4fbc-ac10-9d09a24b5d74",
+      "name": "Executar manualmente",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -5120,
+        1296
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============ CONFIG ÚNICA — Encaminhar O.S. por condomínio (5 bases) ============\nconst cfg = {\n  // true = só mostra o que faria. Passe para false depois de conferir a simulação.\n  SIMULAR: false,\n\n  // Filtro \"status != F\" na consulta da API (evita trazer o histórico inteiro).\n  // Se o diagnóstico \"leitura\" mostrar total 0 com O.S. abertas no IXC, troque para false.\n  FILTRO_STATUS_NA_API: true,\n    CONTINUIDADE: true,\n  // Status de O.S. SEM técnico que o workflow encaminha.\n  STATUS_PENDENTE: ['A', 'AG','RAG'],\n  // Status que continuam iguais depois do encaminhamento (os demais viram EN).\n  MANTER_STATUS: ['AG','RAG'],\n   // Assuntos que o Encaminhar NUNCA mexe (documentação é do workflow de Documentação GLOBAL).\n  // Saem da busca, da carga e do histórico da continuidade, mesmo que estejam em ASSUNTOS.\n  EXCECAO_ASSUNTOS: {\n    RESOLUTTO: [85],\n    '4B':      [92],\n    PONTO:     [64],\n    CACTA:     [76],\n    BUZZ:      [86],\n  },\n\n  // Assuntos de ativação por base.\n  ASSUNTOS: {\n    RESOLUTTO: [69, 83, 84, 86, 94, 14],\n    '4B':      [89, 90, 91, 93, 98],\n    PONTO:     [65, 63, 62, 61, 70],\n    CACTA:     [73, 74, 77, 75, 81],\n    BUZZ:      [83, 84, 85, 87, 91],\n  },\n\n  // Condomínio -> técnico(s) (id de colaborador DAQUELA base). Dois ou mais = menor carga na base.\n  // Condomínio fora da tabela: a O.S. não é mexida.\n  MAPA: {\n    RESOLUTTO: {\n      203: [36],        // CTA RESOLUTTO           -> Técnico 36\n      209: [6],        // PATTEO URUPEMA          -> Técnico 6\n      214: [12],       // UMUARAMA                -> Técnico 12\n      208: [13],       // PONTAL                  -> Técnico 13\n      219: [16],       // CIDADE DOS LAGOS        -> Técnico 16\n      226: [17],       // PASSO FUNDO             -> Técnico 17\n      217: [25, 18],   // PALLADIUM CURITIBA      -> Técnico 25 / Técnico 18\n      225: [20],       // PÁTIO CHAPECÓ           -> Técnico 20\n      227: [21],       // PORTO BELO              -> Técnico 21\n      215: [22],       // PATO BRANCO             -> Técnico 22\n      207: [31, 38],   // CATUAÍ CASCAVEL         -> Técnico 31 / Técnico 38\n      221: [56],       // I FASHION TIJUCAS       -> Técnico 56\n      216: [52],       // PÁTIO PETRÓPOLIS        -> Técnico 52\n      212: [32, 54],   // JOCKEY PLAZA            -> Técnico 32 / Técnico 54\n      228: [51],       // ITAJAÍ                  -> Técnico 51\n      211: [35],       // MOGI MIRIM              -> Técnico 35\n      222: [37],       // SINOP                   -> Técnico 37\n      213: [25, 18],   // VENTURA                 -> Técnico 48\n      206: [57],       // ESTAÇÃO                 -> Técnico 57\n      218: [41],       // OUTLET CITY CENTER      -> Técnico 41\n      204: [42],       // PLAZA CAMPOS GERAIS     -> Técnico 42\n      205: [43],       // GRAVATAÍ                -> Técnico 43\n      210: [44],       // SUMARE   -> Técnico 44 (?)\n      220: [55, 45],   // CATUAÍ PALLADIUM FOZ    -> Técnico 55 / Técnico 45\n    },\n     '4B': {\n      200: [25, 18],   // —   -> Técnico 25 / Técnico 18\n      202: [12],       // —   -> Técnico 12\n      276: [22],       // —   -> Técnico 22 ✔\n      243: [46],       // —   -> Técnico 52 ✔\n      199: [25, 18],   // —   -> Técnico 25 / Técnico 18\n      244: [41],       // —   -> Técnico 41\n      275: [16],       // —   -> Técnico 16\n      201: [48, 45],   // —   -> Técnico 55  / Técnico 45\n    },\n    PONTO: {\n      144: [62],       // —   -> Técnico 56\n      216: [37],       // —   -> Técnico 37\n      110: [59],       // —   -> Técnico 51 ✔\n      273: [61],       // —   -> Técnico PONTO-61\n      84:  [20],       // —   -> Técnico 20\n      159: [17],       // —   -> Técnico 17\n      134: [21],       // —   -> Técnico 21\n      104: [59],       // —   -> Técnico 51 ✔\n      49:  [20],       // —   -> Técnico 20\n    },\n    CACTA: {\n      206: [13],       // —   -> Técnico 13\n      247: [6],        // —   -> Técnico 6\n      253: [44],       // —   -> Técnico 44\n      248: [35],       // —   -> Técnico 35\n      263: [32, 46],   // —   -> Técnico 32 / Técnico 54\n      260: [38, 31],   // —   -> Técnico 38 / Técnico 31\n    },\n    BUZZ: {\n      280: [42],       // —   -> Técnico 42 ✔\n      271: [43],       // —   -> Técnico 43 ✔\n      269: [46],       // —   -> Técnico 57\n    },\n  },\n  // Condomínio -> id do SETOR daquela base (usado no encaminhamento junto com o técnico).\n  // Condomínio sem setor aqui: mantém o setor atual da O.S. (ou pula, se SETOR_OBRIGATORIO = true).\n  SETOR: {\n    RESOLUTTO: { /* VENTURA */213:38,/* UMUARAMA */214:34,/* TIJUCAS */221:39,/* SINOP */222:44,/* RIVIERA */223:54,/* PULSE OPEN MALL */224:41,/* PONTAL */208:52,/* PLAZA CAMPOS GERAIS */204:45,/* PATTEO URUPEMA MOGI DAS CRUZES */209:51,/* PATO BRANCO */215:35,/* PATIO PETROPOLIS */216:37,/* PATIO CHAPECO */225:18,/* PASSO FUNDO */226:43,/* PARK CITY SUMARE */210:53,/* PALLADIUM CURITIBA */217:33,/* OUTLET PORTO BELO */227:40,/* OUTLET CITY CENTER */218:32, /* MOGI MIRIM */211:50,/* JOCKEY PLAZA */212:49,/* ITAJAI SHOPPING */228:42, /* GRAVATAI */205:47,/* ESTACAO CURITIBA */206:46, /* CIDADE DOS LAGOS */219:36,/* CATUAI PALLADIUM FOZ */220:31,/* CATUAI CASCAVEL */207:48,},\n    '4B':      {/*CITY CENTER*/244:12, /*PALLADIUM CURITIBA*/199:11,/*PATO BRANCO*/276:16,\n               /*CATUAI PALLADIUM*/201:14,/*CIDADE DOS LAGOS*/275:13,\n                /*PETRÓPOLIS*/243:17,/*VENTURA*/200:18,/*PALLADIUM UMUARAMA*/202:15,},\n    PONTO:     {/*PÁTIO CHAPECÓ*/84:18,/*PORTO BELO OUTLET*/134:19,\n                /*I FASHION OUTLET TIJUCAS*/144:23,/*PULSE OPEN \n                MALL*/273:36,/*ITAJAI*/104:37, /*PASSO FUNDO*/159:17,/*SHOPPING SINOP*/216:25,/*RIVIEIRA BUSINESS*/110:43},\n    CACTA:     {/*PARK CITY SUMARE*/253:13,/*PATTEO URUPEMA*/247:12,/*MOGI MIRIM*/248:10,\n                /*CATUAI CASCAVEL*/260:15,/*JOCKEY PLAZA*/263:11,/*PONTAL SHOPPING*/206:14,},\n    BUZZ:      {/*PLAZA CAMPOS GERAIS*/280:12,/*ESTAÇÃO*/269:11,/*GRAVATAI*/271:10,},\n  },\n  SETOR_OBRIGATORIO: false,\n\n  \n  // Status que contam como carga em aberto (desempate entre técnicos do mesmo condomínio).\n  STATUS_CARGA: ['A', 'DS', 'AN', 'EX', 'EN', 'AS', 'RAG', 'AG'],\n};\n// ==================================================================================\n// Remove os assuntos de exceção de ASSUNTOS (vale para busca, carga e continuidade).\nfor (const b of Object.keys(cfg.ASSUNTOS)) {\n  const exc = ((cfg.EXCECAO_ASSUNTOS || {})[b] || []).map(String);\n  cfg.ASSUNTOS[b] = cfg.ASSUNTOS[b].filter(a => !exc.includes(String(a)));\n}\n// Uma saída por posição de assunto: cada nó \"OS <BASE>\" consulta 1 assunto por item.\nconst n = Math.max(...Object.values(cfg.ASSUNTOS).map(a => a.length));\nreturn Array.from({ length: n }, (_, i) => ({ json: { i, cfg } }));"
+      },
+      "id": "9afa476d-7379-4a0d-8d0e-839c97bdd82a",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4912,
+        1184
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.resolutto.com.br/webservice/v1/su_oss_chamado",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => { const c = $('Config').first().json.cfg; const a = c.ASSUNTOS['RESOLUTTO'][$itemIndex]; const body = {qtype:'su_oss_chamado.id_assunto', query:String(a === undefined ? 0 : a), oper:'=', page:'1', rp:'5000', sortname:'su_oss_chamado.id', sortorder:'desc'}; if (c.FILTRO_STATUS_NA_API) body.grid_param = JSON.stringify([{TB:'su_oss_chamado.status',OP:'!=',P:'F'}]); return JSON.stringify(body); })() }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "26706f89-7a47-4fb4-92d2-50cbeb4ee8e2",
+      "name": "OS RESOLUTTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4688,
+        1184
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "ixcApiAutomacao1",
+          "name": "IXC API (RESOLUTTO)"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.4btelecom.com.br/webservice/v1/su_oss_chamado",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => { const c = $('Config').first().json.cfg; const a = c.ASSUNTOS['4B'][$itemIndex]; const body = {qtype:'su_oss_chamado.id_assunto', query:String(a === undefined ? 0 : a), oper:'=', page:'1', rp:'5000', sortname:'su_oss_chamado.id', sortorder:'desc'}; if (c.FILTRO_STATUS_NA_API) body.grid_param = JSON.stringify([{TB:'su_oss_chamado.status',OP:'!=',P:'F'}]); return JSON.stringify(body); })() }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "cb9020d1-05a4-4b3e-80c1-61daf1525108",
+      "name": "OS 4B",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4688,
+        1408
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Sar2wecxMvwt297d",
+          "name": "IXC API (4BTELECOM)"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.pontotelecom.com/webservice/v1/su_oss_chamado",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => { const c = $('Config').first().json.cfg; const a = c.ASSUNTOS['PONTO'][$itemIndex]; const body = {qtype:'su_oss_chamado.id_assunto', query:String(a === undefined ? 0 : a), oper:'=', page:'1', rp:'5000', sortname:'su_oss_chamado.id', sortorder:'desc'}; if (c.FILTRO_STATUS_NA_API) body.grid_param = JSON.stringify([{TB:'su_oss_chamado.status',OP:'!=',P:'F'}]); return JSON.stringify(body); })() }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "ef96c3fa-c553-4246-aad7-10f231ecafd1",
+      "name": "OS PONTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4688,
+        1632
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "SQr92hzbZKnat5kl",
+          "name": "IXC API (Ponto telecom)"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.cactatelecom.com.br/webservice/v1/su_oss_chamado",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => { const c = $('Config').first().json.cfg; const a = c.ASSUNTOS['CACTA'][$itemIndex]; const body = {qtype:'su_oss_chamado.id_assunto', query:String(a === undefined ? 0 : a), oper:'=', page:'1', rp:'5000', sortname:'su_oss_chamado.id', sortorder:'desc'}; if (c.FILTRO_STATUS_NA_API) body.grid_param = JSON.stringify([{TB:'su_oss_chamado.status',OP:'!=',P:'F'}]); return JSON.stringify(body); })() }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "85514baf-464c-441e-8009-9c0592e7c5e5",
+      "name": "OS CACTA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4688,
+        1856
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "00ORMvXflPQheEJ1",
+          "name": "IXC API (CACTA TELECOM)"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.buzztelecom.com.br/webservice/v1/su_oss_chamado",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => { const c = $('Config').first().json.cfg; const a = c.ASSUNTOS['BUZZ'][$itemIndex]; const body = {qtype:'su_oss_chamado.id_assunto', query:String(a === undefined ? 0 : a), oper:'=', page:'1', rp:'5000', sortname:'su_oss_chamado.id', sortorder:'desc'}; if (c.FILTRO_STATUS_NA_API) body.grid_param = JSON.stringify([{TB:'su_oss_chamado.status',OP:'!=',P:'F'}]); return JSON.stringify(body); })() }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "532cd9f6-7fee-4c5f-b0c2-17dd2b3a75a2",
+      "name": "OS BUZZ",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4656,
+        2064
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "CYZcvcYaydyP88Uu",
+          "name": "IXC API (BUZZ TELECOM)"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Junta as O.S. lidas (1 item por assunto em cada nó \"OS <BASE>\") e separa as pendentes.\nconst cfg = $('Config').first().json.cfg;\nconst BASES = Object.keys(cfg.ASSUNTOS);\nfunction parseTolerante(v) {\n  if (v && typeof v === 'object' && v.data === undefined) return v;\n  const txt = v && typeof v === 'object' ? v.data : v;\n  const limpo = String(txt || '').replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]/g, '');\n  try { return JSON.parse(limpo); } catch (e) { return { erro: 'JSON inválido: ' + e.message }; }\n}\nconst out = [];\nfor (const b of BASES) {\n  const assuntos = cfg.ASSUNTOS[b].map(String);\n  const vistos = new Set();\n  $('OS ' + b).all().forEach((it, i) => {\n    if (i >= assuntos.length) return;\n    const r = parseTolerante(it.json);\n    for (const os of (r.registros || [])) {\n      if (vistos.has(os.id)) continue; vistos.add(os.id);\n      const tec = String(os.id_tecnico || '0');\n      if ((cfg.STATUS_PENDENTE || ['A']).includes(os.status) && (tec === '0' || tec === '') && assuntos.includes(String(os.id_assunto))) {\n        out.push({ json: { base: b, id_chamado: Number(os.id), id_assunto: Number(os.id_assunto), id_cliente: Number(os.id_cliente || 0), setor: String(os.setor || ''), status: os.status } });\n      }\n    }\n  });\n}\nif (!out.length) out.push({ json: { base: '', id_chamado: 0, id_cliente: 0, setor: '', vazio: true } });\nreturn out;"
+      },
+      "id": "46ffb02c-1183-43b0-a9c0-1f0918bbfe8f",
+      "name": "Pendentes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4464,
+        1184
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.resolutto.com.br/webservice/v1/cliente",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({qtype:'cliente.id',query:String($('Pendentes').item.json.base==='RESOLUTTO' ? $('Pendentes').item.json.id_cliente : 0),oper:'=',page:'1',rp:'1'}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "5a85766e-9731-4fdd-bb94-c9cd09a8bcae",
+      "name": "Cliente RESOLUTTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4256,
+        1184
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "ixcApiAutomacao1",
+          "name": "IXC API (RESOLUTTO)"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.4btelecom.com.br/webservice/v1/cliente",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({qtype:'cliente.id',query:String($('Pendentes').item.json.base==='4B' ? $('Pendentes').item.json.id_cliente : 0),oper:'=',page:'1',rp:'1'}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "68327c67-c477-4fd6-a5ec-6a5851c870fe",
+      "name": "Cliente 4B",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4256,
+        1376
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Sar2wecxMvwt297d",
+          "name": "IXC API (4BTELECOM)"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.pontotelecom.com/webservice/v1/cliente",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({qtype:'cliente.id',query:String($('Pendentes').item.json.base==='PONTO' ? $('Pendentes').item.json.id_cliente : 0),oper:'=',page:'1',rp:'1'}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "b20602c9-28e6-4224-8e67-02fe62f4a972",
+      "name": "Cliente PONTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4256,
+        1568
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "SQr92hzbZKnat5kl",
+          "name": "IXC API (Ponto telecom)"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.cactatelecom.com.br/webservice/v1/cliente",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({qtype:'cliente.id',query:String($('Pendentes').item.json.base==='CACTA' ? $('Pendentes').item.json.id_cliente : 0),oper:'=',page:'1',rp:'1'}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "09ada590-5a8c-4656-b411-66e91a67b26e",
+      "name": "Cliente CACTA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4256,
+        1776
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "00ORMvXflPQheEJ1",
+          "name": "IXC API (CACTA TELECOM)"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.buzztelecom.com.br/webservice/v1/cliente",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({qtype:'cliente.id',query:String($('Pendentes').item.json.base==='BUZZ' ? $('Pendentes').item.json.id_cliente : 0),oper:'=',page:'1',rp:'1'}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "2235387a-4186-4631-bcf7-0aaa8f5f959c",
+      "name": "Cliente BUZZ",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -4256,
+        2000
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "CYZcvcYaydyP88Uu",
+          "name": "IXC API (BUZZ TELECOM)"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Decide o técnico de cada O.S. pendente. Configuração fica no nó \"Config\".\nconst cfg = $('Config').first().json.cfg;\nconst BASES = Object.keys(cfg.ASSUNTOS);\nconst SAIDA = Object.fromEntries(BASES.map((b, i) => [b, i])); // 5 = não encaminha\nconst NAO = BASES.length;\n\nfunction parseTolerante(v) {\n  if (v && typeof v === 'object' && v.data === undefined) return v;\n  const txt = v && typeof v === 'object' ? v.data : v;\n  const limpo = String(txt || '').replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]/g, '');\n  try { return JSON.parse(limpo); } catch (e) { return { erro: 'JSON inválido: ' + e.message }; }\n}\nconst falhou = r => r.erro || r.error || r.type === 'error';\n\n// 1) Leitura, erros e carga por base\nconst leitura = {}, erroBase = {}, carga = {};\nfor (const b of BASES) {\n  carga[b] = {};\n  for (const tecs of Object.values(cfg.MAPA[b] || {})) for (const t of tecs) carga[b][String(t)] = 0;\n  leitura[b] = { por_assunto: {}, por_status: {} };\n  const vistos = new Set();\n  $('OS ' + b).all().forEach((it, i) => {\n    const a = cfg.ASSUNTOS[b][i];\n    if (a === undefined) return;\n    const r = parseTolerante(it.json);\n    if (falhou(r)) { erroBase[b] = `assunto ${a}: ` + (r.erro || r.message || JSON.stringify(r.error)); return; }\n    const regs = r.registros || [];\n    leitura[b].por_assunto[a] = { total_api: r.total, registros: regs.length };\n    if (!regs.length) leitura[b].por_assunto[a].inicio_resposta = String(it.json.data || '').slice(0, 200);\n    for (const os of regs) {\n      if (vistos.has(os.id)) continue; vistos.add(os.id);\n      leitura[b].por_status[os.status] = (leitura[b].por_status[os.status] || 0) + 1;\n      const t = String(os.id_tecnico);\n      if (cfg.STATUS_CARGA.includes(os.status) && t in carga[b]) carga[b][t]++;\n    }\n  });\n}\nconst cargaInicial = JSON.parse(JSON.stringify(carga));\n\n// 2) Pendentes (condomínio vem dos nós \"Cliente <BASE>\", pareados por índice)\nconst pend = $('Pendentes').all();\nconst cli = {}; for (const b of BASES) cli[b] = $('Cliente ' + b).all();\nconst resumo = Object.fromEntries(BASES.map(b => [b, { pendentes: 0, encaminhar: 0, fora_da_tabela: 0, sem_cliente: 0, erro: erroBase[b] || null }]));\nconst saida = [];\nconst hist = {}; for (const b of BASES) hist[b] = $('Historico ' + b).all();\nconst daRodada = {}; // \"base|cliente\" -> técnico escolhido nesta rodada\n\npend.forEach((it, i) => {\n  const p = it.json;\n  if (p.vazio) return;\n  const b = p.base;\n  resumo[b].pendentes++;\n  const base = { tipo: 'decisao', base: b, id_chamado: p.id_chamado, id_assunto: p.id_assunto, id_cliente: p.id_cliente };\n\n  if (erroBase[b]) { saida.push({ json: { ...base, regra: 'base com erro de leitura — pulada', saida: NAO } }); return; }\n\n  const rc = parseTolerante(cli[b][i] ? cli[b][i].json : null);\n  const cliente = (rc.registros || [])[0];\n  if (falhou(rc) || !cliente) { resumo[b].sem_cliente++; saida.push({ json: { ...base, regra: 'cliente não encontrado — não mexe', saida: NAO } }); return; }\n\n  const cond = Number(cliente.id_condominio || 0);\n  const tecs = (cfg.MAPA[b] || {})[cond];\n  if (!tecs || !tecs.length) { resumo[b].fora_da_tabela++; saida.push({ json: { ...base, condominio: cond || null, regra: 'condomínio fora da tabela — não mexe', saida: NAO } }); return; }\n\n    // Setor do condomínio (SETOR no Config). Sem setor configurado: mantém o da O.S. ou pula, conforme SETOR_OBRIGATORIO.\n  const setorCfg = ((cfg.SETOR || {})[b] || {})[cond];\n  if (!setorCfg && cfg.SETOR_OBRIGATORIO) { resumo[b].sem_setor = (resumo[b].sem_setor || 0) + 1; saida.push({ json: { ...base, condominio: cond, regra: 'condomínio sem setor no SETOR — não mexe', saida: NAO } }); return; }\n  const idSetor = String(setorCfg || p.setor);\n\n  let escolhido, regra, sorteio = [], anterior;\n  const lista = tecs.map(String);\n  if (tecs.length === 1) { escolhido = String(tecs[0]); regra = `condominio ${cond}`; }\n  else if (cfg.CONTINUIDADE && daRodada[b + '|' + p.id_cliente] && lista.includes(daRodada[b + '|' + p.id_cliente])) {\n    escolhido = daRodada[b + '|' + p.id_cliente];\n    regra = `condominio ${cond} — continuidade (mesmo cliente nesta rodada)`;\n  }\n  else if (cfg.CONTINUIDADE && (anterior = (() => {\n      // O.S. anterior do mesmo cliente, num dos assuntos da cadeia, com técnico da lista do condomínio (a mais recente).\n      const rh = parseTolerante(hist[b][i] ? hist[b][i].json : null);\n      const assuntos = cfg.ASSUNTOS[b].map(String);\n      return (rh.registros || [])\n        .filter(o => Number(o.id) !== p.id_chamado && assuntos.includes(String(o.id_assunto)) && lista.includes(String(o.id_tecnico)))\n        .sort((x, y) => Number(y.id) - Number(x.id))[0];\n    })())) {\n    escolhido = String(anterior.id_tecnico);\n    regra = `condominio ${cond} — continuidade (O.S. ${anterior.id}, assunto ${anterior.id_assunto}, status ${anterior.status})`;\n  }\n  else {\n    const min = Math.min(...tecs.map(t => carga[b][String(t)] || 0));\n    sorteio = tecs.map(String).filter(t => (carga[b][t] || 0) === min);\n    escolhido = sorteio[Math.floor(Math.random() * sorteio.length)];\n    regra = `condominio ${cond} — menor carga` + (sorteio.length > 1 ? ' (sorteio)' : '');\n  }\n  daRodada[b + '|' + p.id_cliente] = escolhido;\n  const snap = Object.fromEntries(tecs.map(t => [t, carga[b][String(t)] || 0]));\n  const antes = carga[b][escolhido] || 0;\n  carga[b][escolhido] = antes + 1;\n  resumo[b].encaminhar++;\n\n  saida.push({ json: {\n        ...base, condominio: cond, id_tecnico: Number(escolhido), id_setor: Number(idSetor), setor_origem: setorCfg ? 'SETOR do condomínio' : 'mantido da O.S.', regra,\n    carga_antes: tecs.length > 1 ? snap : undefined,\n    sorteado_entre: sorteio.length > 1 ? sorteio.map(Number) : undefined,\n    modo: cfg.SIMULAR ? 'SIMULAÇÃO' : 'ENCAMINHAR',\n    saida: cfg.SIMULAR ? NAO : SAIDA[b],\n    payload: {\n      id_chamado: String(p.id_chamado), alterar_setor: 'S', id_setor: idSetor, id_tecnico: String(escolhido), status: (cfg.MANTER_STATUS || []).includes(p.status) ? p.status : 'EN',\n      mensagem: `Encaminhado automaticamente ao técnico do condomínio (${cond}).`,\n      id_assunto: '', data: '', id_evento: '', latitude: '', longitude: '', gps_time: '', historico: '',\n    },\n  } });\n});\n\nreturn [\n  { json: { tipo: 'panorama', saida: NAO, modo: cfg.SIMULAR ? 'SIMULAÇÃO' : 'ENCAMINHAR',\n            filtro_status_na_api: cfg.FILTRO_STATUS_NA_API, resumo, carga_antes: cargaInicial, carga_depois: carga, leitura } },\n  ...saida,\n];"
+      },
+      "id": "e7db59e1-4cec-490b-b7d4-ecb8de670b9f",
+      "name": "Decidir",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3664,
+        1184
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "expression",
+        "numberOutputs": 6,
+        "output": "={{ $json.saida }}"
+      },
+      "id": "a9c59946-8f97-4af1-9781-49923bf7a47b",
+      "name": "Rotear por base",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        -3392,
+        1120
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Roda uma vez por O.S. encaminhada.\nconst d = $('Decidir').item.json;\nlet r = $json;\nif (r && r.data !== undefined) {\n  try { r = JSON.parse(String(r.data).replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]/g, '')); } catch (e) { r = { type: 'error', message: 'resposta ilegível: ' + String(r.data).slice(0, 200) }; }\n}\nconst ok = !(r.error || r.type === 'error');\nreturn { json: { base: d.base, id_chamado: d.id_chamado, condominio: d.condominio, id_tecnico: d.id_tecnico, regra: d.regra,\n  ok, resposta: r.message || r.mensagem || (r.error ? JSON.stringify(r.error) : '') } };\n"
+      },
+      "id": "d578f0c3-5412-4d7c-aacf-b584cefe2dae",
+      "name": "Resultado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2848,
+        1088
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.resolutto.com.br/webservice/v1/su_oss_chamado_alterar_setor",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "86711b2b-5f35-4bd5-be93-b37fe16d9317",
+      "name": "Encaminhar RESOLUTTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -3168,
+        720
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "ixcApiAutomacao1",
+          "name": "IXC API (RESOLUTTO)"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.4btelecom.com.br/webservice/v1/su_oss_chamado_alterar_setor",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "31b9204c-a5e9-4fe6-8355-dc2c1fb0276c",
+      "name": "Encaminhar 4B",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -3168,
+        880
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Sar2wecxMvwt297d",
+          "name": "IXC API (4BTELECOM)"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.pontotelecom.com/webservice/v1/su_oss_chamado_alterar_setor",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "a1e0aa8b-3e2b-4d7c-bd92-6eb7e83a4add",
+      "name": "Encaminhar PONTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -3168,
+        1040
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "SQr92hzbZKnat5kl",
+          "name": "IXC API (Ponto telecom)"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.cactatelecom.com.br/webservice/v1/su_oss_chamado_alterar_setor",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "64e27ed4-bcbf-4200-a525-ba935219338b",
+      "name": "Encaminhar CACTA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -3168,
+        1200
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "00ORMvXflPQheEJ1",
+          "name": "IXC API (CACTA TELECOM)"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.buzztelecom.com.br/webservice/v1/su_oss_chamado_alterar_setor",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "14b47c19-1f60-4792-953c-2bb02654b39c",
+      "name": "Encaminhar BUZZ",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -3168,
+        1360
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "CYZcvcYaydyP88Uu",
+          "name": "IXC API (BUZZ TELECOM)"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {},
+      "id": "a8de7c08-848e-4178-ba4a-74f0c21dcc18",
+      "name": "Panorama / simulação (não encaminha)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        -3168,
+        1552
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.resolutto.com.br/webservice/v1/su_oss_chamado",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({qtype:'su_oss_chamado.id_cliente',query:String($('Pendentes').item.json.base==='RESOLUTTO' ? $('Pendentes').item.json.id_cliente : -1),oper:'=',page:'1',rp:'100',sortname:'su_oss_chamado.id',sortorder:'desc'}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "52d0877a-02a5-41fa-b2a3-f6aae9d63676",
+      "name": "Historico RESOLUTTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -3936,
+        1184
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "ixcApiAutomacao1",
+          "name": "IXC API (RESOLUTTO)"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.4btelecom.com.br/webservice/v1/su_oss_chamado",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({qtype:'su_oss_chamado.id_cliente',query:String($('Pendentes').item.json.base==='4B' ? $('Pendentes').item.json.id_cliente : -1),oper:'=',page:'1',rp:'100',sortname:'su_oss_chamado.id',sortorder:'desc'}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "53f6d649-a38c-4c97-a6b3-f26a76acce8b",
+      "name": "Historico 4B",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -3936,
+        1376
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Sar2wecxMvwt297d",
+          "name": "IXC API (4BTELECOM)"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.pontotelecom.com/webservice/v1/su_oss_chamado",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({qtype:'su_oss_chamado.id_cliente',query:String($('Pendentes').item.json.base==='PONTO' ? $('Pendentes').item.json.id_cliente : -1),oper:'=',page:'1',rp:'100',sortname:'su_oss_chamado.id',sortorder:'desc'}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "3eeeffff-9b53-4e7d-8458-d66e6ea071f2",
+      "name": "Historico PONTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -3936,
+        1568
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "SQr92hzbZKnat5kl",
+          "name": "IXC API (Ponto telecom)"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.cactatelecom.com.br/webservice/v1/su_oss_chamado",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({qtype:'su_oss_chamado.id_cliente',query:String($('Pendentes').item.json.base==='CACTA' ? $('Pendentes').item.json.id_cliente : -1),oper:'=',page:'1',rp:'100',sortname:'su_oss_chamado.id',sortorder:'desc'}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "0dacba0a-86a4-4c39-a08a-ae4ddde496b5",
+      "name": "Historico CACTA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -3936,
+        1760
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "00ORMvXflPQheEJ1",
+          "name": "IXC API (CACTA TELECOM)"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.buzztelecom.com.br/webservice/v1/su_oss_chamado",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({qtype:'su_oss_chamado.id_cliente',query:String($('Pendentes').item.json.base==='BUZZ' ? $('Pendentes').item.json.id_cliente : -1),oper:'=',page:'1',rp:'100',sortname:'su_oss_chamado.id',sortorder:'desc'}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "15a6f2bc-7f42-4fb6-b3fa-306630a54211",
+      "name": "Historico BUZZ",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -3936,
+        1968
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "CYZcvcYaydyP88Uu",
+          "name": "IXC API (BUZZ TELECOM)"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "id": "fbd6cdc1-ab18-4aba-ad9e-c49c63f9b3c5",
+      "name": "A cada 5 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -5120,
+        1088
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Nó \"Msg Montar descrição\" (Code, Run Once for All Items)\n// Entrada: saídas dos 5 nós \"Msg Ler OS <BASE>\" (listar su_oss_chamado pelo id, lido DEPOIS do encaminhamento).\n// Saída: 1 item por O.S. com o registro COMPLETO da O.S. e a descrição = descrição atual + Resposta Padrão.\n// O PUT do IXC regrava o registro inteiro, por isso vai tudo como está e só a descrição muda.\n// Se a descrição já contém o texto da Resposta Padrão, não acrescenta de novo.\n\nfunction parseIxc(j) {\n  let t = j?.data ?? j?.body ?? j;\n  if (typeof t !== 'string') return t || {};\n  t = t.replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]/g, '');\n  try { return JSON.parse(t); } catch (e) { return { _texto: t }; }\n}\n\n// Texto comparável: sem HTML, sem acento de espaço/quebra, minúsculo.\nfunction comparavel(s) {\n  return String(s ?? '')\n    .replace(/<\\s*br\\s*\\/?>/gi, ' ').replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&')\n    .replace(/\\s+/g, ' ').trim().toLowerCase();\n}\n\nconst temHtml = s => /<\\s*(br|p|div|span|b|strong|ul|li)\\b[^>]*>/i.test(String(s ?? ''));\nconst paraHtml = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\\n/g, '<br>');\n\nconst out = [];\nconst itens = $input.all();\nfor (let i = 0; i < itens.length; i++) {\n  const p = $('Msg Montar partes').itemMatching(i).json;\n  const info = {\n    base: p.base, saida: p.saida, destino: 'DESCRICAO', id_chamado: p.id_chamado, id_assunto: p.id_assunto,\n    resposta_id: p.resposta_id, resposta_titulo: p.resposta_titulo, modo: p.modo, teste: p.teste,\n    parte: 1, total_partes: 1, caracteres: p.caracteres,\n  };\n  const r = parseIxc(itens[i].json);\n\n  if (r?.error || r?.type === 'error' || r?._texto !== undefined) {\n    const det = r.error ? (r.error.message || JSON.stringify(r.error)) : (r.message || r._texto || '');\n    out.push({ pairedItem: { item: i }, json: { ...info, pular: `erro ao ler a O.S.: ${String(det).slice(0, 200)}` } });\n    continue;\n  }\n  const reg = Array.isArray(r?.registros) ? r.registros : [];\n  const os = reg.find(x => String(x.id) === String(p.id_chamado));\n  if (!os) {\n    out.push({ pairedItem: { item: i }, json: { ...info, pular: `O.S. ${p.id_chamado} não encontrada na leitura` } });\n    continue;\n  }\n  const campo = p.campo_descricao || 'mensagem';\n  if (!(campo in os)) {\n    out.push({ pairedItem: { item: i }, json: { ...info, pular: `campo \"${campo}\" não existe no su_oss_chamado (ajuste CAMPO_DESCRICAO)` } });\n    continue;\n  }\n\n  const atual = String(os[campo] ?? '');\n  if (comparavel(atual).includes(comparavel(p.texto))) {\n    out.push({ pairedItem: { item: i }, json: { ...info, pular: 'descrição já tem esta Resposta Padrão (não acrescentou de novo)' } });\n    continue;\n  }\n\n  let nova;\n  if (!atual.trim()) nova = temHtml(atual) ? paraHtml(p.texto) : p.texto;\n  else if (temHtml(atual)) nova = atual + '<br><br>' + paraHtml(p.texto);\n  else nova = atual.replace(/\\s+$/, '') + (p.separador ?? '\\n\\n') + p.texto;\n\n  const put = { ...os, [campo]: nova };\n  out.push({\n    pairedItem: { item: i },\n    json: {\n      ...info, pular: '', enviar: p.modo === 'REAL',\n      tamanho_antes: atual.length, tamanho_depois: nova.length,\n      descricao_nova: nova,\n      put_body: put,\n    },\n  });\n}\nreturn out;\n"
+      },
+      "id": "93470d14-f58e-4c07-a4f9-b58e1986189b",
+      "name": "Msg Montar descrição",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -848,
+        1184
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "eebd12e8-d260-4af3-80c8-aedfa9380491",
+              "leftValue": "={{ $json.pular }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "166ca544-2f79-4d24-abbd-a05ec4e2736b",
+              "leftValue": "={{ $json.enviar }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "b07e2a4b-98ae-4dc1-a083-30393143c8be",
+      "name": "Msg Atualizar?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -624,
+        1184
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "expression",
+        "numberOutputs": 5,
+        "output": "={{ $json.saida }}"
+      },
+      "id": "2863985a-ba61-42bd-ace5-90953e3c139d",
+      "name": "Msg Rotear descrição",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -400,
+        1120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.resolutto.com.br/webservice/v1/su_oss_chamado",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: \"su_oss_chamado.id\", query: String($json.id_chamado), oper: \"=\", page: \"1\", rp: \"1\", sortname: \"su_oss_chamado.id\", sortorder: \"asc\" }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "33734b43-09ee-4588-bcdf-448efd954d47",
+      "name": "Msg Ler OS RESOLUTTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1072,
+        1040
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "ixcApiAutomacao1",
+          "name": "IXC API (RESOLUTTO)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://ixc.resolutto.com.br/webservice/v1/su_oss_chamado/{{ $json.id_chamado }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.put_body) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "0e668eaa-a737-41d6-8e5d-b29ae0d31383",
+      "name": "Msg Descrição RESOLUTTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -192,
+        1040
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "ixcApiAutomacao1",
+          "name": "IXC API (RESOLUTTO)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.4btelecom.com.br/webservice/v1/su_oss_chamado",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: \"su_oss_chamado.id\", query: String($json.id_chamado), oper: \"=\", page: \"1\", rp: \"1\", sortname: \"su_oss_chamado.id\", sortorder: \"asc\" }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "2da37e8b-c47f-42b0-be88-419336c33193",
+      "name": "Msg Ler OS 4B",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1072,
+        1184
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Sar2wecxMvwt297d",
+          "name": "IXC API (4BTELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://ixc.4btelecom.com.br/webservice/v1/su_oss_chamado/{{ $json.id_chamado }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.put_body) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "4b277ad4-de1f-413b-b7a3-bb29800aa4df",
+      "name": "Msg Descrição 4B",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -192,
+        1184
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Sar2wecxMvwt297d",
+          "name": "IXC API (4BTELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.pontotelecom.com/webservice/v1/su_oss_chamado",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: \"su_oss_chamado.id\", query: String($json.id_chamado), oper: \"=\", page: \"1\", rp: \"1\", sortname: \"su_oss_chamado.id\", sortorder: \"asc\" }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "b0d37cb2-94ed-42f0-af0d-7a89a9041a7c",
+      "name": "Msg Ler OS PONTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1072,
+        1344
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "SQr92hzbZKnat5kl",
+          "name": "IXC API (Ponto telecom)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://ixc.pontotelecom.com/webservice/v1/su_oss_chamado/{{ $json.id_chamado }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.put_body) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "cc377790-601c-4e65-8af5-3d428e8f9408",
+      "name": "Msg Descrição PONTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -192,
+        1344
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "SQr92hzbZKnat5kl",
+          "name": "IXC API (Ponto telecom)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.cactatelecom.com.br/webservice/v1/su_oss_chamado",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: \"su_oss_chamado.id\", query: String($json.id_chamado), oper: \"=\", page: \"1\", rp: \"1\", sortname: \"su_oss_chamado.id\", sortorder: \"asc\" }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "8d01c4e0-94c6-40a7-856c-b33c66178703",
+      "name": "Msg Ler OS CACTA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1072,
+        1488
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "00ORMvXflPQheEJ1",
+          "name": "IXC API (CACTA TELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://ixc.cactatelecom.com.br/webservice/v1/su_oss_chamado/{{ $json.id_chamado }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.put_body) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "135ce0cc-8674-49e8-a936-590215294644",
+      "name": "Msg Descrição CACTA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -192,
+        1488
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "00ORMvXflPQheEJ1",
+          "name": "IXC API (CACTA TELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.buzztelecom.com.br/webservice/v1/su_oss_chamado",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: \"su_oss_chamado.id\", query: String($json.id_chamado), oper: \"=\", page: \"1\", rp: \"1\", sortname: \"su_oss_chamado.id\", sortorder: \"asc\" }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "2322de03-661c-4552-908a-c321b61ca348",
+      "name": "Msg Ler OS BUZZ",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1072,
+        1632
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "CYZcvcYaydyP88Uu",
+          "name": "IXC API (BUZZ TELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://ixc.buzztelecom.com.br/webservice/v1/su_oss_chamado/{{ $json.id_chamado }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.put_body) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "e060eb96-04c4-4789-b868-64df5d8a93ab",
+      "name": "Msg Descrição BUZZ",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -192,
+        1632
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "CYZcvcYaydyP88Uu",
+          "name": "IXC API (BUZZ TELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "content": "## Mensagem por assunto\nDepois do **Encaminhar <BASE>**, leva a **Resposta Padrão** do assunto para a O.S.:\n- 1º assunto: **mensagem nova** no histórico\n- demais (`NA_DESCRICAO`): **acrescenta no fim da descrição**, sem apagar nada\n\nConfiguração no nó **Msg Preparar** (MODO, RESPOSTAS, TESTE).\n\nPara desligar: `MODO = 'DESLIGADO'`.",
+        "height": 1368,
+        "width": 3200,
+        "color": 5
+      },
+      "id": "19fa1624-4703-4af4-9846-0a6f22ad57d0",
+      "name": "Nota Mensagem por assunto1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -2880,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Nó \"Msg Preparar\" (Code, Run Once for All Items)\n// Workflow: IXC - Encaminhar OS por condominio GLOBAL — bloco \"Mensagem por assunto\".\n// Entrada: saídas dos 5 nós \"Encaminhar <BASE>\" (resposta do su_oss_chamado_alterar_setor).\n// Saída: 1 item por O.S. encaminhada COM SUCESSO, já com a resposta padrão do assunto\n//        e o destino: MENSAGEM nova no histórico ou ACRESCENTAR na descrição da O.S.\n// Este nó não altera nada no IXC. Se algo falhar aqui, o encaminhamento já foi feito.\n\n// ======================= CONFIGURAÇÃO =======================\n// MODO: 'REAL'      -> grava na O.S. (mensagem ou descrição)\n//       'SIMULAR'   -> só mostra no Resultado o texto e as partes (não grava)\n//       'DESLIGADO' -> não faz nada\nconst MODO = 'REAL';\n\n// Divisão da mensagem: 0 = mensagem inteira, numa só (padrão — o IXC aceita o texto todo,\n// igual a quando se escolhe a Resposta Padrão na tela).\n// Um número > 0 divide em partes desse tamanho: (1/3), (2/3)... (só se um dia precisar).\nconst TAM_PARTE = 0;\n\n// id_evento exigido pelo su_oss_chamado_mensagem, por base. '' = vazio.\n// Se o IXC recusar com erro de evento, preencha com o id do evento \"Mensagem\" da base.\nconst ID_EVENTO = { RESOLUTTO: '9', '4B': '', PONTO: '', CACTA: '', BUZZ: '' };\n\n// Mandar o id_tecnico junto (mantém o técnico que o Encaminhar acabou de definir).\nconst ENVIAR_ID_TECNICO = true;\n\n// Mandar o id da resposta padrão na 1ª parte (fica registrado qual resposta foi usada).\n// Se o IXC duplicar o texto ou recusar por causa dela, mude para false.\nconst ENVIAR_ID_RESPOSTA = true;\n\n// Assunto -> Resposta Padrão, POR BASE (os ids mudam de base para base!).\n// Valor: número = id da resposta padrão; texto = título exato da resposta padrão.\n// null = assunto sem mensagem extra.\nconst RESPOSTAS = {\n  RESOLUTTO: { 69: 1, 83: 2, 84: 3, 86: null, 94: null },\n  '4B':      { 89: null, 90: null, 91: null, 93: null, 98: null },\n  PONTO:     { 65: null, 63: null, 62: null, 61: null, 70: null },\n  CACTA:     { 73: null, 74: null, 77: null, 75: null, 81: null },\n  BUZZ:      { 83: null, 84: null, 85: null, 87: null, 91: null },\n};\n\n// Onde a Resposta Padrão entra, POR BASE:\n//   assuntos listados aqui -> ACRESCENTA no fim da DESCRIÇÃO da O.S. (não apaga nada do que já existe)\n//   demais assuntos        -> MENSAGEM nova no histórico da O.S. (hoje: o 1º assunto da cadeia)\n// Confira se a ordem bate com a cadeia (1º = Levantamento de Necessidades).\nconst NA_DESCRICAO = {\n  RESOLUTTO: [83, 84, 86, 94],\n  '4B':      [90, 91, 93, 98],\n  PONTO:     [63, 62, 61, 70],\n  CACTA:     [74, 77, 75, 81],\n  BUZZ:      [84, 85, 87, 91],\n};\n// Campo da descrição no su_oss_chamado e o que separa o texto antigo do novo.\nconst CAMPO_DESCRICAO = 'mensagem';\nconst SEPARADOR = '\\n\\n';\n\n// TESTE: só vale em execução MANUAL (botão \"Execute workflow\"). Nunca roda no agendamento.\n// Para testar sem encaminhar nada: deixe SIMULAR = true no nó Config do Encaminhar,\n// ligue o \"Executar manualmente\" também a este nó, preencha abaixo e execute.\nconst TESTE = { ativo: false, base: 'RESOLUTTO', id_chamado: '', id_assunto: '', id_tecnico: '', status: 'EN' };\n// ============================================================\n\nconst BASES = ['RESOLUTTO', '4B', 'PONTO', 'CACTA', 'BUZZ']; // mesma ordem do Rotear por base (saída 0..4)\n\nfunction normBase(v) {\n  const s = String(v ?? '').toUpperCase();\n  if (!s) return '';\n  if (s.includes('4B')) return '4B';\n  return BASES.find(b => s.includes(b)) || '';\n}\n\n// Procura uma chave em profundidade (até 3 níveis), ex.: id_chamado dentro de payload/body/os.\nfunction achar(obj, nomes, prof = 0) {\n  if (!obj || typeof obj !== 'object' || prof > 3) return undefined;\n  for (const n of nomes) {\n    if (obj[n] !== undefined && obj[n] !== null && obj[n] !== '') return obj[n];\n  }\n  for (const v of Object.values(obj)) {\n    if (v && typeof v === 'object') {\n      const r = achar(v, nomes, prof + 1);\n      if (r !== undefined) return r;\n    }\n  }\n  return undefined;\n}\n\n// Resposta do IXC pode vir em texto com caracteres de controle.\nfunction parseIxc(j) {\n  let t = j?.data ?? j?.body ?? j;\n  if (typeof t !== 'string') return t || {};\n  t = t.replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]/g, '');\n  try { return JSON.parse(t); } catch (e) { return { _texto: t }; }\n}\n\nfunction encaminhouOk(r) {\n  if (!r || typeof r !== 'object') return false;\n  if (r.error) return false; // falha de rede/HTTP (onError: continue)\n  if (String(r.type || '').toLowerCase() === 'error') return false;\n  if (r._texto !== undefined) return !/\"?type\"?\\s*:\\s*\"?error/i.test(r._texto) && r._texto.trim() !== '';\n  return String(r.type || '').toLowerCase() === 'success' || r.id !== undefined || Object.keys(r).length > 0;\n}\n\n// Dicionário id da O.S. -> assunto, a partir do nó Pendentes (plano B se o Decidir não trouxer o assunto).\nlet assuntoPorOs = null;\nfunction assuntoDoPendentes(base, id) {\n  if (!assuntoPorOs) {\n    assuntoPorOs = {};\n    try {\n      for (const it of $('Pendentes').all()) {\n        const j = it.json || {};\n        const b = normBase(achar(j, ['base', 'BASE']));\n        const os = achar(j, ['id_chamado', 'id_os', 'id']);\n        const as = achar(j, ['id_assunto']);\n        if (os !== undefined && as !== undefined) assuntoPorOs[`${b}|${os}`] = as;\n      }\n    } catch (e) { /* nó Pendentes sem dados */ }\n  }\n  return assuntoPorOs[`${base}|${id}`] ?? assuntoPorOs[`|${id}`];\n}\n\n// Técnico escolhido pelo Decidir (o id_tecnico \"cru\" da O.S. pendente é 0, então tem prioridade o do payload).\nfunction tecnicoFinal(dec) {\n  const cands = [\n    achar(dec?.payload || dec?.body || dec?.encaminhar || {}, ['id_tecnico']),\n    achar(dec, ['id_tecnico_novo', 'tecnico_escolhido', 'id_tecnico_destino', 'tecnico_destino']),\n    achar(dec, ['id_tecnico']),\n  ];\n  const t = cands.find(v => v !== undefined && String(v) !== '0' && String(v) !== '');\n  return t !== undefined ? String(t) : '';\n}\n\nfunction statusFinal(dec) {\n  const env = achar(dec?.payload || dec?.body || dec?.encaminhar || {}, ['status'])\n           ?? achar(dec, ['status_enviar', 'status_novo', 'status']);\n  return String(env ?? '').toUpperCase() === 'AG' ? 'AG' : 'EN';\n}\n\n\nfunction montar(j) {\n  const base = normBase(j.base);\n  const assunto = String(j.id_assunto ?? '').trim();\n  const r = {\n    base,\n    saida: BASES.indexOf(base),\n    id_chamado: String(j.id_chamado ?? '').trim(),\n    id_assunto: assunto,\n    id_tecnico: String(j.id_tecnico ?? '').trim(),\n    status: String(j.status ?? 'EN').toUpperCase() === 'AG' ? 'AG' : 'EN',\n    modo: MODO,\n    tam_parte: TAM_PARTE,\n    id_evento: ID_EVENTO[base] ?? '',\n    enviar_id_tecnico: ENVIAR_ID_TECNICO,\n    enviar_id_resposta: ENVIAR_ID_RESPOSTA,\n    teste: j.teste === true,\n    destino: (NA_DESCRICAO[base] || []).map(String).includes(assunto) ? 'DESCRICAO' : 'MENSAGEM',\n    campo_descricao: CAMPO_DESCRICAO,\n    separador: SEPARADOR,\n    pular: '',\n  };\n  const ref = base ? (RESPOSTAS[base] || {})[assunto] : undefined;\n  if (MODO === 'DESLIGADO') r.pular = 'MODO DESLIGADO';\n  else if (!base) r.pular = `base não reconhecida (${j.base ?? 'vazia'})`;\n  else if (!/^\\d+$/.test(r.id_chamado)) r.pular = 'sem id_chamado';\n  else if (!assunto) r.pular = 'sem id_assunto';\n  else if (ref === undefined || ref === null || ref === '') r.pular = `assunto ${assunto} sem resposta padrão configurada em ${base}`;\n  if (!r.pular) {\n    const porId = typeof ref === 'number' || /^\\d+$/.test(String(ref));\n    r.resp_qtype = porId ? 'su_oss_respostas.id' : 'su_oss_respostas.titulo';\n    r.resp_query = String(ref);\n  }\n  return r;\n}\n\nconst modoExec = (typeof $execution !== 'undefined' && $execution) ? $execution.mode : '';\nconst saida = [];\nconst itens = $input.all();\nfor (let i = 0; i < itens.length; i++) {\n  const j0 = itens[i].json || {};\n\n  // Item que não veio de um \"Encaminhar <BASE>\" (ex.: gatilho manual ligado para teste).\n  if (j0.data === undefined && j0.error === undefined && j0.body === undefined) {\n    if (TESTE.ativo && modoExec !== 'production') {\n      saida.push({ json: montar({ ...TESTE, teste: true }), pairedItem: { item: i } });\n    }\n    continue;\n  }\n\n  const resp = parseIxc(j0);\n  if (!encaminhouOk(resp)) continue; // encaminhamento falhou: não grava mensagem\n\n  let dec = {};\n  try { dec = $('Rotear por base').itemMatching(i).json; }\n  catch (e) { try { dec = $('Decidir').itemMatching(i).json; } catch (e2) { dec = {}; } }\n\n  let base = normBase(achar(dec, ['base', 'BASE', 'nome_base']));\n  if (!base) {\n    const s = Number(achar(dec, ['saida']));\n    if (Number.isInteger(s) && s >= 0 && s < BASES.length) base = BASES[s];\n  }\n  const idChamado = achar(dec, ['id_chamado', 'id_os', 'os_id']);\n  let idAssunto = achar(dec, ['id_assunto', 'assunto']);\n  if (idAssunto === undefined && idChamado !== undefined) idAssunto = assuntoDoPendentes(base, idChamado);\n\n  saida.push({\n    json: montar({\n      base,\n      id_chamado: idChamado !== undefined ? String(idChamado) : '',\n      id_assunto: idAssunto !== undefined ? String(idAssunto) : '',\n      id_tecnico: tecnicoFinal(dec),\n      status: statusFinal(dec),\n    }),\n    pairedItem: { item: i },\n  });\n}\nreturn saida;\n"
+      },
+      "id": "5a51908e-9cf0-484d-915f-5907f8423b4b",
+      "name": "Msg Preparar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2800,
+        880
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "797028ea-a2a0-458e-979b-617719bbe7c9",
+              "leftValue": "={{ $json.pular }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "9ad5422d-abc8-47a5-8625-ead9f073bc1f",
+      "name": "Msg Tem resposta?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -2608,
+        880
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "expression",
+        "numberOutputs": 5,
+        "output": "={{ $json.saida }}"
+      },
+      "id": "a07b77e3-9bea-4839-a520-962a34f54094",
+      "name": "Msg Rotear leitura",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -2384,
+        816
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.resolutto.com.br/webservice/v1/su_oss_respostas",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: $json.resp_qtype, query: $json.resp_query, oper: \"=\", page: \"1\", rp: \"1\", sortname: \"su_oss_respostas.id\", sortorder: \"asc\" }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "9d3fc375-6cb5-43c0-875e-3bc0e147b7f6",
+      "name": "Msg Ler RESOLUTTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2160,
+        544
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "ixcApiAutomacao1",
+          "name": "IXC API (RESOLUTTO)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.4btelecom.com.br/webservice/v1/su_oss_respostas",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: $json.resp_qtype, query: $json.resp_query, oper: \"=\", page: \"1\", rp: \"1\", sortname: \"su_oss_respostas.id\", sortorder: \"asc\" }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "c44eed5f-f469-4116-81f0-e47fa5c40d8d",
+      "name": "Msg Ler 4B",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2160,
+        688
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Sar2wecxMvwt297d",
+          "name": "IXC API (4BTELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.pontotelecom.com/webservice/v1/su_oss_respostas",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: $json.resp_qtype, query: $json.resp_query, oper: \"=\", page: \"1\", rp: \"1\", sortname: \"su_oss_respostas.id\", sortorder: \"asc\" }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "97e97c68-c83b-411f-b056-10405f66235b",
+      "name": "Msg Ler PONTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2160,
+        832
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "SQr92hzbZKnat5kl",
+          "name": "IXC API (Ponto telecom)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.cactatelecom.com.br/webservice/v1/su_oss_respostas",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: $json.resp_qtype, query: $json.resp_query, oper: \"=\", page: \"1\", rp: \"1\", sortname: \"su_oss_respostas.id\", sortorder: \"asc\" }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "7b5cf2cb-3d80-4e54-bc0f-ba79cc76bc18",
+      "name": "Msg Ler CACTA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2160,
+        992
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "00ORMvXflPQheEJ1",
+          "name": "IXC API (CACTA TELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.buzztelecom.com.br/webservice/v1/su_oss_respostas",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ qtype: $json.resp_qtype, query: $json.resp_query, oper: \"=\", page: \"1\", rp: \"1\", sortname: \"su_oss_respostas.id\", sortorder: \"asc\" }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "a1aa044b-c556-4c1c-9d3e-1af7f1e449b3",
+      "name": "Msg Ler BUZZ",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2160,
+        1136
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "CYZcvcYaydyP88Uu",
+          "name": "IXC API (BUZZ TELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Nó \"Msg Montar partes\" (Code, Run Once for All Items)\n// Entrada: saídas dos 5 nós \"Msg Ler <BASE>\" (listar su_oss_respostas).\n// Saída: MENSAGEM -> 1 item por parte, com o payload do su_oss_chamado_mensagem (rota 0..4).\n//        DESCRICAO -> 1 item com o texto a acrescentar (rota 5..9).\n\nfunction parseIxc(j) {\n  let t = j?.data ?? j?.body ?? j;\n  if (typeof t !== 'string') return t || {};\n  t = t.replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]/g, '');\n  try { return JSON.parse(t); } catch (e) { return { _texto: t }; }\n}\n\n// Resposta padrão pode ter HTML (editor do IXC). Vira texto simples, mantendo as quebras de linha.\nfunction textoLimpo(s) {\n  return String(s ?? '')\n    .replace(/\\r\\n?/g, '\\n')\n    .replace(/<\\s*br\\s*\\/?>/gi, '\\n')\n    .replace(/<\\/\\s*(p|div|li|h[1-6])\\s*>/gi, '\\n')\n    .replace(/<\\s*li[^>]*>/gi, '- ')\n    .replace(/<[^>]+>/g, '')\n    .replace(/&nbsp;/gi, ' ')\n    .replace(/&amp;/gi, '&').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>')\n    .replace(/&quot;/gi, '\"').replace(/&#0?39;/gi, \"'\")\n    .replace(/[ \\t]+\\n/g, '\\n')\n    .replace(/\\n{3,}/g, '\\n\\n')\n    .trim();\n}\n\n// Quebra o texto em pedaços de até `max` caracteres, preferindo cortar em\n// quebra de linha, depois em espaço. Nunca perde caractere.\nfunction quebrar(texto, max) {\n  const partes = [];\n  let resto = texto;\n  while (resto.length > max) {\n    let corte = resto.lastIndexOf('\\n', max);\n    if (corte < max * 0.5) corte = resto.lastIndexOf(' ', max);\n    if (corte < max * 0.5) corte = max; // palavra gigante: corta seco\n    partes.push(resto.slice(0, corte).trim());\n    resto = resto.slice(corte).trim();\n  }\n  if (resto) partes.push(resto);\n  return partes.filter(p => p.length);\n}\n\nfunction dividir(texto, tam) {\n  if (texto.length <= tam) return [texto];\n  // Reserva espaço para o prefixo \"(nn/nn) \" e recalcula se o total passar de 9.\n  let reserva = 6, partes = [];\n  for (let k = 0; k < 3; k++) {\n    partes = quebrar(texto, Math.max(20, tam - reserva));\n    const pref = `(${partes.length}/${partes.length}) `.length;\n    if (pref <= reserva) break;\n    reserva = pref;\n  }\n  return partes.map((p, i) => `(${i + 1}/${partes.length}) ${p}`);\n}\n\nconst out = [];\nconst itens = $input.all();\nfor (let i = 0; i < itens.length; i++) {\n  const cfg = $('Msg Preparar').itemMatching(i).json;\n  const base = { ...cfg };\n  const r = parseIxc(itens[i].json);\n\n  if (r?.error || r?.type === 'error' || (r?._texto !== undefined)) {\n    const det = r.error ? (r.error.message || JSON.stringify(r.error)) : (r.message || r._texto || '');\n    out.push({ pairedItem: { item: i }, json: { ...base, enviar: false, pular: `erro ao ler resposta padrão: ${String(det).slice(0, 200)}` } });\n    continue;\n  }\n  const reg = Array.isArray(r?.registros) ? r.registros : [];\n  if (!reg.length) {\n    out.push({ pairedItem: { item: i }, json: { ...base, enviar: false, pular: `resposta padrão \"${cfg.resp_query}\" não encontrada em ${cfg.base}` } });\n    continue;\n  }\n  const rp = reg[0];\n  const texto = textoLimpo(rp.resposta ?? rp.texto ?? rp.mensagem ?? '');\n  if (!texto) {\n    out.push({ pairedItem: { item: i }, json: { ...base, enviar: false, pular: `resposta padrão ${rp.id} está vazia` } });\n    continue;\n  }\n\n  // Destino DESCRIÇÃO: 1 item com o texto inteiro; a leitura da O.S. e o acréscimo\n  // são feitos depois (Msg Ler OS <BASE> -> Msg Montar descrição -> Msg Descrição <BASE>).\n  if (cfg.destino === 'DESCRICAO') {\n    out.push({\n      pairedItem: { item: i },\n      json: {\n        base: cfg.base, saida: cfg.saida, rota: 5 + Number(cfg.saida), destino: 'DESCRICAO',\n        id_chamado: cfg.id_chamado, id_assunto: cfg.id_assunto,\n        resposta_id: String(rp.id ?? ''), resposta_titulo: String(rp.titulo ?? '').trim(),\n        parte: 1, total_partes: 1, caracteres: texto.length,\n        // enviar=true só leva à LEITURA da O.S. (inofensiva); o PUT é decidido no Msg Montar descrição.\n        modo: cfg.modo, teste: cfg.teste, enviar: true, pular: '',\n        texto, campo_descricao: cfg.campo_descricao || 'mensagem', separador: cfg.separador ?? '\\n\\n',\n      },\n    });\n    continue;\n  }\n\n  const partes = Number(cfg.tam_parte) > 0 ? dividir(texto, Number(cfg.tam_parte)) : [texto];\n  partes.forEach((p, k) => {\n    const payload = {\n      id_chamado: cfg.id_chamado,\n      status: cfg.status,\n      id_evento: cfg.id_evento ?? '',\n      mensagem: p,\n      // A resposta padrão vai só na 1ª parte; as demais são continuação.\n      id_resposta: (k === 0 && cfg.enviar_id_resposta !== false) ? String(rp.id ?? '') : '',\n    };\n    if (cfg.enviar_id_tecnico && /^\\d+$/.test(cfg.id_tecnico || '') && cfg.id_tecnico !== '0') {\n      payload.id_tecnico = cfg.id_tecnico;\n    }\n    out.push({\n      pairedItem: { item: i },\n      json: {\n        base: cfg.base,\n        saida: cfg.saida,\n        rota: Number(cfg.saida),\n        destino: 'MENSAGEM',\n        id_chamado: cfg.id_chamado,\n        id_assunto: cfg.id_assunto,\n        resposta_id: String(rp.id ?? ''),\n        resposta_titulo: String(rp.titulo ?? '').trim(),\n        parte: k + 1,\n        total_partes: partes.length,\n        caracteres: p.length,\n        modo: cfg.modo,\n        teste: cfg.teste,\n        enviar: cfg.modo === 'REAL',\n        pular: '',\n        payload,\n      },\n    });\n  });\n}\nreturn out;\n"
+      },
+      "id": "a293f847-9799-4464-9cb2-eb892c674b9a",
+      "name": "Msg Montar partes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1952,
+        880
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "5b36bcfe-639f-444f-8baf-2e3b6f962025",
+              "leftValue": "={{ $json.enviar }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "6facd09d-ac2c-4389-86d7-1c89c9e514da",
+      "name": "Msg Enviar?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1728,
+        880
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "expression",
+        "numberOutputs": 10,
+        "output": "={{ $json.rota }}"
+      },
+      "id": "f3b80c74-10b8-413b-a6d1-32c636f96265",
+      "name": "Msg Rotear envio",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -1504,
+        816
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.resolutto.com.br/webservice/v1/su_oss_chamado_mensagem",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "2d0ddf61-19e0-4ff1-a456-b00254372c8d",
+      "name": "Msg Gravar RESOLUTTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1280,
+        544
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "ixcApiAutomacao1",
+          "name": "IXC API (RESOLUTTO)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.4btelecom.com.br/webservice/v1/su_oss_chamado_mensagem",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "2005733d-9129-49f5-9ded-d79c63ac3d68",
+      "name": "Msg Gravar 4B",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1280,
+        688
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Sar2wecxMvwt297d",
+          "name": "IXC API (4BTELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.pontotelecom.com/webservice/v1/su_oss_chamado_mensagem",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "15c30e3f-47ca-4f47-9746-6f868d3a5163",
+      "name": "Msg Gravar PONTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1280,
+        832
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "SQr92hzbZKnat5kl",
+          "name": "IXC API (Ponto telecom)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.cactatelecom.com.br/webservice/v1/su_oss_chamado_mensagem",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "68df3450-79df-45ff-973b-6b6fabc21a1f",
+      "name": "Msg Gravar CACTA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1280,
+        992
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "00ORMvXflPQheEJ1",
+          "name": "IXC API (CACTA TELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.buzztelecom.com.br/webservice/v1/su_oss_chamado_mensagem",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "2aef38f9-8039-47e5-b15c-5b41fe67f90c",
+      "name": "Msg Gravar BUZZ",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1280,
+        1136
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "CYZcvcYaydyP88Uu",
+          "name": "IXC API (BUZZ TELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Nó \"Msg Resultado\" (Code, Run Once for All Items)\n// Recebe: respostas dos \"Msg Gravar <BASE>\" (mensagem) e \"Msg Descrição <BASE>\" (PUT da O.S.),\n// mais os itens simulados e pulados. Mostra 1 linha por O.S./parte. Não grava nada.\n\nfunction parseIxc(j) {\n  let t = j?.data ?? j?.body ?? j;\n  if (typeof t !== 'string') return t || {};\n  t = t.replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]/g, '');\n  try { return JSON.parse(t); } catch (e) { return { _texto: t }; }\n}\n\nconst out = [];\nconst itens = $input.all();\nfor (let i = 0; i < itens.length; i++) {\n  const j = itens[i].json || {};\n\n  // Item que não foi gravado (pulado ou simulado): já traz os campos.\n  if (j.pular !== undefined || j.payload !== undefined) {\n    out.push({ json: {\n      base: j.base, id_chamado: j.id_chamado, id_assunto: j.id_assunto,\n      destino: j.destino || '',\n      parte: j.parte ? `${j.parte}/${j.total_partes}` : '',\n      situacao: j.pular ? 'PULADO' : (j.modo === 'SIMULAR' ? 'SIMULADO' : 'NAO_ENVIADO'),\n      motivo: j.pular || '',\n      resposta_padrao: j.resposta_titulo ? `${j.resposta_id} - ${j.resposta_titulo}` : '',\n      mensagem: j.payload?.mensagem ?? j.descricao_nova ?? j.texto ?? '',\n      caracteres: j.caracteres ?? '',\n    } });\n    continue;\n  }\n\n  // Resposta do IXC a uma gravação real (mensagem ou descrição).\n  let p = {};\n  try { p = $('Msg Montar descrição').itemMatching(i).json; }\n  catch (e) { try { p = $('Msg Montar partes').itemMatching(i).json; } catch (e2) { p = {}; } }\n  const r = parseIxc(j);\n  const erro = !!r?.error || r?.type === 'error' || (r?._texto !== undefined && /error/i.test(r._texto));\n  out.push({ json: {\n    base: p.base, id_chamado: p.id_chamado, id_assunto: p.id_assunto,\n    destino: p.destino || '',\n    parte: p.parte ? `${p.parte}/${p.total_partes}` : '',\n    situacao: erro ? 'ERRO' : 'GRAVADO',\n    motivo: erro ? String(r.error?.message || r.message || r._texto || '').slice(0, 300) : '',\n    resposta_ixc: r?.id ?? r?.message ?? '',\n    resposta_padrao: p.resposta_titulo ? `${p.resposta_id} - ${p.resposta_titulo}` : '',\n    caracteres: p.destino === 'DESCRICAO' ? `${p.tamanho_antes} -> ${p.tamanho_depois}` : (p.caracteres ?? ''),\n  } });\n}\nreturn out;\n"
+      },
+      "id": "560a4336-42e3-4688-aa13-1aae652b8e41",
+      "name": "Msg Resultado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        80,
+        880
+      ]
+    }
+  ],
+  "connections": {
+    "Executar manualmente": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "OS RESOLUTTO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OS RESOLUTTO": {
+      "main": [
+        [
+          {
+            "node": "OS 4B",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OS 4B": {
+      "main": [
+        [
+          {
+            "node": "OS PONTO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OS PONTO": {
+      "main": [
+        [
+          {
+            "node": "OS CACTA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OS CACTA": {
+      "main": [
+        [
+          {
+            "node": "OS BUZZ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OS BUZZ": {
+      "main": [
+        [
+          {
+            "node": "Pendentes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pendentes": {
+      "main": [
+        [
+          {
+            "node": "Cliente RESOLUTTO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cliente RESOLUTTO": {
+      "main": [
+        [
+          {
+            "node": "Cliente 4B",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cliente 4B": {
+      "main": [
+        [
+          {
+            "node": "Cliente PONTO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cliente PONTO": {
+      "main": [
+        [
+          {
+            "node": "Cliente CACTA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cliente CACTA": {
+      "main": [
+        [
+          {
+            "node": "Cliente BUZZ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cliente BUZZ": {
+      "main": [
+        [
+          {
+            "node": "Historico RESOLUTTO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decidir": {
+      "main": [
+        [
+          {
+            "node": "Rotear por base",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rotear por base": {
+      "main": [
+        [
+          {
+            "node": "Encaminhar RESOLUTTO",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Encaminhar 4B",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Encaminhar PONTO",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Encaminhar CACTA",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Encaminhar BUZZ",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Panorama / simulação (não encaminha)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Encaminhar RESOLUTTO": {
+      "main": [
+        [
+          {
+            "node": "Resultado",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Msg Preparar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Encaminhar 4B": {
+      "main": [
+        [
+          {
+            "node": "Resultado",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Msg Preparar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Encaminhar PONTO": {
+      "main": [
+        [
+          {
+            "node": "Resultado",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Msg Preparar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Encaminhar CACTA": {
+      "main": [
+        [
+          {
+            "node": "Resultado",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Msg Preparar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Encaminhar BUZZ": {
+      "main": [
+        [
+          {
+            "node": "Resultado",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Msg Preparar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Historico RESOLUTTO": {
+      "main": [
+        [
+          {
+            "node": "Historico 4B",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Historico 4B": {
+      "main": [
+        [
+          {
+            "node": "Historico PONTO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Historico PONTO": {
+      "main": [
+        [
+          {
+            "node": "Historico CACTA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Historico CACTA": {
+      "main": [
+        [
+          {
+            "node": "Historico BUZZ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Historico BUZZ": {
+      "main": [
+        [
+          {
+            "node": "Decidir",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A cada 5 min": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg Rotear descrição": {
+      "main": [
+        [
+          {
+            "node": "Msg Descrição RESOLUTTO",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Msg Descrição 4B",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Msg Descrição PONTO",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Msg Descrição CACTA",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Msg Descrição BUZZ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg Montar descrição": {
+      "main": [
+        [
+          {
+            "node": "Msg Atualizar?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg Atualizar?": {
+      "main": [
+        [
+          {
+            "node": "Msg Rotear descrição",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Msg Resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg Ler OS RESOLUTTO": {
+      "main": [
+        [
+          {
+            "node": "Msg Montar descrição",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg Descrição RESOLUTTO": {
+      "main": [
+        [
+          {
+            "node": "Msg Resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg Ler OS 4B": {
+      "main": [
+        [
+          {
+            "node": "Msg Montar descrição",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg Descrição 4B": {
+      "main": [
+        [
+          {
+            "node": "Msg Resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg Ler OS PONTO": {
+      "main": [
+        [
+          {
+            "node": "Msg Montar descrição",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg Descrição PONTO": {
+      "main": [
+        [
+          {
+            "node": "Msg Resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg Ler OS CACTA": {
+      "main": [
+        [
+          {
+            "node": "Msg Montar descrição",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg Descrição CACTA": {
+      "main": [
+        [
+          {
+            "node": "Msg Resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg Ler OS BUZZ": {
+      "main": [
+        [
+          {
+            "node": "Msg Montar descrição",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg Descrição BUZZ": {
+      "main": [
+        [
+          {
+            "node": "Msg Resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg Preparar": {
+      "main": [
+        [
+          {
+            "node": "Msg Tem resposta?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg Tem resposta?": {
+      "main": [
+        [
+          {
+            "node": "Msg Rotear leitura",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Msg Resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg Rotear leitura": {
+      "main": [
+        [
+          {
+            "node": "Msg Ler RESOLUTTO",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Msg Ler 4B",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Msg Ler PONTO",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Msg Ler CACTA",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Msg Ler BUZZ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg Ler RESOLUTTO": {
+      "main": [
+        [
+          {
+            "node": "Msg Montar partes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg Ler 4B": {
+      "main": [
+        [
+          {
+            "node": "Msg Montar partes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg Ler PONTO": {
+      "main": [
+        [
+          {
+            "node": "Msg Montar partes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg Ler CACTA": {
+      "main": [
+        [
+          {
+            "node": "Msg Montar partes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg Ler BUZZ": {
+      "main": [
+        [
+          {
+            "node": "Msg Montar partes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg Montar partes": {
+      "main": [
+        [
+          {
+            "node": "Msg Enviar?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg Enviar?": {
+      "main": [
+        [
+          {
+            "node": "Msg Rotear envio",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Msg Resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg Rotear envio": {
+      "main": [
+        [
+          {
+            "node": "Msg Gravar RESOLUTTO",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Msg Gravar 4B",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Msg Gravar PONTO",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Msg Gravar CACTA",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Msg Gravar BUZZ",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Msg Ler OS RESOLUTTO",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Msg Ler OS 4B",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Msg Ler OS PONTO",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Msg Ler OS CACTA",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Msg Ler OS BUZZ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg Gravar RESOLUTTO": {
+      "main": [
+        [
+          {
+            "node": "Msg Resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg Gravar 4B": {
+      "main": [
+        [
+          {
+            "node": "Msg Resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg Gravar PONTO": {
+      "main": [
+        [
+          {
+            "node": "Msg Resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg Gravar CACTA": {
+      "main": [
+        [
+          {
+            "node": "Msg Resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Msg Gravar BUZZ": {
+      "main": [
+        [
+          {
+            "node": "Msg Resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "meta": null,
+  "nodeGroups": [],
+  "versionId": "8f19a058-66f0-4ff4-8f1d-bd16eb8edf26",
+  "activeVersionId": "8f19a058-66f0-4ff4-8f1d-bd16eb8edf26",
+  "versionCounter": 443,
+  "triggerCount": 1,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "versionMetadata": {
+    "name": "Version 8f19a058",
+    "description": ""
+  }
+}
