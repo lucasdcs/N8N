@@ -1,0 +1,84 @@
+{# Painel IXC — Atendimentos do IXC (su_ticket): abertos e finalizados, com as O.S. de cada um #}
+<link rel="stylesheet" href="{{ nav.url_assets }}/css/painel.css?v={{ nav.assets }}">
+
+<div class="pixc pixc-atd" id="pixc-atendimento" data-api="{{ nav.url_dados }}" data-detalhe="{{ nav.url_detalhe }}" data-filtros="{{ nav.url_filtros }}" data-historico="{{ nav.historico_dias }}"
+     data-direitos="{{ nav.direitos.atd|json_encode }}"
+     data-tema="{{ nav.tema }}" data-tema-ativo="{{ nav.tema == 'escuro' ? 'escuro' : 'claro' }}" data-url-tema="{{ nav.url_tema }}">
+
+  <div class="pixc-cabecalho">
+    <div class="pixc-cab-esq">
+      <div class="pixc-cab-txt">
+        <h2 class="pixc-titulo"><span class="pixc-pulso" id="pixc-pulso"></span> Atendimentos IXC</h2>
+        <div class="pixc-sub">Atendimentos das 5 bases · abra a linha para ver O.S., mensagens e anexos · <span id="pixc-atualizado">carregando…</span></div>
+      </div>
+      <div class="pixc-atd-modos" role="tablist" aria-label="Situação dos atendimentos">
+        <button type="button" class="pixc-atd-modo" data-modo="abertos" role="tab">Abertos</button>
+        <button type="button" class="pixc-atd-modo" data-modo="finalizados" role="tab">Finalizados</button>
+      </div>
+    </div>
+    <div class="pixc-acoes">
+      {% include '@painelixc/_acoes.html.twig' with {nav: nav, ativa: 'atd'} only %}
+    </div>
+  </div>
+
+  <div class="pixc-periodo" id="pixc-periodo" hidden>
+    <label>De <input type="date" id="pixc-de" class="form-control form-control-sm"></label>
+    <label>Até <input type="date" id="pixc-ate" class="form-control form-control-sm"></label>
+    <div class="btn-group">
+      <button type="button" class="btn btn-sm btn-outline-secondary" data-dias="7">7 dias</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" data-dias="30">30 dias</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" data-dias="90">90 dias</button>
+    </div>
+    <button type="button" class="btn btn-sm btn-primary" id="pixc-aplicar">Aplicar</button>
+    <span class="pixc-sub">histórico guardado: últimos {{ nav.historico_dias }} dias</span>
+  </div>
+
+  <section class="pixc-bases" id="pixc-bases" aria-label="Bases IXC"></section>
+
+  <div class="pixc-barra">
+    <div class="pixc-salvos" id="pixc-salvos" aria-label="Filtros salvos"></div>
+    <input type="search" id="pixc-busca" class="form-control pixc-busca" placeholder="Buscar protocolo, cliente, condomínio, assunto, O.S.…">
+    <button type="button" class="btn btn-primary pixc-btn-buscar" id="pixc-buscar" title="Buscar (ou tecle Enter)"><i class="ti ti-search me-1"></i> Buscar</button>
+    <button type="button" class="btn btn-danger pixc-btn-limpar" id="pixc-limpar"><i class="pixc-ico-vassoura me-1" aria-hidden="true"></i>Limpar</button>
+    <button type="button" class="btn btn-success pixc-btn-csv" id="pixc-csv" title="Baixar em CSV o que está na lista, com os filtros aplicados"><i class="ti ti-file-spreadsheet me-1"></i> Exportar CSV</button>
+  </div>
+
+  <section class="pixc-filtros" aria-label="Filtros">
+    <select id="pixc-f-status" class="form-select" multiple data-placeholder="Status"></select>
+    <select id="pixc-f-assunto" class="form-select" multiple data-placeholder="Assuntos"></select>
+    <select id="pixc-f-tecnico" class="form-select" multiple data-placeholder="Colaborador"></select>
+    <select id="pixc-f-condominio" class="form-select" multiple data-placeholder="Condomínios"></select>
+    <select id="pixc-f-setor" class="form-select" multiple data-placeholder="Setores"></select>
+  </section>
+
+  <div class="pixc-resumo" id="pixc-resumo"></div>
+
+  <div class="pixc-tabela-wrap">
+    <table class="pixc-tabela pixc-atd-tabela" id="pixc-tabela">
+      <thead>
+        <tr>
+          <th data-ord="protocolo">Protocolo</th>
+          <th data-ord="cliente">Cliente</th>
+          <th data-ord="assunto">Assunto</th>
+          <th data-ord="setor">Setor</th>
+          <th data-ord="responsavel">Responsável</th>
+          <th data-ord="sla" class="num" title="SLA como no IXC: prazo do assunto; 100 % até o prazo, depois cai até ficar negativo">SLA</th>
+          <th data-ord="status">Status</th>
+          <th data-ord="data_abertura">Abertura</th>
+          <th data-ord="ultima_atualizacao">Última atualização</th>
+          <th data-ord="qtd_os" class="num">O.S.</th>
+        </tr>
+      </thead>
+      <tbody id="pixc-linhas"></tbody>
+    </table>
+  </div>
+  <nav class="pixc-paginacao" id="pixc-paginacao"></nav>
+  <div class="pixc-rodape">painelixc {{ nav.versao }} · abertos a cada 10 min, finalizados a cada hora (workflow "Painel IXC - Atendimentos")</div>
+</div>
+
+<script src="{{ nav.url_assets }}/js/pixc-tema.js?v={{ nav.assets }}"></script>
+<script src="{{ nav.url_assets }}/js/pixc-csv.js?v={{ nav.assets }}"></script>
+<script src="{{ nav.url_assets }}/js/pixc-sla.js?v={{ nav.assets }}"></script>
+<script src="{{ nav.url_assets }}/js/pixc-select.js?v={{ nav.assets }}"></script>
+<script src="{{ nav.url_assets }}/js/pixc-filtros.js?v={{ nav.assets }}"></script>
+<script src="{{ nav.url_assets }}/js/atendimento.js?v={{ nav.assets }}"></script>

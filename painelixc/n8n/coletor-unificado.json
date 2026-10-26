@@ -1,0 +1,1351 @@
+{
+ "id": "pixcColetor01",
+ "name": "Painel IXC - Coletor (5 bases)",
+ "active": false,
+ "nodes": [
+  {
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "minutes",
+       "minutesInterval": 5
+      }
+     ]
+    }
+   },
+   "id": "6aad1207-18d5-5e96-9dc6-0a7d57aa79d4",
+   "name": "A cada 5 min (abertas)",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "cronExpression",
+       "expression": "10 3 * * *"
+      }
+     ]
+    }
+   },
+   "id": "3b09e91f-54ec-5651-b523-a854eeff526e",
+   "name": "Diariamente 03:10 (resolvidas)",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    200
+   ]
+  },
+  {
+   "parameters": {},
+   "id": "ea05a972-87da-5081-ba0e-18d837c0b2c6",
+   "name": "Manual (abertas)",
+   "type": "n8n-nodes-base.manualTrigger",
+   "typeVersion": 1,
+   "position": [
+    0,
+    400
+   ]
+  },
+  {
+   "parameters": {},
+   "id": "8a4a27a6-6f21-55a8-8cff-0ded8311b465",
+   "name": "Manual (resolvidas)",
+   "type": "n8n-nodes-base.manualTrigger",
+   "typeVersion": 1,
+   "position": [
+    0,
+    560
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "// ====== CONFIGURAÇÃO DO COLETOR (edite só este bloco) ======\nconst PAINEL_URL   = '__PAINEL_URL__';     // ingest do plugin GLPI (Configurar > Geral > Painel IXC)\nconst PAINEL_TOKEN = '__PAINEL_TOKEN__';\nconst STATUS_FECHADOS = 'F,C';             // \"aberta\" = status diferente destes\nconst RESOLVIDAS_DIAS = __DIAS__;          // janela das resolvidas (histórico do plugin)\nconst BASES = [                            // credencial de cada base fica no nó \"IXC <base>\"\n  { codigo: 'resolutto', nome: 'Resolutto', url: '__URL_RESOLUTTO__' },\n  { codigo: '4btelecom', nome: '4BTELECOM', url: '__URL_4BTELECOM__' },\n  { codigo: 'ponto',     nome: 'PONTO',     url: '__URL_PONTO__' },\n  { codigo: 'cacta',     nome: 'CACTA',     url: '__URL_CACTA__' },\n  { codigo: 'buzz',      nome: 'BUZZ',      url: '__URL_BUZZ__' },\n];\n// ============================================================\n// TIPO vem do gatilho que disparou: 03:10 / \"Manual (resolvidas)\" = resolvidas; os outros = abertas.\nconst gatilho = String($prevNode.name || '');\nconst tipo = /resolvidas/i.test(gatilho) ? 'resolvidas' : 'abertas';\nreturn [{ json: { PAINEL_URL, PAINEL_TOKEN, STATUS_FECHADOS, RESOLVIDAS_DIAS, TIPO: tipo, GATILHO: gatilho,\n  BASES: BASES.map(b => ({ ...b, url: String(b.url || '').trim().replace(/\\/+$/, '') })) } }];"
+   },
+   "id": "9635d181-392d-596c-95b1-29fdbb69f02a",
+   "name": "Config",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    260,
+    280
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "// Uma requisição por (base × tabela). O nó HTTP da base executa cada uma (url/corpo vêm do item).\nconst cfg = $input.first().json;\nconst dias = parseInt(cfg.RESOLVIDAS_DIAS, 10) || 90;\nconst desde = new Date(Date.now() - dias * 86400000).toISOString().slice(0, 10) + ' 00:00:00';\nconst fechados = String(cfg.STATUS_FECHADOS || 'F,C').split(',').map(s => s.trim()).filter(Boolean);\nconst gridOs = cfg.TIPO === 'resolvidas'\n  ? [{ TB: 'su_oss_chamado.status', OP: '=', P: 'F' }, { TB: 'su_oss_chamado.data_fechamento', OP: '>=', P: desde }]\n  : fechados.map(st => ({ TB: 'su_oss_chamado.status', OP: '!=', P: st }));   // o IXC não aceita IN em status\nconst lista = (tab) => ({ qtype: tab + '.id', query: '0', oper: '>', page: '1', rp: '5000', sortname: tab + '.id', sortorder: 'asc' });\nconst TABELAS = [\n  ['os',           'su_oss_chamado',    { qtype: 'su_oss_chamado.id', query: '0', oper: '>', page: '1', rp: '5000', sortname: 'su_oss_chamado.id', sortorder: 'desc', grid_param: JSON.stringify(gridOs) }],\n  ['assuntos',     'su_oss_assunto',    lista('su_oss_assunto')],\n  ['tecnicos',     'funcionarios',      lista('funcionarios')],\n  ['setores',      'empresa_setor',     lista('empresa_setor')],\n  ['diagnosticos', 'su_diagnostico',    lista('su_diagnostico')],\n  ['condominios',  'cliente_condominio', lista('cliente_condominio')],\n];\nconst out = [];\nfor (const b of cfg.BASES) {\n  if (!/^https?:\\/\\/\\S+$/i.test(b.url) || /PREENCHER/i.test(b.url)) {\n    out.push({ json: { base: b.codigo, chave: 'os', url: '', corpo: {}, erro_config: 'URL do IXC não preenchida no nó Config (' + b.nome + ')' } });\n    continue;\n  }\n  for (const [chave, tab, corpo] of TABELAS) out.push({ json: { base: b.codigo, chave, url: b.url + '/webservice/v1/' + tab, corpo } });\n}\nreturn out;"
+   },
+   "id": "720f41c2-12af-559f-a308-473b04b9ac56",
+   "name": "Requisições",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    500,
+    280
+   ]
+  },
+  {
+   "parameters": {
+    "rules": {
+     "values": [
+      {
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "strict",
+         "version": 2
+        },
+        "conditions": [
+         {
+          "id": "3a4458e7-44ed-5129-be48-115189184dde",
+          "leftValue": "={{ $json.base }}",
+          "rightValue": "resolutto",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          }
+         }
+        ],
+        "combinator": "and"
+       },
+       "renameOutput": true,
+       "outputKey": "resolutto"
+      },
+      {
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "strict",
+         "version": 2
+        },
+        "conditions": [
+         {
+          "id": "ae36d9fe-aaee-5357-b74d-568bf1f31c1b",
+          "leftValue": "={{ $json.base }}",
+          "rightValue": "4btelecom",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          }
+         }
+        ],
+        "combinator": "and"
+       },
+       "renameOutput": true,
+       "outputKey": "4btelecom"
+      },
+      {
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "strict",
+         "version": 2
+        },
+        "conditions": [
+         {
+          "id": "e6b40f52-a706-52e4-9cbd-c9799f4a5b63",
+          "leftValue": "={{ $json.base }}",
+          "rightValue": "ponto",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          }
+         }
+        ],
+        "combinator": "and"
+       },
+       "renameOutput": true,
+       "outputKey": "ponto"
+      },
+      {
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "strict",
+         "version": 2
+        },
+        "conditions": [
+         {
+          "id": "9405ece2-47f1-5671-80bd-d9ee9594422e",
+          "leftValue": "={{ $json.base }}",
+          "rightValue": "cacta",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          }
+         }
+        ],
+        "combinator": "and"
+       },
+       "renameOutput": true,
+       "outputKey": "cacta"
+      },
+      {
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "strict",
+         "version": 2
+        },
+        "conditions": [
+         {
+          "id": "e37f62fa-803f-5b2b-8396-07e6a046900b",
+          "leftValue": "={{ $json.base }}",
+          "rightValue": "buzz",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          }
+         }
+        ],
+        "combinator": "and"
+       },
+       "renameOutput": true,
+       "outputKey": "buzz"
+      }
+     ]
+    },
+    "options": {
+     "fallbackOutput": "extra",
+     "renameFallbackOutput": "sem base"
+    }
+   },
+   "id": "2cedd7cb-998f-580c-9da0-795cf7e5ca9d",
+   "name": "Por base",
+   "type": "n8n-nodes-base.switch",
+   "typeVersion": 3.2,
+   "position": [
+    740,
+    280
+   ]
+  },
+  {
+   "parameters": {
+    "numberInputs": 5
+   },
+   "id": "6bc49ac7-af34-5b16-91f9-69edfb17e827",
+   "name": "Juntar",
+   "type": "n8n-nodes-base.merge",
+   "typeVersion": 3.1,
+   "position": [
+    1260,
+    280
+   ]
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $json.url }}",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpBasicAuth",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "ixcsoft",
+       "value": "listar"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.corpo) }}",
+    "options": {
+     "response": {
+      "response": {
+       "responseFormat": "text",
+       "outputPropertyName": "data"
+      }
+     },
+     "timeout": 120000
+    }
+   },
+   "id": "24006966-1256-54d5-9c8d-c6c5e8d4f5b0",
+   "name": "IXC Resolutto",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1000,
+    -120
+   ],
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 2000,
+   "credentials": {
+    "httpBasicAuth": {
+     "id": "__CRED_ID_RESOLUTTO__",
+     "name": "__CRED_NOME_RESOLUTTO__"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $json.url }}",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpBasicAuth",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "ixcsoft",
+       "value": "listar"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.corpo) }}",
+    "options": {
+     "response": {
+      "response": {
+       "responseFormat": "text",
+       "outputPropertyName": "data"
+      }
+     },
+     "timeout": 120000
+    }
+   },
+   "id": "38ef3bf4-6733-5946-b969-f97708e1839b",
+   "name": "IXC 4BTELECOM",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1000,
+    80
+   ],
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 2000,
+   "credentials": {
+    "httpBasicAuth": {
+     "id": "__CRED_ID_4BTELECOM__",
+     "name": "__CRED_NOME_4BTELECOM__"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $json.url }}",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpBasicAuth",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "ixcsoft",
+       "value": "listar"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.corpo) }}",
+    "options": {
+     "response": {
+      "response": {
+       "responseFormat": "text",
+       "outputPropertyName": "data"
+      }
+     },
+     "timeout": 120000
+    }
+   },
+   "id": "129f0658-813a-5b9c-bf16-a8388014a016",
+   "name": "IXC PONTO",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1000,
+    280
+   ],
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 2000,
+   "credentials": {
+    "httpBasicAuth": {
+     "id": "__CRED_ID_PONTO__",
+     "name": "__CRED_NOME_PONTO__"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $json.url }}",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpBasicAuth",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "ixcsoft",
+       "value": "listar"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.corpo) }}",
+    "options": {
+     "response": {
+      "response": {
+       "responseFormat": "text",
+       "outputPropertyName": "data"
+      }
+     },
+     "timeout": 120000
+    }
+   },
+   "id": "dfa11044-e32a-5a97-8fc5-abf620b03a6c",
+   "name": "IXC CACTA",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1000,
+    480
+   ],
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 2000,
+   "credentials": {
+    "httpBasicAuth": {
+     "id": "__CRED_ID_CACTA__",
+     "name": "__CRED_NOME_CACTA__"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $json.url }}",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpBasicAuth",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "ixcsoft",
+       "value": "listar"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.corpo) }}",
+    "options": {
+     "response": {
+      "response": {
+       "responseFormat": "text",
+       "outputPropertyName": "data"
+      }
+     },
+     "timeout": 120000
+    }
+   },
+   "id": "b42500ee-3298-5e9f-9127-80574a2ab45d",
+   "name": "IXC BUZZ",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1000,
+    680
+   ],
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 2000,
+   "credentials": {
+    "httpBasicAuth": {
+     "id": "__CRED_ID_BUZZ__",
+     "name": "__CRED_NOME_BUZZ__"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "jsCode": "// Devolve {base, chave, resp} para cada resposta do IXC (o item pareado em \"Requisições\" diz de quem é).\nconst msgErro = (e) => typeof e === 'string' ? e : (e && (e.message || e.description)) || JSON.stringify(e);\nconst lerIxc = (j) => {\n  if (!j) return { error: 'sem resposta' };\n  if (j.error) return { error: msgErro(j.error) };\n  const raw = j.data;\n  if (raw === undefined) return j;\n  if (typeof raw !== 'string') return raw;\n  const txt = raw.replace(/^﻿/, '').trim();\n  try { return JSON.parse(txt); } catch (e) { /* tenta limpar */ }\n  try { return JSON.parse(txt.replace(/[\\u0000-\\u001F]+/g, ' ')); } catch (e) {\n    return { error: 'resposta do IXC não é JSON (' + txt.length + ' bytes): ' + txt.slice(0, 180) };\n  }\n};\nconst req = $('Requisições').item.json;\nconst j = $input.item.json || {};\nconst resp = req.erro_config ? { error: req.erro_config } : lerIxc(j);\nreturn { json: { base: req.base, chave: req.chave, resp } };",
+    "mode": "runOnceForEachItem"
+   },
+   "id": "a681fb50-67c3-5cab-acc8-676f53795820",
+   "name": "Ler respostas",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1500,
+    280
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "// Agrupa as respostas por base e prepara a busca de clientes (só os ids que aparecem nas O.S.).\nconst cfg = $('Config').first().json;\nconst porBase = {};\nfor (const b of cfg.BASES) porBase[b.codigo] = { base: b.codigo, nome: b.nome, url: b.url, resp: {} };\nfor (const it of $input.all()) { const j = it.json; if (porBase[j.base]) porBase[j.base].resp[j.chave] = j.resp; }\nconst out = [];\nfor (const b of Object.values(porBase)) {\n  const r = b.resp.os || { error: 'sem resposta' };\n  const os = (!r.error && r.type !== 'error' && Array.isArray(r.registros)) ? r.registros : [];\n  const ids = [...new Set(os.map(o => String(o.id_cliente || '')).filter(i => /^\\d+$/.test(i) && i !== '0'))];\n  out.push({ json: { base: b.base, nome: b.nome, url: b.url, chave: 'clientes', pular: ids.length === 0 || !b.url,\n    url_req: b.url + '/webservice/v1/cliente', resp: b.resp,\n    corpo: { qtype: 'cliente.id', query: '0', oper: '>', page: '1', rp: String(Math.max(ids.length, 1)), sortname: 'cliente.id', sortorder: 'asc',\n             grid_param: JSON.stringify([{ TB: 'cliente.id', OP: 'IN', P: ids.length ? ids.join(',') : '0' }]) } } });\n}\nreturn out;"
+   },
+   "id": "d85e8951-3c4b-5de5-84a5-b9b0f56a3a84",
+   "name": "Agrupar por base",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1740,
+    280
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "// Item para o nó HTTP da base (url/corpo). Bases sem O.S. com cliente não precisam consultar.\nreturn $input.all().map(it => ({ json: { base: it.json.base, chave: 'clientes', url: it.json.url_req, corpo: it.json.corpo, pular: it.json.pular } }));"
+   },
+   "id": "3f0dd112-669b-5979-bc73-dc49fc792894",
+   "name": "Requisições de clientes",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1980,
+    280
+   ]
+  },
+  {
+   "parameters": {
+    "rules": {
+     "values": [
+      {
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "strict",
+         "version": 2
+        },
+        "conditions": [
+         {
+          "id": "03f1ac41-311d-59d9-acf1-2cd67d379cea",
+          "leftValue": "={{ $json.base }}",
+          "rightValue": "resolutto",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          }
+         }
+        ],
+        "combinator": "and"
+       },
+       "renameOutput": true,
+       "outputKey": "resolutto"
+      },
+      {
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "strict",
+         "version": 2
+        },
+        "conditions": [
+         {
+          "id": "f007c522-befb-527a-9699-bebd37794b35",
+          "leftValue": "={{ $json.base }}",
+          "rightValue": "4btelecom",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          }
+         }
+        ],
+        "combinator": "and"
+       },
+       "renameOutput": true,
+       "outputKey": "4btelecom"
+      },
+      {
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "strict",
+         "version": 2
+        },
+        "conditions": [
+         {
+          "id": "8ef6bae1-34c1-5c32-a5a7-f0e57a9a0749",
+          "leftValue": "={{ $json.base }}",
+          "rightValue": "ponto",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          }
+         }
+        ],
+        "combinator": "and"
+       },
+       "renameOutput": true,
+       "outputKey": "ponto"
+      },
+      {
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "strict",
+         "version": 2
+        },
+        "conditions": [
+         {
+          "id": "a9a9d391-267e-538d-85ff-7afe0653418f",
+          "leftValue": "={{ $json.base }}",
+          "rightValue": "cacta",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          }
+         }
+        ],
+        "combinator": "and"
+       },
+       "renameOutput": true,
+       "outputKey": "cacta"
+      },
+      {
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "strict",
+         "version": 2
+        },
+        "conditions": [
+         {
+          "id": "8d728809-0e9d-5e4b-b4eb-059674794fd4",
+          "leftValue": "={{ $json.base }}",
+          "rightValue": "buzz",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          }
+         }
+        ],
+        "combinator": "and"
+       },
+       "renameOutput": true,
+       "outputKey": "buzz"
+      }
+     ]
+    },
+    "options": {
+     "fallbackOutput": "extra",
+     "renameFallbackOutput": "sem base"
+    }
+   },
+   "id": "60f03f5f-b15f-5a9e-ad66-25d7b7dff363",
+   "name": "Por base (clientes)",
+   "type": "n8n-nodes-base.switch",
+   "typeVersion": 3.2,
+   "position": [
+    2220,
+    280
+   ]
+  },
+  {
+   "parameters": {
+    "numberInputs": 5
+   },
+   "id": "daa29518-552e-567a-8e66-371743fdaf67",
+   "name": "Juntar clientes",
+   "type": "n8n-nodes-base.merge",
+   "typeVersion": 3.1,
+   "position": [
+    2740,
+    280
+   ]
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $json.url }}",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpBasicAuth",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "ixcsoft",
+       "value": "listar"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.corpo) }}",
+    "options": {
+     "response": {
+      "response": {
+       "responseFormat": "text",
+       "outputPropertyName": "data"
+      }
+     },
+     "timeout": 120000
+    }
+   },
+   "id": "a8644012-9851-5f09-986d-a5b778af95d1",
+   "name": "IXC Resolutto (clientes)",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    2480,
+    -120
+   ],
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 2000,
+   "credentials": {
+    "httpBasicAuth": {
+     "id": "__CRED_ID_RESOLUTTO__",
+     "name": "__CRED_NOME_RESOLUTTO__"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $json.url }}",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpBasicAuth",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "ixcsoft",
+       "value": "listar"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.corpo) }}",
+    "options": {
+     "response": {
+      "response": {
+       "responseFormat": "text",
+       "outputPropertyName": "data"
+      }
+     },
+     "timeout": 120000
+    }
+   },
+   "id": "088596f5-e37c-5e8b-b7e0-e6ebdae7d82e",
+   "name": "IXC 4BTELECOM (clientes)",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    2480,
+    80
+   ],
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 2000,
+   "credentials": {
+    "httpBasicAuth": {
+     "id": "__CRED_ID_4BTELECOM__",
+     "name": "__CRED_NOME_4BTELECOM__"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $json.url }}",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpBasicAuth",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "ixcsoft",
+       "value": "listar"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.corpo) }}",
+    "options": {
+     "response": {
+      "response": {
+       "responseFormat": "text",
+       "outputPropertyName": "data"
+      }
+     },
+     "timeout": 120000
+    }
+   },
+   "id": "26ae7139-55ce-5e49-af50-9f93b7e96497",
+   "name": "IXC PONTO (clientes)",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    2480,
+    280
+   ],
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 2000,
+   "credentials": {
+    "httpBasicAuth": {
+     "id": "__CRED_ID_PONTO__",
+     "name": "__CRED_NOME_PONTO__"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $json.url }}",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpBasicAuth",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "ixcsoft",
+       "value": "listar"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.corpo) }}",
+    "options": {
+     "response": {
+      "response": {
+       "responseFormat": "text",
+       "outputPropertyName": "data"
+      }
+     },
+     "timeout": 120000
+    }
+   },
+   "id": "440d83c3-0a87-5fbe-b667-d52569640137",
+   "name": "IXC CACTA (clientes)",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    2480,
+    480
+   ],
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 2000,
+   "credentials": {
+    "httpBasicAuth": {
+     "id": "__CRED_ID_CACTA__",
+     "name": "__CRED_NOME_CACTA__"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $json.url }}",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpBasicAuth",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "ixcsoft",
+       "value": "listar"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.corpo) }}",
+    "options": {
+     "response": {
+      "response": {
+       "responseFormat": "text",
+       "outputPropertyName": "data"
+      }
+     },
+     "timeout": 120000
+    }
+   },
+   "id": "0508d0ae-fd8b-5b43-ba02-236099b02ab0",
+   "name": "IXC BUZZ (clientes)",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    2480,
+    680
+   ],
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 2000,
+   "credentials": {
+    "httpBasicAuth": {
+     "id": "__CRED_ID_BUZZ__",
+     "name": "__CRED_NOME_BUZZ__"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "jsCode": "// Junta tudo num retrato por base e manda só os campos que o painel usa.\n// Se a busca de O.S. de uma base falhou, manda {base, erro} — o painel registra e NÃO encerra nenhuma O.S. dessa base.\nconst msgErro = (e) => typeof e === 'string' ? e : (e && (e.message || e.description)) || JSON.stringify(e);\nconst lerIxc = (j) => {\n  if (!j) return { error: 'sem resposta' };\n  if (j.error) return { error: msgErro(j.error) };\n  const raw = j.data;\n  if (raw === undefined) return j;\n  if (typeof raw !== 'string') return raw;\n  const txt = raw.replace(/^﻿/, '').trim();\n  try { return JSON.parse(txt); } catch (e) { /* tenta limpar */ }\n  try { return JSON.parse(txt.replace(/[\\u0000-\\u001F]+/g, ' ')); } catch (e) {\n    return { error: 'resposta do IXC não é JSON (' + txt.length + ' bytes): ' + txt.slice(0, 180) };\n  }\n};\nconst cfg = $('Config').first().json;\nconst tipo = cfg.TIPO === 'resolvidas' ? 'resolvidas' : 'abertas';\nconst agrupado = {}; for (const it of $('Agrupar por base').all()) agrupado[it.json.base] = it.json;\nconst clientesResp = {};\nfor (const it of $input.all()) clientesResp[it.json.base] = it.json;   // vindo de \"Ler clientes\": {base, pular, resp}\nconst CAMPOS_OS = ['id', 'protocolo', 'status', 'prioridade', 'id_assunto', 'setor', 'id_tecnico', 'id_cliente',\n  'id_condominio', 'id_su_diagnostico', 'id_ticket', 'mensagem', 'mensagem_resposta', 'data_abertura', 'data_agenda',\n  'data_inicio', 'data_final', 'data_fechamento', 'ultima_atualizacao'];\nconst out = [];\nfor (const b of cfg.BASES) {\n  const g = agrupado[b.codigo]; const base = b.codigo; const url = b.url;\n  const erro = (msg) => out.push({ json: { base, tipo, erro: String(msg).slice(0, 900) } });\n  if (!g) { erro('base sem respostas'); continue; }\n  const r = g.resp.os || { error: 'sem resposta' };\n  if (r.error) { erro('Falha ao buscar O.S. no IXC: ' + msgErro(r.error)); continue; }\n  if (r.type === 'error') { erro('IXC recusou a busca de O.S.: ' + (r.message || JSON.stringify(r))); continue; }\n  const total = Number(r.total);\n  if (!Number.isFinite(total)) { erro('Resposta inesperada do IXC (sem \"total\"): ' + JSON.stringify(r).slice(0, 300)); continue; }\n  const regs = Array.isArray(r.registros) ? r.registros : [];\n  if (total > 0 && regs.length === 0) { erro('IXC informou ' + total + ' O.S. mas não mandou registros'); continue; }\n  const os = regs.map(o => { const x = {}; for (const k of CAMPOS_OS) if (o[k] !== undefined) x[k] = (k === 'mensagem' || k === 'mensagem_resposta') ? String(o[k] || '').slice(0, 2000) : o[k]; return x; });\n  const avisos = [];\n  const dic = (j, nome, campos) => {\n    if (!j || j.error || j.type === 'error' || !Array.isArray(j.registros)) {\n      if (!(j && Number(j.total) === 0)) avisos.push(nome + ': ' + (j && (j.error ? msgErro(j.error) : j.message) || 'sem registros'));\n      return [];\n    }\n    return j.registros.map(o => { const x = { id: o.id }; for (const c of campos) if (o[c] !== undefined) x[c] = o[c]; return x; });\n  };\n  const cr = clientesResp[base];\n  const clientesJ = (!cr || cr.pular) ? { total: 0, registros: [] } : cr.resp;\n  out.push({ json: { base, tipo, ixc_url: url, total, os,\n    assuntos: dic(g.resp.assuntos, 'assuntos', ['assunto']), tecnicos: dic(g.resp.tecnicos, 'tecnicos', ['funcionario']),\n    setores: dic(g.resp.setores, 'setores', ['setor']), clientes: os.length ? dic(clientesJ, 'clientes', ['razao', 'fantasia', 'id_condominio']) : [],\n    diagnosticos: dic(g.resp.diagnosticos, 'diagnosticos', ['descricao']), condominios: dic(g.resp.condominios, 'condominios', ['condominio']), avisos } });\n}\nreturn out;"
+   },
+   "id": "d87c8c15-a828-5adc-82c9-17a033e1b67f",
+   "name": "Montar retratos",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    3220,
+    280
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "// {base, pular, resp} por base (o item pareado em \"Requisições de clientes\" diz de quem é).\nconst msgErro = (e) => typeof e === 'string' ? e : (e && (e.message || e.description)) || JSON.stringify(e);\nconst lerIxc = (j) => {\n  if (!j) return { error: 'sem resposta' };\n  if (j.error) return { error: msgErro(j.error) };\n  const raw = j.data;\n  if (raw === undefined) return j;\n  if (typeof raw !== 'string') return raw;\n  const txt = raw.replace(/^﻿/, '').trim();\n  try { return JSON.parse(txt); } catch (e) { /* tenta limpar */ }\n  try { return JSON.parse(txt.replace(/[\\u0000-\\u001F]+/g, ' ')); } catch (e) {\n    return { error: 'resposta do IXC não é JSON (' + txt.length + ' bytes): ' + txt.slice(0, 180) };\n  }\n};\nconst req = $('Requisições de clientes').item.json;\nreturn { json: { base: req.base, pular: !!req.pular, resp: req.pular ? { total: 0, registros: [] } : lerIxc($input.item.json || {}) } };",
+    "mode": "runOnceForEachItem"
+   },
+   "id": "749fcc02-7396-5ed0-a9f4-2dcb0a1b3bfe",
+   "name": "Ler clientes",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2980,
+    280
+   ]
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.PAINEL_URL }}",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Authorization",
+       "value": "=Bearer {{ $('Config').first().json.PAINEL_TOKEN }}"
+      },
+      {
+       "name": "X-Painel-Token",
+       "value": "={{ $('Config').first().json.PAINEL_TOKEN }}"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json) }}",
+    "options": {
+     "response": {
+      "response": {
+       "responseFormat": "json"
+      }
+     },
+     "timeout": 60000,
+     "batching": {
+      "batch": {
+       "batchSize": 1,
+       "batchInterval": 300
+      }
+     }
+    }
+   },
+   "id": "00db3105-fb17-54c1-b2a1-26f7a627fd23",
+   "name": "Enviar ao painel",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    3220,
+    280
+   ],
+   "onError": "continueRegularOutput",
+   "retryOnFail": true,
+   "maxTries": 2,
+   "waitBetweenTries": 3000
+  },
+  {
+   "parameters": {
+    "width": 520,
+    "height": 300,
+    "content": "## Painel IXC — coletor único (5 bases)\nSó LEITURA no IXC (`ixcsoft: listar`).\n\n- **Config**: URLs das bases, endereço/token do painel, janela das resolvidas. Credencial de cada base fica no nó **IXC <base>** (e no **IXC <base> (clientes)**).\n- Gatilhos: a cada 5 min = O.S. abertas; 03:10 = resolvidas dos últimos N dias. Os dois \"Manual\" servem para testar cada tipo.\n- Fluxo: Requisições (6 por base) → Switch por base → HTTP com a credencial da base → junta → clientes das O.S. → monta 5 retratos → envia ao painel (5 POSTs).\n- Uma base com erro não afeta as outras: o painel mostra o erro no card e não encerra nada."
+   },
+   "id": "0e6b8a73-2f7f-5f8e-a6e9-18efe78fe6d9",
+   "name": "Nota",
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    0,
+    -360
+   ]
+  }
+ ],
+ "connections": {
+  "A cada 5 min (abertas)": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Diariamente 03:10 (resolvidas)": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Manual (abertas)": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Manual (resolvidas)": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Config": {
+   "main": [
+    [
+     {
+      "node": "Requisições",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Requisições": {
+   "main": [
+    [
+     {
+      "node": "Por base",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Por base": {
+   "main": [
+    [
+     {
+      "node": "IXC Resolutto",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "IXC 4BTELECOM",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "IXC PONTO",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "IXC CACTA",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "IXC BUZZ",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "IXC Resolutto": {
+   "main": [
+    [
+     {
+      "node": "Juntar",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "IXC 4BTELECOM": {
+   "main": [
+    [
+     {
+      "node": "Juntar",
+      "type": "main",
+      "index": 1
+     }
+    ]
+   ]
+  },
+  "IXC PONTO": {
+   "main": [
+    [
+     {
+      "node": "Juntar",
+      "type": "main",
+      "index": 2
+     }
+    ]
+   ]
+  },
+  "IXC CACTA": {
+   "main": [
+    [
+     {
+      "node": "Juntar",
+      "type": "main",
+      "index": 3
+     }
+    ]
+   ]
+  },
+  "IXC BUZZ": {
+   "main": [
+    [
+     {
+      "node": "Juntar",
+      "type": "main",
+      "index": 4
+     }
+    ]
+   ]
+  },
+  "Juntar": {
+   "main": [
+    [
+     {
+      "node": "Ler respostas",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Ler respostas": {
+   "main": [
+    [
+     {
+      "node": "Agrupar por base",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Agrupar por base": {
+   "main": [
+    [
+     {
+      "node": "Requisições de clientes",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Requisições de clientes": {
+   "main": [
+    [
+     {
+      "node": "Por base (clientes)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Por base (clientes)": {
+   "main": [
+    [
+     {
+      "node": "IXC Resolutto (clientes)",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "IXC 4BTELECOM (clientes)",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "IXC PONTO (clientes)",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "IXC CACTA (clientes)",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "IXC BUZZ (clientes)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "IXC Resolutto (clientes)": {
+   "main": [
+    [
+     {
+      "node": "Juntar clientes",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "IXC 4BTELECOM (clientes)": {
+   "main": [
+    [
+     {
+      "node": "Juntar clientes",
+      "type": "main",
+      "index": 1
+     }
+    ]
+   ]
+  },
+  "IXC PONTO (clientes)": {
+   "main": [
+    [
+     {
+      "node": "Juntar clientes",
+      "type": "main",
+      "index": 2
+     }
+    ]
+   ]
+  },
+  "IXC CACTA (clientes)": {
+   "main": [
+    [
+     {
+      "node": "Juntar clientes",
+      "type": "main",
+      "index": 3
+     }
+    ]
+   ]
+  },
+  "IXC BUZZ (clientes)": {
+   "main": [
+    [
+     {
+      "node": "Juntar clientes",
+      "type": "main",
+      "index": 4
+     }
+    ]
+   ]
+  },
+  "Juntar clientes": {
+   "main": [
+    [
+     {
+      "node": "Ler clientes",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Ler clientes": {
+   "main": [
+    [
+     {
+      "node": "Montar retratos",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Montar retratos": {
+   "main": [
+    [
+     {
+      "node": "Enviar ao painel",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1",
+  "saveDataSuccessExecution": "none",
+  "saveDataErrorExecution": "all",
+  "saveManualExecutions": true,
+  "timezone": "America/Sao_Paulo"
+ }
+}

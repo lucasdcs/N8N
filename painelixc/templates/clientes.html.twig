@@ -1,0 +1,102 @@
+{# Painel IXC 0.13.0 — Clientes: busca ao vivo no IXC de uma base, com contratos (plano de venda, status, acesso, ativação) #}
+<link rel="stylesheet" href="{{ nav.url_assets }}/css/painel.css?v={{ nav.assets }}">
+
+<div class="pixc pixc-cli" id="pixc-clientes"
+     data-api="{{ nav.url_dados }}"
+     data-filtros="{{ nav.url_filtros }}"
+     data-por-pagina="{{ nav.por_pagina }}"
+     data-direitos="{{ nav.direitos.cli|json_encode }}"
+     data-tema="{{ nav.tema }}" data-tema-ativo="{{ nav.tema == 'escuro' ? 'escuro' : 'claro' }}" data-url-tema="{{ nav.url_tema }}">
+
+  <div class="pixc-cabecalho">
+    <div class="pixc-cab-esq">
+      <div class="pixc-cab-txt">
+        <h2 class="pixc-titulo"><i class="ti ti-users"></i> Clientes IXC</h2>
+        <div class="pixc-sub">Cadastro de clientes da base, consultado direto no IXC · <span id="pixc-cli-status">escolha a base e clique em Buscar</span></div>
+      </div>
+    </div>
+    <div class="pixc-acoes">
+      {% include '@painelixc/_acoes.html.twig' with {nav: nav, ativa: 'cli'} only %}
+    </div>
+  </div>
+
+  {# 0.13.2.4: bases à esquerda e filtros salvos à direita, na mesma linha #}
+  <div class="pixc-cli-topo">
+    <div class="pixc-cli-bases" id="pixc-cli-bases" role="radiogroup" aria-label="Base IXC">
+      {% for b in nav.bases %}
+        <button type="button" class="pixc-cli-base" role="radio" aria-checked="false" data-base="{{ b.codigo }}" style="--cor: {{ b.cor }}"
+                {{ b.pronta ? '' : 'disabled' }} title="{{ b.pronta ? 'Buscar clientes desta base' : 'Base sem URL ou sem token da API (Configuração)' }}">
+          <i></i>{{ b.nome }}{% if not b.pronta %} <small>(sem token)</small>{% endif %}
+        </button>
+      {% endfor %}
+    </div>
+    <div class="pixc-salvos" id="pixc-salvos" aria-label="Filtros salvos"></div>
+  </div>
+
+
+  <form class="pixc-cli-filtros" id="pixc-cli-form" autocomplete="off">
+    <label>Ativo
+      <select class="form-select" id="pixc-cf-ativo">
+        <option value="">Todos</option>
+        <option value="S">Sim</option>
+        <option value="N">Não</option>
+      </select>
+    </label>
+    <label>ID <input type="number" min="1" class="form-control" id="pixc-cf-id" placeholder="ID do cliente"></label>
+    <label>Razão Social <input type="search" class="form-control" id="pixc-cf-razao" maxlength="80" placeholder="parte do nome"></label>
+    <label>Nome Fantasia <input type="search" class="form-control" id="pixc-cf-fantasia" maxlength="80" placeholder="parte do nome"></label>
+    <label>Tipo de Cliente
+      <select class="form-select" id="pixc-cf-tipo"><option value="">Todos</option></select>
+    </label>
+    <label>Condomínio
+      <select class="form-select" id="pixc-cf-condominio"><option value="">Todos</option></select>
+    </label>
+    <label>Produto
+      <select class="form-select" id="pixc-cf-produto" title="Serviço/Produto de algum contrato do cliente"><option value="">Todos</option></select>
+    </label>
+    <div class="pixc-cli-botoes">
+      <button type="submit" class="btn btn-primary" id="pixc-cli-buscar"><i class="ti ti-search me-1"></i> Buscar</button>
+      <button type="button" class="btn btn-danger pixc-btn-limpar" id="pixc-limpar"><i class="pixc-ico-vassoura me-1" aria-hidden="true"></i>Limpar</button>
+      <button type="button" class="btn btn-success pixc-btn-csv" id="pixc-csv" title="Baixa todos os clientes do filtro (até {{ nav.limite_csv }}), não só a página"><i class="ti ti-file-spreadsheet me-1"></i> Exportar CSV</button>
+    </div>
+  </form>
+
+  <div class="alert alert-warning mt-2" id="pixc-cli-aviso" hidden></div>
+  <div class="pixc-resumo" id="pixc-resumo"></div>
+
+  <div class="pixc-tabela-wrap">
+    <table class="pixc-tabela pixc-cli-tabela" id="pixc-tabela">
+      <thead>
+        <tr>
+          {# 0.13.2.5: data-ord = ordena no IXC (todas as páginas); data-ordl = ordena a página que está na tela #}
+          <th data-ord="id" class="num" title="Ordenar por ID (todas as páginas)">ID</th>
+          <th data-ord="fantasia" title="Ordenar por Nome Fantasia (todas as páginas)">Nome Fantasia</th>
+          <th data-ord="razao" title="Ordenar por Razão Social (todas as páginas)">Razão Social</th>
+          <th data-ordl="tipo" title="Ordenar esta página por Tipo de Cliente">Tipo de Cliente</th>
+          <th data-ordl="condominio" title="Ordenar esta página por Condomínio">Condomínio</th>
+          <th data-ord="ativo" title="Ordenar por Ativo (todas as páginas)">Ativo</th>
+          <th data-ordl="produto" title="Ordenar esta página por Produto (descrição do produto do contrato)">Produto</th>
+          <th data-ordl="contratos" title="Ordenar esta página pela quantidade de contratos">Contratos <small class="fw-normal text-lowercase">(status · acesso · ativação)</small></th>
+        </tr>
+      </thead>
+      <tbody id="pixc-linhas">
+        <tr><td colspan="8" class="pixc-vazio">Escolha a base e clique em Buscar.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="pixc-cli-rodape" id="pixc-cli-rodape">
+    <label class="pixc-cli-rp">
+      <select class="form-select form-select-sm" id="pixc-cf-rp" aria-label="Linhas por página">
+        {% for t in nav.tamanhos %}<option value="{{ t }}" {{ t == nav.por_pagina ? 'selected' : '' }}>{{ t }}</option>{% endfor %}
+      </select>
+      <span>linhas / página</span>
+    </label>
+    <span class="pixc-cli-exibindo" id="pixc-cli-exibindo"></span>
+    <nav class="pixc-paginacao" id="pixc-paginacao"></nav>
+  </div>
+  <div class="pixc-rodape">painelixc {{ nav.versao }} · consulta só de leitura na API do IXC da base</div>
+</div>
+
+<script src="{{ nav.url_assets }}/js/pixc-tema.js?v={{ nav.assets }}"></script>
+<script src="{{ nav.url_assets }}/js/pixc-filtros.js?v={{ nav.assets }}"></script>
+<script src="{{ nav.url_assets }}/js/clientes.js?v={{ nav.assets }}"></script>

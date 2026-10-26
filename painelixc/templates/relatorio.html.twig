@@ -1,0 +1,97 @@
+{# Relatório / Indicadores IXC #}
+<link rel="stylesheet" href="{{ nav.url_assets }}/css/painel.css?v={{ nav.assets }}">
+
+<div class="pixc pixc-rel" id="pixc-relatorio"
+     data-dados="{{ nav.url_dados }}" data-csv="{{ nav.url_csv }}" data-pdf="{{ nav.url_pdf }}" data-filtros="{{ nav.url_filtros }}"
+     data-direitos="{{ nav.direitos.rel|json_encode }}"
+     data-tema="{{ nav.tema }}" data-tema-ativo="{{ nav.tema == 'escuro' ? 'escuro' : 'claro' }}" data-url-tema="{{ nav.url_tema }}">
+
+  <div class="pixc-cabecalho">
+    <div>
+      <h2 class="pixc-titulo">Relatório · Indicadores IXC</h2>
+      <div class="pixc-sub" id="pixc-rel-sub">Período, assunto, diagnóstico, condomínio e colaborador</div>
+    </div>
+    <div class="pixc-acoes">
+      <button type="button" class="btn btn-success pixc-btn-csv" id="pixc-rel-csv" disabled><i class="ti ti-file-spreadsheet me-1"></i> CSV</button>
+      <button type="button" class="btn btn-outline-secondary" id="pixc-rel-pdf" disabled><i class="ti ti-file-type-pdf me-1"></i> PDF</button>
+      {% if nav.direitos.os.ler %}<a class="btn btn-outline-secondary" href="{{ nav.url_painel }}"><i class="ti ti-arrow-left me-1"></i> Voltar ao painel</a>{% endif %}
+      {% include '@painelixc/_acoes.html.twig' with {nav: nav, ativa: 'rel'} only %}
+    </div>
+  </div>
+
+  <div class="pixc-barra">
+    <div class="pixc-salvos" id="pixc-rel-salvos" aria-label="Filtros salvos"></div>
+  </div>
+
+  <form class="pixc-rel-filtros" id="pixc-rel-form" onsubmit="return false">
+    <div class="pixc-rel-linha">
+      <label>Tipo
+        <select class="form-select form-select-sm" id="pixc-rf-modo">
+          {% for k, v in nav.modos %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>De <input type="date" class="form-control form-control-sm" id="pixc-rf-de" value="{{ nav.inicio }}"></label>
+      <label>Até <input type="date" class="form-control form-control-sm" id="pixc-rf-ate" value="{{ nav.hoje }}"></label>
+      <div class="btn-group">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-dias="7">7 dias</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-dias="30">30 dias</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-dias="90">90 dias</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-mes="atual">Mês atual</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-mes="anterior">Mês anterior</button>
+      </div>
+    </div>
+    <div class="pixc-rel-linha pixc-rel-cascata">
+      <label>Bases <select multiple class="form-select" id="pixc-rf-bases" data-placeholder="Bases" data-dim="bases"></select></label>
+      <label>Assunto <select multiple class="form-select" id="pixc-rf-assunto" data-placeholder="Assuntos" data-dim="assunto"></select></label>
+      <label>Diagnóstico <select multiple class="form-select" id="pixc-rf-diagnostico" data-placeholder="Diagnósticos" data-dim="diagnostico"></select></label>
+      <label>Condomínio <select multiple class="form-select" id="pixc-rf-condominio" data-placeholder="Condomínios" data-dim="condominio"></select></label>
+      <label>Colaborador <select multiple class="form-select" id="pixc-rf-tecnico" data-placeholder="Colaboradores" data-dim="tecnico"></select></label>
+    </div>
+    <div class="pixc-rel-linha">
+      <label class="pixc-chk"><input type="checkbox" class="form-check-input" id="pixc-rf-semdiag"> Só O.S. sem diagnóstico</label>
+      <span class="pixc-sub">Filtros em cascata, da esquerda para a direita · vazio = todos</span>
+      <span class="flex-grow-1"></span>
+      <button type="button" class="btn btn-sm btn-danger pixc-btn-limpar" id="pixc-rf-limpar"><i class="pixc-ico-vassoura me-1" aria-hidden="true"></i>Limpar</button>
+      <button type="button" class="btn btn-sm btn-primary" id="pixc-rf-aplicar"><i class="ti ti-filter me-1"></i> Aplicar</button>
+    </div>
+  </form>
+
+  <div class="alert alert-warning mt-2" id="pixc-rel-aviso" hidden></div>
+
+  <div class="pixc-kpis-grade" id="pixc-rel-kpis"></div>
+
+  <div class="pixc-rel-graficos">
+    <div class="pixc-rel-card pixc-rel-largo"><div class="pixc-rel-card-titulo">O.S. por dia</div><div class="pixc-grafico" data-grafico="por_dia"></div></div>
+    <div class="pixc-rel-card"><div class="pixc-rel-card-titulo">Por assunto</div><div class="pixc-grafico" data-grafico="assunto"></div></div>
+    <div class="pixc-rel-card"><div class="pixc-rel-card-titulo">Por diagnóstico</div><div class="pixc-grafico" data-grafico="diagnostico"></div></div>
+    <div class="pixc-rel-card"><div class="pixc-rel-card-titulo">Por condomínio (top 12)</div><div class="pixc-grafico" data-grafico="condominio"></div></div>
+    <div class="pixc-rel-card"><div class="pixc-rel-card-titulo">Por colaborador</div><div class="pixc-grafico" data-grafico="tecnico"></div></div>
+    <div class="pixc-rel-card"><div class="pixc-rel-card-titulo">Por base</div><div class="pixc-grafico" data-grafico="base"></div></div>
+    <div class="pixc-rel-card"><div class="pixc-rel-card-titulo">Por status</div><div class="pixc-grafico" data-grafico="status"></div></div>
+  </div>
+
+  <div class="pixc-rel-tabelas" id="pixc-rel-tabelas"></div>
+
+  <div class="pixc-rel-card mt-3">
+    <div class="pixc-rel-card-titulo">O.S. do período <span class="pixc-sub" id="pixc-rel-amostra-info"></span></div>
+    <div class="pixc-tabela-wrap">
+      <table class="pixc-tabela pixc-tabela-compacta">
+        <thead><tr><th>Base</th><th>O.S.</th><th>Status</th><th>Assunto</th><th>Diagnóstico</th><th>Condomínio</th><th>Colaborador</th><th>Cliente</th><th>Abertura</th><th>Fechamento</th><th class="num">Duração</th></tr></thead>
+        <tbody id="pixc-rel-amostra"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="pixc-rodape">painelixc {{ nav.versao }}</div>
+
+  <form method="post" action="{{ nav.url_pdf }}" id="pixc-rel-pdf-form" target="_blank" hidden>
+    <input type="hidden" name="filtros" id="pixc-rel-pdf-filtros">
+    <input type="hidden" name="imagens" id="pixc-rel-pdf-imagens">
+    <input type="hidden" name="_glpi_csrf_token" value="{{ csrf_token() }}">
+  </form>
+</div>
+
+<script src="{{ nav.url_assets }}/js/pixc-tema.js?v={{ nav.assets }}"></script>
+<script src="{{ nav.url_assets }}/js/pixc-select.js?v={{ nav.assets }}"></script>
+<script src="{{ nav.url_assets }}/js/pixc-filtros.js?v={{ nav.assets }}"></script>
+<script src="{{ nav.url_assets }}/js/relatorio.js?v={{ nav.assets }}"></script>

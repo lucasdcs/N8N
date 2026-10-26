@@ -1,0 +1,36 @@
+{# Painel IXC — Auditoria de Ativação: auditorias abertas + O.S. de Ativação de origem (mensagens e anexos) #}
+<link rel="stylesheet" href="{{ nav.url_assets }}/css/painel.css?v={{ nav.assets }}">
+
+<div class="pixc pixc-aud" id="pixc-auditoria" data-api="{{ nav.url_dados }}" data-acao="{{ nav.url_acao }}"
+     data-tema="{{ nav.tema }}" data-tema-ativo="{{ nav.tema == 'escuro' ? 'escuro' : 'claro' }}" data-url-tema="{{ nav.url_tema }}">
+
+  <div class="pixc-cabecalho">
+    <div>
+      <h2 class="pixc-titulo"><span class="pixc-pulso" id="pixc-pulso"></span> Auditoria de Ativação</h2>
+      <div class="pixc-sub">Auditorias abertas nas 5 bases, com a O.S. de Ativação de origem · <span id="pixc-atualizado">carregando…</span></div>
+    </div>
+    <div class="pixc-acoes">
+      {% include '@painelixc/_acoes.html.twig' with {nav: nav, ativa: 'aud'} only %}
+    </div>
+  </div>
+
+  <section class="pixc-bases" id="pixc-bases" aria-label="Bases IXC"></section>
+  <section class="pixc-aud-quadro" id="pixc-quadro" aria-label="Auditores" hidden></section>
+
+  <div class="pixc-barra">
+    <input type="search" id="pixc-busca" class="form-control pixc-busca" placeholder="Buscar O.S., protocolo, cliente, condomínio, técnico…">
+    <button type="button" class="btn btn-primary pixc-btn-buscar" id="pixc-buscar" title="Buscar (ou tecle Enter)"><i class="ti ti-search me-1"></i> Buscar</button>
+    <button type="button" class="btn btn-danger pixc-btn-limpar" id="pixc-limpar" title="Voltar a ver todas as bases, sem busca"><i class="pixc-ico-vassoura me-1" aria-hidden="true"></i>Limpar filtros</button>
+    <button type="button" class="btn btn-outline-secondary" id="pixc-expandir">Expandir todas</button>
+    <button type="button" class="btn btn-success pixc-btn-csv" id="pixc-csv" title="Baixar em CSV o que está na lista, com os filtros aplicados"><i class="ti ti-file-spreadsheet me-1"></i> Exportar CSV</button>
+  </div>
+
+  <div class="pixc-resumo" id="pixc-resumo"></div>
+  <div class="pixc-aud-lista" id="pixc-lista"></div>
+
+  <div class="pixc-rodape">painelixc {{ nav.versao }} · os anexos abrem no IXC (é preciso estar logado no IXC da base)</div>
+</div>
+
+<script src="{{ nav.url_assets }}/js/pixc-tema.js?v={{ nav.assets }}"></script>
+<script src="{{ nav.url_assets }}/js/pixc-csv.js?v={{ nav.assets }}"></script>
+<script src="{{ nav.url_assets }}/js/auditoria.js?v={{ nav.assets }}"></script>

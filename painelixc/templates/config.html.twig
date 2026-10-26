@@ -1,0 +1,436 @@
+{# Configuração do Painel IXC — aba em Configurar > Geral #}
+<div class="card pixc-cfg">
+  <div class="card-header"><h3 class="card-title">Painel IXC</h3></div>
+  <form method="post" action="{{ action }}">
+    <div class="card-body">
+      <div class="mb-3">
+        <label class="form-label">Endereço que o n8n deve chamar (POST)</label>
+        <input type="text" class="form-control font-monospace" readonly value="{{ url_ingest }}">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Token do n8n (header <code>Authorization: Bearer …</code>)</label>
+        <div class="input-group">
+          <input type="text" class="form-control font-monospace" readonly value="{{ cfg.ingest_token }}" id="pixc-token">
+          <button type="button" class="btn btn-outline-secondary" onclick="navigator.clipboard && navigator.clipboard.writeText(document.getElementById('pixc-token').value)">Copiar</button>
+        </div>
+        {% if pode_editar %}
+          <label class="form-check mt-2">
+            <input type="checkbox" class="form-check-input" name="gerar_token" value="1">
+            <span class="form-check-label">Gerar um token novo ao salvar (os coletores do n8n param até receberem o novo)</span>
+          </label>
+        {% endif %}
+      </div>
+
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">O.S. sem agenda é "atrasada" após (horas)</label>
+          <input type="number" class="form-control" name="atraso_horas" min="1" max="720" value="{{ cfg.atraso_horas }}" {{ pode_editar ? '' : 'readonly' }}>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Intervalo do coletor no n8n (min)</label>
+          <input type="number" class="form-control" name="sync_intervalo_min" min="1" max="120" value="{{ cfg.sync_intervalo_min }}" {{ pode_editar ? '' : 'readonly' }}>
+          <div class="form-hint">alerta de "sem retrato" = 3× este valor</div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Histórico de resolvidas (dias)</label>
+          <input type="number" class="form-control" name="historico_dias" min="7" max="3650" value="{{ cfg.historico_dias }}" {{ pode_editar ? '' : 'readonly' }}>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Log de sincronizações guardado por (dias)</label>
+          <input type="number" class="form-control" name="synclog_dias" min="1" max="3650" value="{{ cfg.synclog_dias }}" {{ pode_editar ? '' : 'readonly' }}>
+          <div class="form-hint">≈ 1.440 linhas/dia com 5 bases a cada 5 min; o expurgo roda junto com cada retrato</div>
+        </div>
+      </div>
+
+      <h4 class="mt-4">Quem pode o quê</h4>
+      <div class="alert alert-info mb-3" style="max-width: 900px">
+        Desde a 0.12.0 as permissões ficam no <b>perfil</b>: <a href="{{ url_perfis }}">Administração &gt; Perfis</a> &gt; (perfil) &gt; aba <b>Painel IXC</b>.
+        Lá cada categoria (Atendimento, Ordem de Serviço, Auditoria, Clientes, Relatório) tem Ler, Atualizar, Criar e Deletar.
+        O botão <b>Atualizar</b> das O.S. é "Ordem de Serviço → Atualizar" e os botões de auditoria (Aprovar/Reprovar) são "Auditoria → Atualizar".
+      </div>
+
+      <h4 class="mt-4">Ações de auditoria (botões da aba Auditoria)</h4>
+      <h5 class="mt-3">Botões</h5>
+      <div class="form-hint mb-2">O <b>#número</b> é fixo e liga o botão à coluna de resposta padrão na tabela das bases abaixo. <b>Aprova</b> = finaliza a Auditoria; <b>Reprova</b> = reabre a Ativação e finaliza a Auditoria (os de reprova aparecem no painel como caixas de seleção, podendo marcar vários); <b>Aprova/Abrir Chamado</b> = finaliza a Auditoria e abre uma O.S. nova, sem atendimento, para o mesmo cliente, com o técnico e o setor da Ativação — o assunto dela, por base, fica na <i class="ti ti-settings"></i> engrenagem ao lado do Tipo. Clique no ícone para trocar e no <i class="ti ti-info-circle"></i> para ver ou editar o que o botão faz. Use as setas para mudar a ordem.</div>
+      <div class="table-responsive">
+      <table class="table table-sm align-middle pixc-bt-tab" id="pixc-bt-tab" data-proximo="{{ proximo_botao }}" data-editavel="{{ pode_editar ? 1 : 0 }}">
+        <thead><tr><th style="width: 52px">#</th><th style="min-width: 260px">Ação</th><th style="min-width: 170px">Nome no botão</th><th style="width: 220px">Tipo</th><th style="width: 90px" class="text-center">O que faz</th>{% if pode_editar %}<th style="width: 110px"></th>{% endif %}</tr></thead>
+        <tbody>
+        {% for a in acoes_def %}
+          <tr data-botao="{{ a.n }}">
+            <td><span class="badge bg-secondary-lt">#{{ a.n }}</span><input type="hidden" class="pixc-bt-ordem" name="botao[{{ a.n }}][ordem]" value="{{ loop.index }}"><input type="hidden" class="pixc-bt-apagar" name="botao[{{ a.n }}][apagar]" value=""></td>
+            <td><div class="input-group input-group-sm">
+              <button type="button" class="btn btn-outline-secondary pixc-bt-icone" title="Trocar o ícone" {{ pode_editar ? '' : 'disabled' }}><i class="ti {{ a.icone }}"></i></button>
+              <input type="hidden" class="pixc-bt-icone-v" name="botao[{{ a.n }}][icone]" value="{{ a.icone }}">
+              <input type="text" class="form-control pixc-bt-nome" name="botao[{{ a.n }}][nome]" maxlength="80" required value="{{ a.nome }}" {{ pode_editar ? '' : 'readonly' }}>
+            </div></td>
+            <td><input type="text" class="form-control form-control-sm pixc-bt-rotulo" name="botao[{{ a.n }}][rotulo]" maxlength="40" value="{{ a.rotulo != a.nome ? a.rotulo : '' }}" placeholder="{{ a.nome }}" {{ pode_editar ? '' : 'readonly' }}></td>
+            <td><div class="input-group input-group-sm flex-nowrap">
+              <select class="form-select form-select-sm pixc-bt-tipo" name="botao[{{ a.n }}][tipo]" {{ pode_editar ? '' : 'disabled' }}>
+              {% for tv, tn in tipos %}<option value="{{ tv }}" {{ tv == a.tipo ? 'selected' : '' }}>{{ tn }}</option>{% endfor %}
+              </select>
+              <button type="button" class="btn btn-outline-secondary pixc-bt-cfg" title="Assunto da O.S. nova em cada base" aria-label="Configurar a O.S. nova" {{ a.tipo == 'aprova_os' ? '' : 'hidden' }}><i class="ti ti-settings"></i></button>
+            </div>
+            <span class="pixc-bt-assuntos" hidden>{% for b in bases %}<input type="hidden" data-base="{{ b.id }}" name="botao[{{ a.n }}][assunto][{{ b.id }}]" value="{{ (chamados[b.id][a.acao].assunto ?? 0) ?: '' }}">{% endfor %}</span></td>
+            <td class="text-center"><input type="hidden" class="pixc-bt-desc" name="botao[{{ a.n }}][descricao]" value="{{ a.descricao }}">
+              <button type="button" class="btn btn-sm btn-ghost-info pixc-bt-info" title="{{ a.descricao }}" aria-label="O que faz"><i class="ti ti-info-circle"></i></button></td>
+            {% if pode_editar %}<td class="text-nowrap">
+              <button type="button" class="btn btn-sm btn-ghost-secondary pixc-bt-sobe" title="Subir"><i class="ti ti-arrow-up"></i></button>
+              <button type="button" class="btn btn-sm btn-ghost-secondary pixc-bt-desce" title="Descer"><i class="ti ti-arrow-down"></i></button>
+              {% if pode_apagar_botao %}<button type="button" class="btn btn-sm btn-ghost-danger pixc-bt-remove" title="Apagar este botão"><i class="ti ti-trash"></i></button>{% endif %}
+            </td>{% endif %}
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% if pode_editar and pode_criar_botao %}
+        <button type="button" class="btn btn-sm btn-outline-primary" id="pixc-bt-add"><i class="ti ti-plus me-1"></i> Adicionar botão</button>
+        <span class="form-hint ms-2">O botão novo continua a numeração (#) e ganha na hora uma coluna de resposta na tabela das bases. Só passa a valer depois de <b>Salvar</b>.</span>
+      {% endif %}
+
+      <h5 class="mt-4">Token e respostas padrão por base</h5>
+      <div class="table-responsive">
+      <table class="table table-sm align-middle" id="pixc-resp-tab">
+        <thead><tr>
+          <th>Base</th><th style="min-width: 230px">Token da API do IXC (<code>id:hash</code>)</th>
+          {% for a in acoes_def %}<th class="text-center" data-col="{{ a.n }}" title="{{ a.nome }}">#{{ a.n }}<br><span class="small text-muted fw-normal pixc-resp-rot">{{ a.rotulo }}</span></th>
+            <th class="text-center pixc-col-os" data-col="{{ a.n }}" data-os="1" title="{{ a.nome }} — resposta padrão da O.S. nova" {{ a.tipo == 'aprova_os' ? '' : 'hidden' }}><span class="pixc-resp-num">#{{ a.n }}</span> O.S.<br><span class="small text-muted fw-normal">resposta do chamado</span></th>{% endfor %}
+        </tr></thead>
+        <tbody>
+        {% for b in bases %}
+          <tr data-base="{{ b.id }}">
+            <td><code>{{ b.codigo }}</code></td>
+            <td>
+              <input type="password" class="form-control form-control-sm" name="base[{{ b.id }}][api_token]" autocomplete="new-password"
+                     placeholder="{{ b.tem_token ? '•••• configurado — vazio mantém' : 'não configurado' }}" {{ pode_editar ? '' : 'readonly' }}>
+              {% if b.tem_token and pode_editar %}
+                <label class="form-check mb-0 mt-1"><input type="checkbox" class="form-check-input" name="base[{{ b.id }}][apagar_token]" value="1"><span class="form-check-label small">apagar token</span></label>
+              {% endif %}
+            </td>
+            {% for a in acoes_def %}
+              <td data-col="{{ a.n }}"><input type="number" min="1" class="form-control form-control-sm text-center" style="min-width: 70px" name="base[{{ b.id }}][resp][{{ a.n }}]" value="{{ respostas[b.id][a.acao] ?? '' }}" title="#{{ a.n }} {{ a.nome }} — id da resposta padrão no IXC desta base" {{ pode_editar ? '' : 'readonly' }}></td>
+              <td class="pixc-col-os" data-col="{{ a.n }}" data-os="1" {{ a.tipo == 'aprova_os' ? '' : 'hidden' }}><input type="number" min="1" class="form-control form-control-sm text-center" style="min-width: 70px" name="base[{{ b.id }}][resp_os][{{ a.n }}]" value="{{ (chamados[b.id][a.acao].resposta ?? 0) ?: '' }}" title="#{{ a.n }} {{ a.nome }} — id da resposta padrão da O.S. nova no IXC desta base" {{ pode_editar ? '' : 'readonly' }}></td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      <div class="form-hint">Token: o mesmo usuário de API do n8n (precisa ter colaborador vinculado); fica cifrado e nunca é mostrado de volta. Respostas: id em Suporte &gt; Respostas padrão do IXC de cada base (muda de base para base). Base sem token ou sem a resposta = botão desabilitado. Nos botões <b>Aprova/Abrir Chamado</b>, a coluna <b>#n</b> é a resposta que finaliza a Auditoria e a <b>#n O.S.</b> é a resposta usada como mensagem da O.S. nova; os dois e o assunto (engrenagem) precisam estar preenchidos na base.</div>
+
+      <h4 class="mt-4">Distribuição de auditorias</h4>
+      <p class="text-muted small mb-2">Auditoria nova que chega com o técnico padrão (o do processo do IXC) é encaminhada para o auditor que <b>recebeu menos</b> nos últimos 30 dias (ou desde a data abaixo, se for mais recente). Não olha o que está em aberto: segurar auditoria aberta não diminui o que a pessoa recebe. Reauditoria fica com quem auditou. Precisa do token da API na base.</p>
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label">Auditores (ids iguais nas 5 bases)</label>
+          <select class="form-select pixc-multi" name="dist_auditores[]" multiple size="6" data-placeholder="Nenhum auditor" {{ pode_editar ? '' : 'disabled' }}>
+            {% for t in tecnicos %}
+              <option value="{{ t.id }}" {{ t.id in dist_auditores ? 'selected' : '' }}>{{ t.nome }} (#{{ t.id }}{{ t.bases < 5 ? ', ' ~ t.bases ~ ' base(s)' : '' }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Técnico padrão do processo</label>
+          <select class="form-select" name="dist_padrao" {{ pode_editar ? '' : 'disabled' }}>
+            <option value="0">— sem técnico —</option>
+            {% for t in tecnicos %}
+              <option value="{{ t.id }}" {{ t.id == cfg.dist_padrao ? 'selected' : '' }}>{{ t.nome }} (#{{ t.id }})</option>
+            {% endfor %}
+          </select>
+          <div class="form-hint">Auditoria com este técnico (ou sem técnico) é redistribuída.</div>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Contar a partir de</label>
+          <input type="datetime-local" class="form-control" name="dist_desde" value="{{ cfg.dist_desde ? cfg.dist_desde|replace({' ': 'T'})|slice(0, 16) : '' }}" {{ pode_editar ? '' : 'readonly' }}>
+          <div class="form-hint">Vazio = momento em que ligar. Auditorias abertas antes não são mexidas nem contadas.</div>
+        </div>
+        <div class="col-12">
+          <label class="form-check form-check-inline"><input type="checkbox" class="form-check-input" name="dist_ativo" value="1" {{ cfg.dist_ativo ? 'checked' : '' }} {{ pode_editar ? '' : 'disabled' }}><span class="form-check-label">Distribuição ligada</span></label>
+          <label class="form-check form-check-inline"><input type="checkbox" class="form-check-input" name="dist_simular" value="1" {{ cfg.dist_simular ? 'checked' : '' }} {{ pode_editar ? '' : 'disabled' }}><span class="form-check-label">Só simular (mostra no painel para quem iria, sem mexer no IXC)</span></label>
+        </div>
+      </div>
+
+      <h4 class="mt-4">Bases</h4>
+      <table class="table table-sm align-middle">
+        <thead><tr><th>Código</th><th>Nome</th><th>Cor</th><th>URL do IXC (para o botão "Abrir no IXC")</th><th>Ativa</th><th title="Parâmetros gerais do IXC da base > aba Suporte > SLA apenas em dias úteis">SLA só dias úteis</th><th>Última sincronização</th></tr></thead>
+        <tbody>
+        {% for b in bases %}
+          <tr>
+            <td><code>{{ b.codigo }}</code></td>
+            <td><input type="text" class="form-control form-control-sm" name="base[{{ b.id }}][nome]" value="{{ b.nome }}" maxlength="80" {{ pode_editar ? '' : 'readonly' }}></td>
+            <td><input type="color" class="form-control form-control-sm form-control-color" name="base[{{ b.id }}][cor]" value="{{ b.cor }}" {{ pode_editar ? '' : 'disabled' }}></td>
+            <td><input type="url" class="form-control form-control-sm" name="base[{{ b.id }}][ixc_url]" value="{{ b.ixc_url ?? '' }}" placeholder="https://ixc.exemplo.com.br" {{ pode_editar ? '' : 'readonly' }}></td>
+            <td><input type="checkbox" class="form-check-input" name="base[{{ b.id }}][is_active]" value="1" {{ b.is_active ? 'checked' : '' }} {{ pode_editar ? '' : 'disabled' }}></td>
+            <td><input type="checkbox" class="form-check-input" name="sla_uteis[]" value="{{ b.codigo }}" {{ b.codigo in (cfg.sla_uteis_bases|split(',')) ? 'checked' : '' }} {{ pode_editar ? '' : 'disabled' }}></td>
+            <td class="text-muted">{{ b.ultima_sync ?? '—' }}{% if b.ultimo_erro %}<br><span class="text-danger">{{ b.ultimo_erro|slice(0, 120) }}</span>{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <div class="form-hint">A URL do IXC é preenchida automaticamente pelo coletor no primeiro retrato; só edite se precisar trocar.</div>
+      <div class="form-hint"><b>SLA só dias úteis:</b> marque igual ao IXC de cada base (Configurações &gt; Parâmetros &gt; Parâmetros gerais &gt; aba Suporte &gt; "SLA apenas em dias úteis"). Vale para os assuntos com SLA no padrão; o assunto que diz "Sim"/"Não" na própria aba SLA segue o que está no assunto.</div>
+    </div>
+    {% if pode_editar %}
+      <div class="card-footer">
+        <button type="submit" name="salvar" value="1" class="btn btn-primary"><i class="ti ti-device-floppy me-1"></i> Salvar</button>
+      </div>
+    {% endif %}
+    <input type="hidden" name="_glpi_csrf_token" value="{{ csrf_token() }}">
+  </form>
+</div>
+<script>
+(function () {
+  var j = window.jQuery;
+  if (!j || !j.fn || !j.fn.select2) return;   // sem select2: fica a lista múltipla nativa (Ctrl+clique)
+  j('.pixc-cfg select.pixc-multi').each(function () {
+    var s = j(this);
+    if (s.hasClass('select2-hidden-accessible')) return;
+    s.select2({ width: '100%', placeholder: s.data('placeholder') || '', closeOnSelect: false, allowClear: true });
+  });
+})();
+</script>
+
+<div class="modal fade" id="pixc-bt-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title">O que faz</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button></div>
+    <div class="modal-body">
+      <textarea class="form-control" rows="4" maxlength="200" aria-label="O que este botão faz"></textarea>
+      <div class="form-hint mt-1">Texto informativo (até 200 caracteres). Quem define o comportamento é o <b>Tipo</b>. Grava junto com o <b>Salvar</b> da página.</div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Fechar</button>
+    </div>
+  </div></div>
+</div>
+<div class="modal fade" id="pixc-os-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title">Assunto da O.S. nova</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button></div>
+    <div class="modal-body">
+      <div class="form-hint mb-2">O id do assunto muda de base para base. Digite o id ou escolha na lista (assuntos já coletados da base). Cliente, técnico e setor vêm da O.S. de Ativação; a O.S. nova é aberta <b>sem atendimento</b>, encaminhada (EN) ao técnico.</div>
+      <table class="table table-sm align-middle mb-0">
+        <thead><tr><th>Base</th><th style="width: 130px">Id do assunto</th><th>Nome</th></tr></thead>
+        <tbody>
+        {% for b in bases %}
+          <tr data-base="{{ b.id }}">
+            <td><code>{{ b.codigo }}</code></td>
+            <td><input type="number" min="1" class="form-control form-control-sm text-center pixc-os-ass" list="pixc-ass-{{ b.id }}" data-base="{{ b.id }}" aria-label="Id do assunto em {{ b.codigo }}" {{ pode_editar ? '' : 'readonly' }}></td>
+            <td class="small pixc-os-nome text-muted" data-base="{{ b.id }}"></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% for b in bases %}<datalist id="pixc-ass-{{ b.id }}">{% for s in assuntos_base[b.id] ?? [] %}<option value="{{ s.id }}">{{ s.nome }}</option>{% endfor %}</datalist>{% endfor %}
+      <div class="form-hint mt-2">Grava junto com o <b>Salvar</b> da página.</div>
+    </div>
+    <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Fechar</button></div>
+  </div></div>
+</div>
+<div class="pixc-icones" id="pixc-icones" hidden>
+  <input type="search" class="form-control form-control-sm mb-2" id="pixc-icones-busca" placeholder="Buscar ícone (ex.: roteador, foto, sinal)…">
+  <div class="pixc-icones-grade" id="pixc-icones-grade">
+    {% for ic in icones %}<button type="button" class="btn btn-ghost-secondary" data-icone="{{ ic.icone }}" data-busca="{{ ic.busca }}" title="{{ ic.icone }}"><i class="ti {{ ic.icone }}"></i></button>{% endfor %}
+  </div>
+</div>
+<style>
+  .pixc-cfg .pixc-bt-tab tr.apagado { display: none; }
+  .pixc-icones { position: fixed; z-index: 1080; width: 340px; max-height: 320px; overflow: auto; background: var(--tblr-bg-surface, #fff);
+    border: 1px solid var(--tblr-border-color, #dadfe5); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.15); padding: 8px; }
+  .pixc-icones-grade { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
+  .pixc-icones-grade .btn { padding: 6px 0; font-size: 18px; }
+  .pixc-icones-grade .btn.atual { background: var(--tblr-primary, #206bc4); color: #fff; }
+</style>
+<script>
+(function () {
+  var tab = document.getElementById('pixc-bt-tab'), resp = document.getElementById('pixc-resp-tab');
+  var add = document.getElementById('pixc-bt-add'), pop = document.getElementById('pixc-icones');
+  if (!tab || !resp) return;
+  var form = tab.closest('form'), seq = 0, alvo = null, proximo = parseInt(tab.getAttribute('data-proximo'), 10) || 1;
+  /** Botões novos (ainda não salvos) numerados em sequência a partir do próximo # livre — o servidor grava na mesma ordem. */
+  function renumerar() {
+    var n = proximo;
+    Array.prototype.forEach.call(tab.querySelectorAll('tbody tr[data-botao^="novo"]'), function (tr) {
+      var k = tr.getAttribute('data-botao'), num = n++;
+      tr.querySelector('.pixc-bt-num').textContent = '#' + num;
+      Array.prototype.forEach.call(resp.querySelectorAll('thead th[data-col="' + k + '"] .pixc-resp-num'), function (th) { th.textContent = '#' + num; });
+      Array.prototype.forEach.call(resp.querySelectorAll('td[data-col="' + k + '"] input'), function (i) { i.title = '#' + num + ' — id da resposta padrão no IXC desta base'; });
+    });
+  }
+  function escapar(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function rotuloLinha(tr) { var r = tr.querySelector('.pixc-bt-rotulo'), n = tr.querySelector('.pixc-bt-nome'); return (r && r.value.trim()) || (n && n.value.trim()) || 'novo botão'; }
+  function atualizarCabecalho(tr) {
+    var th = resp.querySelector('thead th[data-col="' + tr.getAttribute('data-botao') + '"] .pixc-resp-rot');
+    if (th) th.textContent = rotuloLinha(tr);
+    var r = tr.querySelector('.pixc-bt-rotulo'), n = tr.querySelector('.pixc-bt-nome');
+    if (r && n) r.placeholder = n.value;
+  }
+  function colunas(chave, mostrar) {
+    var tr = tab.querySelector('tr[data-botao="' + chave + '"]'), t = tr ? tr.querySelector('.pixc-bt-tipo') : null;
+    var comOs = !!t && t.value === 'aprova_os';
+    Array.prototype.forEach.call(resp.querySelectorAll('[data-col="' + chave + '"]'), function (c) { c.hidden = !mostrar || (c.getAttribute('data-os') === '1' && !comOs); });
+  }
+  function basesIds() { return Array.prototype.map.call(resp.querySelectorAll('tbody tr[data-base]'), function (l) { return l.getAttribute('data-base'); }); }
+  /** Tipo "Aprova/Abrir Chamado": mostra a engrenagem do assunto e a coluna "#n O.S." da tabela das bases. */
+  function aplicarTipo(tr) {
+    var t = tr.querySelector('.pixc-bt-tipo'), g = tr.querySelector('.pixc-bt-cfg');
+    if (g) g.hidden = !t || t.value !== 'aprova_os';
+    colunas(tr.getAttribute('data-botao'), !tr.classList.contains('apagado'));
+  }
+  tab.addEventListener('input', function (e) { var tr = e.target.closest('tr[data-botao]'); if (tr) atualizarCabecalho(tr); });
+  tab.addEventListener('click', function (e) {
+    var tr = e.target.closest('tr[data-botao]'); if (!tr) return;
+    var chave = tr.getAttribute('data-botao');
+    if (e.target.closest('.pixc-bt-sobe')) { var p = tr.previousElementSibling; while (p && p.classList.contains('apagado')) p = p.previousElementSibling; if (p) tr.parentNode.insertBefore(tr, p); renumerar(); return; }
+    if (e.target.closest('.pixc-bt-desce')) { var n = tr.nextElementSibling; while (n && n.classList.contains('apagado')) n = n.nextElementSibling; if (n) tr.parentNode.insertBefore(n, tr); renumerar(); return; }
+    if (e.target.closest('.pixc-bt-remove')) {
+      var nome = rotuloLinha(tr);
+      if (chave.indexOf('novo') === 0) { tr.remove(); Array.prototype.forEach.call(resp.querySelectorAll('[data-col="' + chave + '"]'), function (c) { c.remove(); }); renumerar(); return; }
+      if (!window.confirm('Apagar o botão #' + chave + ' (' + nome + ')?\n\nAs respostas padrão dele nas bases também são apagadas. O histórico antigo passa a mostrar só "#' + chave + '". Só vale depois de Salvar.')) return;
+      tr.querySelector('.pixc-bt-apagar').value = '1'; tr.classList.add('apagado'); colunas(chave, false);
+      tr.querySelector('.pixc-bt-nome').required = false;
+      return;
+    }
+    if (e.target.closest('.pixc-bt-info')) { abrirInfo(tr); return; }
+    if (e.target.closest('.pixc-bt-cfg')) { abrirOs(tr); return; }
+    var ib = e.target.closest('.pixc-bt-icone');
+    if (ib && pop) { abrirIcones(ib); }
+  });
+  if (add) add.addEventListener('click', function () {
+    var chave = 'novo' + (++seq), tb = tab.querySelector('tbody');
+    var tr = document.createElement('tr'); tr.setAttribute('data-botao', chave);
+    tr.innerHTML = '<td><span class="badge bg-green-lt pixc-bt-num" title="Número que o botão vai receber ao salvar">#</span><input type="hidden" class="pixc-bt-ordem" name="botao[' + chave + '][ordem]" value=""><input type="hidden" class="pixc-bt-apagar" name="botao[' + chave + '][apagar]" value=""></td>'
+      + '<td><div class="input-group input-group-sm"><button type="button" class="btn btn-outline-secondary pixc-bt-icone" title="Trocar o ícone"><i class="ti ti-point"></i></button>'
+      + '<input type="hidden" class="pixc-bt-icone-v" name="botao[' + chave + '][icone]" value="ti-point">'
+      + '<input type="text" class="form-control pixc-bt-nome" name="botao[' + chave + '][nome]" maxlength="80" required placeholder="Nome completo da ação"></div></td>'
+      + '<td><input type="text" class="form-control form-control-sm pixc-bt-rotulo" name="botao[' + chave + '][rotulo]" maxlength="40" placeholder="Nome curto (opcional)"></td>'
+      + '<td><div class="input-group input-group-sm flex-nowrap"><select class="form-select form-select-sm pixc-bt-tipo" name="botao[' + chave + '][tipo]"><option value="aprova">Aprova</option><option value="reprova" selected>Reprova</option><option value="aprova_os">Aprova/Abrir Chamado</option></select>'
+      + '<button type="button" class="btn btn-outline-secondary pixc-bt-cfg" title="Assunto da O.S. nova em cada base" aria-label="Configurar a O.S. nova" hidden><i class="ti ti-settings"></i></button></div>'
+      + '<span class="pixc-bt-assuntos" hidden>' + basesIds().map(function (id) { return '<input type="hidden" data-base="' + escapar(id) + '" name="botao[' + chave + '][assunto][' + escapar(id) + ']" value="">'; }).join('') + '</span></td>'
+      + '<td class="text-center"><input type="hidden" class="pixc-bt-desc" name="botao[' + chave + '][descricao]" value="Reabre a Ativação e finaliza a Auditoria (reprovada)">'
+      + '<button type="button" class="btn btn-sm btn-ghost-info pixc-bt-info" title="Reabre a Ativação e finaliza a Auditoria (reprovada)" aria-label="O que faz"><i class="ti ti-info-circle"></i></button></td>'
+      + '<td class="text-nowrap"><button type="button" class="btn btn-sm btn-ghost-secondary pixc-bt-sobe" title="Subir"><i class="ti ti-arrow-up"></i></button>'
+      + '<button type="button" class="btn btn-sm btn-ghost-secondary pixc-bt-desce" title="Descer"><i class="ti ti-arrow-down"></i></button>'
+      + '<button type="button" class="btn btn-sm btn-ghost-danger pixc-bt-remove" title="Remover"><i class="ti ti-trash"></i></button></td>';
+    tb.appendChild(tr);
+    // coluna de resposta já vinculada ao botão novo, em todas as bases
+    var th = document.createElement('th'); th.className = 'text-center'; th.setAttribute('data-col', chave);
+    th.innerHTML = '<span class="pixc-resp-num">#</span><br><span class="small text-muted fw-normal pixc-resp-rot">novo botão</span>';
+    resp.querySelector('thead tr').appendChild(th);
+    var tho = document.createElement('th'); tho.className = 'text-center pixc-col-os'; tho.setAttribute('data-col', chave); tho.setAttribute('data-os', '1'); tho.hidden = true;
+    tho.innerHTML = '<span class="pixc-resp-num">#</span> O.S.<br><span class="small text-muted fw-normal">resposta do chamado</span>';
+    resp.querySelector('thead tr').appendChild(tho);
+    Array.prototype.forEach.call(resp.querySelectorAll('tbody tr[data-base]'), function (l) {
+      var td = document.createElement('td'); td.setAttribute('data-col', chave);
+      td.innerHTML = '<input type="number" min="1" class="form-control form-control-sm text-center" style="min-width: 70px" name="base[' + escapar(l.getAttribute('data-base')) + '][resp][' + chave + ']" title="id da resposta padrão no IXC desta base">';
+      l.appendChild(td);
+      var tdo = document.createElement('td'); tdo.className = 'pixc-col-os'; tdo.setAttribute('data-col', chave); tdo.setAttribute('data-os', '1'); tdo.hidden = true;
+      tdo.innerHTML = '<input type="number" min="1" class="form-control form-control-sm text-center" style="min-width: 70px" name="base[' + escapar(l.getAttribute('data-base')) + '][resp_os][' + chave + ']" title="id da resposta padrão da O.S. nova no IXC desta base">';
+      l.appendChild(tdo);
+    });
+    renumerar();
+    tr.querySelector('.pixc-bt-nome').focus();
+  });
+  tab.addEventListener('change', function (e) {
+    if (!e.target.classList.contains('pixc-bt-tipo')) return;
+    var d = e.target.closest('tr').querySelector('.pixc-bt-desc');
+    var padroes = { aprova: 'Finaliza a Auditoria (aprovada)', reprova: 'Reabre a Ativação e finaliza a Auditoria (reprovada)',
+      aprova_os: 'Finaliza a Auditoria (aprovada) e abre uma O.S. nova para o técnico da Ativação' };
+    var lista = Object.keys(padroes).map(function (k) { return padroes[k]; }).concat(['']);
+    if (d && lista.indexOf(d.value.trim()) >= 0) { d.value = padroes[e.target.value] || padroes.reprova; atualizarInfo(e.target.closest('tr')); }
+    aplicarTipo(e.target.closest('tr'));
+  });
+  if (form) form.addEventListener('submit', function () {
+    var i = 0;
+    Array.prototype.forEach.call(tab.querySelectorAll('tbody tr[data-botao]'), function (tr) { tr.querySelector('.pixc-bt-ordem').value = String(++i); });
+  });
+  // "O que faz": botão (i) abre o pop-up do GLPI com o texto; quem pode editar altera ali mesmo
+  var modal = document.getElementById('pixc-bt-modal');
+  var editavel = tab.getAttribute('data-editavel') === '1';
+  function atualizarInfo(tr) {
+    var d = tr.querySelector('.pixc-bt-desc'), b = tr.querySelector('.pixc-bt-info');
+    if (b && d) b.title = d.value;
+  }
+  function abrirInfo(tr) {
+    if (!modal) return;
+    var d = tr.querySelector('.pixc-bt-desc'), num = tr.querySelector('.badge');
+    modal.querySelector('.modal-title').textContent = 'O que faz — ' + (num ? num.textContent + ' ' : '') + rotuloLinha(tr);
+    var ta = modal.querySelector('textarea');
+    ta.value = d.value; ta.readOnly = !editavel;
+    modal._linha = tr;
+    if (window.bootstrap && window.bootstrap.Modal) window.bootstrap.Modal.getOrCreateInstance(modal).show();
+    else { modal.style.display = 'block'; modal.classList.add('show'); }
+  }
+  function fecharInfo() {
+    if (window.bootstrap && window.bootstrap.Modal) window.bootstrap.Modal.getOrCreateInstance(modal).hide();
+    else { modal.style.display = 'none'; modal.classList.remove('show'); }
+  }
+  if (modal) {
+    // o que for digitado já vai para o formulário (grava no Salvar da página, como os outros campos)
+    modal.querySelector('textarea').addEventListener('input', function () {
+      var tr = modal._linha; if (!tr || this.readOnly) return;
+      tr.querySelector('.pixc-bt-desc').value = this.value.trim().slice(0, 200);
+      atualizarInfo(tr);
+    });
+    Array.prototype.forEach.call(modal.querySelectorAll('[data-bs-dismiss=modal]'), function (b) { b.addEventListener('click', function () { if (!(window.bootstrap && window.bootstrap.Modal)) fecharInfo(); }); });
+  }
+
+  // engrenagem do "Aprova/Abrir Chamado": assunto da O.S. nova por base (grava nos hidden da linha do botão)
+  var modalOs = document.getElementById('pixc-os-modal');
+  function nomeAssunto(baseId, v) {
+    var dl = document.getElementById('pixc-ass-' + baseId), o = null;
+    if (dl && v) Array.prototype.some.call(dl.options, function (x) { if (x.value === String(v)) { o = x; return true; } return false; });
+    return o ? o.textContent : (v ? 'não está na lista coletada desta base — confira o id no IXC' : '');
+  }
+  function abrirOs(tr) {
+    if (!modalOs) return;
+    var num = tr.querySelector('.badge');
+    modalOs.querySelector('.modal-title').textContent = 'Assunto da O.S. nova — ' + (num ? num.textContent + ' ' : '') + rotuloLinha(tr);
+    modalOs._linha = tr;
+    Array.prototype.forEach.call(modalOs.querySelectorAll('.pixc-os-ass'), function (i) {
+      var h = tr.querySelector('.pixc-bt-assuntos input[data-base="' + i.getAttribute('data-base') + '"]');
+      i.value = h ? h.value : ''; i.readOnly = !editavel;
+      modalOs.querySelector('.pixc-os-nome[data-base="' + i.getAttribute('data-base') + '"]').textContent = nomeAssunto(i.getAttribute('data-base'), i.value);
+    });
+    if (window.bootstrap && window.bootstrap.Modal) window.bootstrap.Modal.getOrCreateInstance(modalOs).show();
+    else { modalOs.style.display = 'block'; modalOs.classList.add('show'); }
+  }
+  if (modalOs) {
+    modalOs.addEventListener('input', function (e) {
+      var i = e.target.closest('.pixc-os-ass'), tr = modalOs._linha; if (!i || !tr || i.readOnly) return;
+      var b = i.getAttribute('data-base'), v = String(parseInt(i.value, 10) || '');
+      var h = tr.querySelector('.pixc-bt-assuntos input[data-base="' + b + '"]'); if (h) h.value = v;
+      modalOs.querySelector('.pixc-os-nome[data-base="' + b + '"]').textContent = nomeAssunto(b, v);
+    });
+    Array.prototype.forEach.call(modalOs.querySelectorAll('[data-bs-dismiss=modal]'), function (b) { b.addEventListener('click', function () {
+      if (!(window.bootstrap && window.bootstrap.Modal)) { modalOs.style.display = 'none'; modalOs.classList.remove('show'); } }); });
+  }
+
+  // grade de ícones
+  function abrirIcones(btn) {
+    alvo = btn; var r = btn.getBoundingClientRect();
+    pop.hidden = false;
+    pop.style.top = Math.min(r.bottom + 4, window.innerHeight - 330) + 'px';
+    pop.style.left = Math.min(r.left, window.innerWidth - 350) + 'px';
+    var atual = btn.parentNode.querySelector('.pixc-bt-icone-v').value;
+    Array.prototype.forEach.call(pop.querySelectorAll('[data-icone]'), function (b) { b.classList.toggle('atual', b.getAttribute('data-icone') === atual); });
+    var busca = document.getElementById('pixc-icones-busca'); busca.value = ''; filtrar(''); busca.focus();
+  }
+  function fecharIcones() { if (pop) pop.hidden = true; alvo = null; }
+  function filtrar(t) {
+    t = t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    Array.prototype.forEach.call(pop.querySelectorAll('[data-icone]'), function (b) { b.hidden = !!t && b.getAttribute('data-busca').indexOf(t) < 0; });
+  }
+  if (pop) {
+    document.getElementById('pixc-icones-busca').addEventListener('input', function () { filtrar(this.value); });
+    pop.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-icone]'); if (!b || !alvo) return;
+      var ic = b.getAttribute('data-icone');
+      alvo.parentNode.querySelector('.pixc-bt-icone-v').value = ic;
+      alvo.querySelector('i').className = 'ti ' + ic;
+      fecharIcones();
+    });
+    document.addEventListener('mousedown', function (e) { if (!pop.hidden && !pop.contains(e.target) && !e.target.closest('.pixc-bt-icone')) fecharIcones(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') fecharIcones(); });
+  }
+})();
+</script>

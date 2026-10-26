@@ -1,0 +1,642 @@
+{
+ "id": "__WF_ID__",
+ "name": "Painel IXC - Coletor __BASE_NOME__",
+ "active": false,
+ "nodes": [
+  {
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "minutes",
+       "minutesInterval": 5
+      }
+     ]
+    }
+   },
+   "id": "14d4cde9-1455-59fd-b325-1111df70c70d",
+   "name": "A cada 5 min",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    0
+   ]
+  },
+  {
+   "parameters": {},
+   "id": "9653cd55-d0a5-5129-b4bf-61b2799c4ef3",
+   "name": "Manual",
+   "type": "n8n-nodes-base.manualTrigger",
+   "typeVersion": 1,
+   "position": [
+    0,
+    200
+   ]
+  },
+  {
+   "parameters": {
+    "assignments": {
+     "assignments": [
+      {
+       "id": "07352125-2256-562c-99b2-2654e3d6bc77",
+       "name": "BASE",
+       "value": "__BASE__",
+       "type": "string"
+      },
+      {
+       "id": "c8d3b2e2-644c-5ef4-b665-06e484b9df26",
+       "name": "IXC_URL",
+       "value": "__IXC_URL__",
+       "type": "string"
+      },
+      {
+       "id": "813ff7de-8da4-574e-bacc-623c92ec5348",
+       "name": "PAINEL_URL",
+       "value": "__PAINEL_URL__",
+       "type": "string"
+      },
+      {
+       "id": "1dc5debb-2af0-59d3-82f9-3811e61c3b3e",
+       "name": "PAINEL_TOKEN",
+       "value": "__PAINEL_TOKEN__",
+       "type": "string"
+      },
+      {
+       "id": "2765034b-4c75-50d4-b0b2-e9e0431cc69f",
+       "name": "STATUS_FECHADOS",
+       "value": "F,C",
+       "type": "string"
+      },
+      {
+       "id": "36d80a07-6d13-52db-82bd-d446646654ad",
+       "name": "TIPO",
+       "value": "abertas",
+       "type": "string"
+      },
+      {
+       "id": "69b3e2e3-3c63-5d3a-98ce-a844c9bc79eb",
+       "name": "RESOLVIDAS_DIAS",
+       "value": "90",
+       "type": "string"
+      }
+     ]
+    },
+    "options": {}
+   },
+   "id": "0ad657ab-4886-5fb3-a129-55b1fd3f4f25",
+   "name": "Config",
+   "type": "n8n-nodes-base.set",
+   "typeVersion": 3.4,
+   "position": [
+    220,
+    100
+   ]
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.IXC_URL }}/webservice/v1/su_oss_chamado",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpBasicAuth",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "ixcsoft",
+       "value": "listar"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ qtype: 'su_oss_chamado.id', query: '0', oper: '>', page: '1', rp: '5000', sortname: 'su_oss_chamado.id', sortorder: 'desc', grid_param: JSON.stringify($('Config').first().json.TIPO === 'resolvidas' ? [{ TB: 'su_oss_chamado.status', OP: '=', P: 'F' }, { TB: 'su_oss_chamado.data_fechamento', OP: '>=', P: new Date(Date.now() - (parseInt($('Config').first().json.RESOLVIDAS_DIAS, 10) || 90) * 86400000).toISOString().slice(0, 10) + ' 00:00:00' }] : String($('Config').first().json.STATUS_FECHADOS || 'F,C').split(',').map(st => st.trim()).filter(st => st).map(st => ({ TB: 'su_oss_chamado.status', OP: '!=', P: st }))) }) }}",
+    "options": {
+     "response": {
+      "response": {
+       "responseFormat": "text",
+       "outputPropertyName": "data"
+      }
+     },
+     "timeout": 120000
+    }
+   },
+   "id": "617024d6-ea31-509c-a226-00b4751af49f",
+   "name": "Buscar OS abertas",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    440,
+    100
+   ],
+   "executeOnce": true,
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "credentials": {
+    "httpBasicAuth": {
+     "id": "__CRED_ID__",
+     "name": "__CRED_NOME__"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.IXC_URL }}/webservice/v1/su_oss_assunto",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpBasicAuth",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "ixcsoft",
+       "value": "listar"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ qtype: 'su_oss_assunto.id', query: '0', oper: '>', page: '1', rp: '5000', sortname: 'su_oss_assunto.id', sortorder: 'asc' }) }}",
+    "options": {
+     "response": {
+      "response": {
+       "responseFormat": "text",
+       "outputPropertyName": "data"
+      }
+     },
+     "timeout": 120000
+    }
+   },
+   "id": "3bb61f16-d8eb-53ee-a4f2-1df8445a2967",
+   "name": "Buscar assuntos",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    660,
+    100
+   ],
+   "executeOnce": true,
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "credentials": {
+    "httpBasicAuth": {
+     "id": "__CRED_ID__",
+     "name": "__CRED_NOME__"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.IXC_URL }}/webservice/v1/funcionarios",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpBasicAuth",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "ixcsoft",
+       "value": "listar"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ qtype: 'funcionarios.id', query: '0', oper: '>', page: '1', rp: '5000', sortname: 'funcionarios.id', sortorder: 'asc' }) }}",
+    "options": {
+     "response": {
+      "response": {
+       "responseFormat": "text",
+       "outputPropertyName": "data"
+      }
+     },
+     "timeout": 120000
+    }
+   },
+   "id": "bc97a850-3474-56b5-bc44-f16008de7b64",
+   "name": "Buscar técnicos",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    880,
+    100
+   ],
+   "executeOnce": true,
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "credentials": {
+    "httpBasicAuth": {
+     "id": "__CRED_ID__",
+     "name": "__CRED_NOME__"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.IXC_URL }}/webservice/v1/empresa_setor",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpBasicAuth",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "ixcsoft",
+       "value": "listar"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ qtype: 'empresa_setor.id', query: '0', oper: '>', page: '1', rp: '5000', sortname: 'empresa_setor.id', sortorder: 'asc' }) }}",
+    "options": {
+     "response": {
+      "response": {
+       "responseFormat": "text",
+       "outputPropertyName": "data"
+      }
+     },
+     "timeout": 120000
+    }
+   },
+   "id": "12e6004d-2bce-5266-b3ce-d04163550c6d",
+   "name": "Buscar setores",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1100,
+    100
+   ],
+   "executeOnce": true,
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "credentials": {
+    "httpBasicAuth": {
+     "id": "__CRED_ID__",
+     "name": "__CRED_NOME__"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.IXC_URL }}/webservice/v1/su_diagnostico",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpBasicAuth",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "ixcsoft",
+       "value": "listar"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ qtype: 'su_diagnostico.id', query: '0', oper: '>', page: '1', rp: '5000', sortname: 'su_diagnostico.id', sortorder: 'asc' }) }}",
+    "options": {
+     "response": {
+      "response": {
+       "responseFormat": "text",
+       "outputPropertyName": "data"
+      }
+     },
+     "timeout": 120000
+    }
+   },
+   "id": "07239197-55af-57f2-b109-5fc3d118670c",
+   "name": "Buscar diagnósticos",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1100,
+    300
+   ],
+   "executeOnce": true,
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "credentials": {
+    "httpBasicAuth": {
+     "id": "__CRED_ID__",
+     "name": "__CRED_NOME__"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.IXC_URL }}/webservice/v1/cliente_condominio",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpBasicAuth",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "ixcsoft",
+       "value": "listar"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ qtype: 'cliente_condominio.id', query: '0', oper: '>', page: '1', rp: '5000', sortname: 'cliente_condominio.id', sortorder: 'asc' }) }}",
+    "options": {
+     "response": {
+      "response": {
+       "responseFormat": "text",
+       "outputPropertyName": "data"
+      }
+     },
+     "timeout": 120000
+    }
+   },
+   "id": "9584ce08-ee7d-5ee4-860e-d0737e0e413c",
+   "name": "Buscar condomínios",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1100,
+    500
+   ],
+   "executeOnce": true,
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "credentials": {
+    "httpBasicAuth": {
+     "id": "__CRED_ID__",
+     "name": "__CRED_NOME__"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "jsCode": "// Monta a busca de clientes só com os ids que aparecem nas O.S. abertas.\n// O IXC às vezes devolve JSON com caractere de controle cru dentro do texto (ex.: quebra de linha na\n// mensagem da O.S.), que o n8n recusa. Por isso os nós \"Buscar ...\" recebem TEXTO e o parse é feito aqui.\nconst msgErro = (e) => typeof e === 'string' ? e : (e && (e.message || e.description)) || JSON.stringify(e);\nconst lerIxc = (j) => {\n  if (!j) return { error: 'sem resposta' };\n  if (j.error) return { error: msgErro(j.error) };\n  const raw = j.data;\n  if (raw === undefined) return j;\n  if (typeof raw !== 'string') return raw;\n  const txt = raw.replace(/^﻿/, '').trim();\n  try { return JSON.parse(txt); } catch (e) { /* tenta limpar */ }\n  try { return JSON.parse(txt.replace(/[\\u0000-\\u001F]+/g, ' ')); } catch (e) {\n    return { error: 'resposta do IXC não é JSON (' + txt.length + ' bytes): ' + txt.slice(0, 180) };\n  }\n};\nconst r = lerIxc($('Buscar OS abertas').first().json);\nconst os = Array.isArray(r.registros) ? r.registros : [];\nconst ids = [...new Set(os.map(o => String(o.id_cliente || '')).filter(i => /^\\d+$/.test(i) && i !== '0'))];\nreturn [{ json: { corpo: {\n  qtype: 'cliente.id', query: '0', oper: '>', page: '1',\n  rp: String(Math.max(ids.length, 1)), sortname: 'cliente.id', sortorder: 'asc',\n  grid_param: JSON.stringify([{ TB: 'cliente.id', OP: 'IN', P: ids.length ? ids.join(',') : '0' }])\n} } }];\n"
+   },
+   "id": "b0550677-aac3-5021-b2b0-b58acdba1ba4",
+   "name": "Lista de clientes",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1320,
+    100
+   ],
+   "alwaysOutputData": true
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.IXC_URL }}/webservice/v1/cliente",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpBasicAuth",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "ixcsoft",
+       "value": "listar"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.corpo) }}",
+    "options": {
+     "response": {
+      "response": {
+       "responseFormat": "text",
+       "outputPropertyName": "data"
+      }
+     },
+     "timeout": 120000
+    }
+   },
+   "id": "ea3dfd52-6e8c-5cac-a260-be22c1e9bb10",
+   "name": "Buscar clientes",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1540,
+    100
+   ],
+   "executeOnce": true,
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "credentials": {
+    "httpBasicAuth": {
+     "id": "__CRED_ID__",
+     "name": "__CRED_NOME__"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "jsCode": "// Junta as respostas do IXC num \"retrato\" da base e manda só os campos que o painel usa.\n// Se a busca principal falhar, manda {base, erro} — o painel registra e NÃO encerra nenhuma O.S.\n// O IXC às vezes devolve JSON com caractere de controle cru dentro do texto (ex.: quebra de linha na\n// mensagem da O.S.), que o n8n recusa. Por isso os nós \"Buscar ...\" recebem TEXTO e o parse é feito aqui.\nconst msgErro = (e) => typeof e === 'string' ? e : (e && (e.message || e.description)) || JSON.stringify(e);\nconst lerIxc = (j) => {\n  if (!j) return { error: 'sem resposta' };\n  if (j.error) return { error: msgErro(j.error) };\n  const raw = j.data;\n  if (raw === undefined) return j;\n  if (typeof raw !== 'string') return raw;\n  const txt = raw.replace(/^﻿/, '').trim();\n  try { return JSON.parse(txt); } catch (e) { /* tenta limpar */ }\n  try { return JSON.parse(txt.replace(/[\\u0000-\\u001F]+/g, ' ')); } catch (e) {\n    return { error: 'resposta do IXC não é JSON (' + txt.length + ' bytes): ' + txt.slice(0, 180) };\n  }\n};\nconst cfg = $('Config').first().json;\nconst base = String(cfg.BASE || '').trim();\nconst url = String(cfg.IXC_URL || '').trim().replace(/\\/+$/, '');\nconst erro = (msg) => [{ json: { base, erro: String(msg).slice(0, 900) } }];\n\nif (!/^https?:\\/\\/\\S+$/i.test(url) || /PREENCHER/i.test(url)) {\n  return erro('Config.IXC_URL não preenchida no workflow do n8n');\n}\n\nconst r = lerIxc($('Buscar OS abertas').first().json);\nif (r.error) return erro('Falha ao buscar O.S. no IXC: ' + msgErro(r.error));\nif (r.type === 'error') return erro('IXC recusou a busca de O.S.: ' + (r.message || JSON.stringify(r)));\nconst total = Number(r.total);\nif (!Number.isFinite(total)) return erro('Resposta inesperada do IXC (sem \"total\"): ' + JSON.stringify(r).slice(0, 300));\nconst regs = Array.isArray(r.registros) ? r.registros : [];\nif (total > 0 && regs.length === 0) return erro('IXC informou ' + total + ' O.S. mas não mandou registros');\n\nconst CAMPOS_OS = ['id', 'protocolo', 'status', 'prioridade', 'id_assunto', 'setor', 'id_tecnico', 'id_cliente',\n  'id_condominio', 'id_su_diagnostico', 'id_ticket', 'mensagem', 'mensagem_resposta', 'data_abertura', 'data_agenda',\n  'data_inicio', 'data_final', 'data_fechamento', 'ultima_atualizacao'];\nconst os = regs.map(o => {\n  const x = {};\n  for (const k of CAMPOS_OS) if (o[k] !== undefined) x[k] = (k === 'mensagem' || k === 'mensagem_resposta') ? String(o[k] || '').slice(0, 2000) : o[k];\n  return x;\n});\n\nconst avisos = [];\nconst dic = (j, nome, campos) => {\n  if (!j || j.error || j.type === 'error' || !Array.isArray(j.registros)) {\n    if (!(j && Number(j.total) === 0)) avisos.push(nome + ': ' + (j && (j.error ? msgErro(j.error) : j.message) || 'sem registros'));\n    return [];\n  }\n  return j.registros.map(o => { const x = { id: o.id }; for (const c of campos) if (o[c] !== undefined) x[c] = o[c]; return x; });\n};\nconst assuntos = dic(lerIxc($('Buscar assuntos').first().json), 'assuntos', ['assunto']);\nconst tecnicos = dic(lerIxc($('Buscar técnicos').first().json), 'tecnicos', ['funcionario']);\nconst setores  = dic(lerIxc($('Buscar setores').first().json), 'setores', ['setor']);\nconst clientes = os.length ? dic(lerIxc($('Buscar clientes').first().json), 'clientes', ['razao', 'fantasia', 'id_condominio']) : [];\nconst diagnosticos = dic(lerIxc($('Buscar diagnósticos').first().json), 'diagnosticos', ['descricao']);\nconst condominios = dic(lerIxc($('Buscar condomínios').first().json), 'condominios', ['condominio']);\nconst tipo = cfg.TIPO === 'resolvidas' ? 'resolvidas' : 'abertas';\n\nreturn [{ json: { base, tipo, ixc_url: url, total, os, assuntos, tecnicos, setores, clientes, condominios, diagnosticos, avisos } }];\n"
+   },
+   "id": "d3cb4d56-cac6-54b2-a3a1-579d2496279b",
+   "name": "Montar retrato",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1760,
+    100
+   ]
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.PAINEL_URL }}",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Authorization",
+       "value": "=Bearer {{ $('Config').first().json.PAINEL_TOKEN }}"
+      },
+      {
+       "name": "X-Painel-Token",
+       "value": "={{ $('Config').first().json.PAINEL_TOKEN }}"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json) }}",
+    "options": {
+     "response": {
+      "response": {
+       "responseFormat": "json"
+      }
+     },
+     "timeout": 60000
+    }
+   },
+   "id": "d825867a-3de8-5a1a-9c75-3696d3368c27",
+   "name": "Enviar ao painel",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1980,
+    100
+   ]
+  },
+  {
+   "parameters": {
+    "content": "## Painel IXC — coletor da base\nSó LEITURA no IXC (`ixcsoft: listar`).\n\nBusca as O.S. em aberto (status diferente de STATUS_FECHADOS no Config; o IXC não aceita IN em status) + nomes de assunto/técnico/setor/cliente e envia um retrato para o painel.\n\n- Editar só o nó **Config**. TIPO = abertas (a cada 5 min) ou resolvidas (1x por dia, últimos RESOLVIDAS_DIAS dias).\n- PAINEL_URL = endereço completo do ingest do plugin GLPI (Configurar > Geral > Painel IXC).\n- Se a busca de O.S. falhar, o painel mostra o erro no card da base e não encerra nada.\n- Execuções com sucesso não são salvas (evita encher o banco do n8n).",
+    "height": 260,
+    "width": 420
+   },
+   "id": "fe7d1c6c-36fa-54eb-b16e-d8e09c99c3fe",
+   "name": "Nota",
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    220,
+    -260
+   ]
+  }
+ ],
+ "connections": {
+  "A cada 5 min": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Manual": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Config": {
+   "main": [
+    [
+     {
+      "node": "Buscar OS abertas",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Buscar OS abertas": {
+   "main": [
+    [
+     {
+      "node": "Buscar assuntos",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Buscar assuntos": {
+   "main": [
+    [
+     {
+      "node": "Buscar técnicos",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Buscar técnicos": {
+   "main": [
+    [
+     {
+      "node": "Buscar setores",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Buscar setores": {
+   "main": [
+    [
+     {
+      "node": "Buscar diagnósticos",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Buscar diagnósticos": {
+   "main": [
+    [
+     {
+      "node": "Buscar condomínios",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Buscar condomínios": {
+   "main": [
+    [
+     {
+      "node": "Lista de clientes",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Lista de clientes": {
+   "main": [
+    [
+     {
+      "node": "Buscar clientes",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Buscar clientes": {
+   "main": [
+    [
+     {
+      "node": "Montar retrato",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Montar retrato": {
+   "main": [
+    [
+     {
+      "node": "Enviar ao painel",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1",
+  "saveDataSuccessExecution": "none",
+  "saveDataErrorExecution": "all",
+  "saveManualExecutions": true,
+  "timezone": "America/Sao_Paulo"
+ },
+ "pinData": {},
+ "tags": []
+}

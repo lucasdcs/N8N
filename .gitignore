@@ -1,0 +1,10 @@
+*.log
+*.tgz
+*.zip
+*.sql
+*.sql.gz
+.env
+vendor/
+node_modules/
+__pycache__/
+*.pyc

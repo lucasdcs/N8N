@@ -1,0 +1,38 @@
+{# 0.12.0 — lado direito do cabeçalho das telas: abas (só as que o perfil lê), Atualizar, Relatório, tema e engrenagem.
+   Recebe: nav (Direito::navComum() + chaves da tela) e ativa = atd | os | aud | cli | rel #}
+{% set d = nav.direitos %}
+{% if ativa != 'rel' %}
+  <div class="btn-group pixc-abas" role="tablist" aria-label="Abas">
+    {% if d.atd.ler %}
+      {% if ativa == 'atd' %}<button type="button" class="btn btn-outline-secondary pixc-aba-atd active" role="tab" aria-selected="true">Atendimento</button>
+      {% else %}<a class="btn btn-outline-secondary pixc-aba-atd" href="{{ nav.url_atendimento }}" role="tab" aria-selected="false">Atendimento</a>{% endif %}
+    {% endif %}
+    {% if d.os.ler %}
+      {% if ativa == 'os' %}<button type="button" class="btn btn-outline-secondary pixc-aba-os active" role="tab" aria-selected="true">Ordem de Serviço</button>
+      {% else %}<a class="btn btn-outline-secondary pixc-aba-os" href="{{ nav.url_painel }}" role="tab" aria-selected="false">Ordem de Serviço</a>{% endif %}
+    {% endif %}
+    {% if d.aud.ler %}
+      {% if ativa == 'aud' %}<button type="button" class="btn btn-outline-secondary pixc-aba-aud active" role="tab" aria-selected="true">Auditoria</button>
+      {% else %}<a class="btn btn-outline-secondary pixc-aba-aud" href="{{ nav.url_auditoria }}" role="tab" aria-selected="false">Auditoria</a>{% endif %}
+    {% endif %}
+    {% if d.cli.ler %}
+      {% if ativa == 'cli' %}<button type="button" class="btn btn-outline-secondary pixc-aba-cli active" role="tab" aria-selected="true">Clientes</button>
+      {% else %}<a class="btn btn-outline-secondary pixc-aba-cli" href="{{ nav.url_clientes }}" role="tab" aria-selected="false">Clientes</a>{% endif %}
+    {% endif %}
+  </div>
+  {% if nav.pode_atualizar %}
+    <button type="button" class="btn btn-outline-secondary" id="pixc-atualizar" title="Atualizar agora"><i class="ti ti-refresh"></i></button>
+  {% endif %}
+  {% if d.rel.ler %}
+    <a class="btn pixc-btn-relatorio" href="{{ nav.url_relatorio }}"><i class="ti ti-chart-pie me-1"></i> Relatório</a>
+  {% endif %}
+{% endif %}
+{# 0.13.2: igual ao Tarefas (taskplus) — um botão só, que alterna claro/escuro (lua no claro, sol no escuro) #}
+<button type="button" class="pixc-tema-btn" id="pixc-tema-btn" aria-pressed="{{ nav.tema == 'escuro' ? 'true' : 'false' }}"
+        title="{{ nav.tema == 'escuro' ? 'Tema: escuro — clique para o claro' : 'Tema: claro — clique para o escuro' }}"
+        aria-label="{{ nav.tema == 'escuro' ? 'Tema: escuro — clique para o claro' : 'Tema: claro — clique para o escuro' }}">
+  <i class="ti {{ nav.tema == 'escuro' ? 'ti-sun' : 'ti-moon' }}"></i>
+</button>
+{% if nav.pode_config %}
+  <a class="pixc-tema-btn pixc-cfg-btn" href="{{ nav.url_config }}" title="Foi a IA que fez" aria-label="Configuração do Painel IXC"><i class="ti ti-settings"></i></a>
+{% endif %}
