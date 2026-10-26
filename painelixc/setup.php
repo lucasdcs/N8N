@@ -3,7 +3,7 @@
 /**
  * Painel de Chamados IXC — plugin GLPI 11
  * Consolida as O.S. das bases IXC coletadas pelo n8n.
- * Teckcomp / Resolutto
+ * SCDell / Resolutto
  */
 
 use Glpi\Http\Firewall;
@@ -13,7 +13,7 @@ use GlpiPlugin\Painelixc\Config;
 use GlpiPlugin\Painelixc\Menu;
 use GlpiPlugin\Painelixc\Profile;
 
-define('PLUGIN_PAINELIXC_VERSION', '0.14.0');
+define('PLUGIN_PAINELIXC_VERSION', '0.14.1');
 define('PLUGIN_PAINELIXC_ASSETS', '0.14.0.1');   // carimbo do JS/CSS (cache do navegador); muda a cada entrega de tela
 define('PLUGIN_PAINELIXC_MIN_GLPI', '11.0.0');
 define('PLUGIN_PAINELIXC_MAX_GLPI', '11.0.99');
@@ -49,9 +49,9 @@ function plugin_version_painelixc(): array
     return [
         'name'         => 'Painel IXC',
         'version'      => PLUGIN_PAINELIXC_VERSION,
-        'author'       => 'Teckcomp',
+        'author'       => 'SCDell',
         'license'      => 'GPLv3+',
-        'homepage'     => 'https://teckcomp.com.br',
+        'homepage'     => 'https://github.com/lucasdcs/N8N',
         'requirements' => [
             'glpi' => [
                 'min' => PLUGIN_PAINELIXC_MIN_GLPI,
