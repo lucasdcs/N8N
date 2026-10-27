@@ -1,0 +1,410 @@
+{
+ "name": "WhatsApp - Lembretes de visita IXC (WAHA)",
+ "nodes": [
+  {
+   "name": "A cada 5 minutos",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    300
+   ],
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "minutes",
+       "minutesInterval": 5
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "Carregar Config",
+   "type": "n8n-nodes-base.postgres",
+   "typeVersion": 2.7,
+   "executeOnce": true,
+   "position": [
+    200,
+    300
+   ],
+   "parameters": {
+    "operation": "executeQuery",
+    "query": "SELECT json_build_object(\n 'empresas', (SELECT json_agg(e ORDER BY e.id) FROM ixc.empresas e WHERE e.ativo),\n 'tecnicos', (SELECT coalesce(json_agg(t), '[]'::json) FROM ixc.tecnicos t),\n 'locais', (SELECT coalesce(json_agg(l), '[]'::json) FROM ixc.locais l),\n 'funcionarios', (SELECT coalesce(json_agg(f), '[]'::json) FROM ixc.funcionarios f),\n 'param', (SELECT json_object_agg(chave, valor) FROM ixc.parametros),\n 'pendentes', '[]'::json,\n 'lembretes', (SELECT coalesce(json_agg(x), '[]'::json) FROM (SELECT empresa, id_chamado, tipo, evento FROM ixc.eventos WHERE tipo LIKE 'lembrete%' AND status = 'ok' AND ts > now() - interval '3 days') x)\n) AS cfg",
+    "options": {}
+   },
+   "credentials": {
+    "postgres": {
+     "name": "Postgres IXC State"
+    }
+   }
+  },
+  {
+   "name": "Empresas",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    400,
+    300
+   ],
+   "parameters": {
+    "jsCode": "function unwrap(x) {\n  if (x && typeof x === 'object' && typeof x.data === 'string') {\n    try { return JSON.parse(x.data); } catch (e) { return x; }\n  }\n  return x || {};\n}\nfunction paraData(s) { // 'YYYY-MM-DD HH:MM:SS' (horario de Brasilia) -> ms (tratado como UTC, so pra comparar)\n  const [d, h] = s.split(' '); const [Y, M, D] = d.split('-').map(Number); const [hh, mm, ss] = (h || '0:0:0').split(':').map(Number);\n  return Date.UTC(Y, M - 1, D, hh, mm, ss || 0);\n}\nfunction agoraBRT() { return new Date().toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' }); }\nfunction carregarConfig() {\n  let c = $('Carregar Config').first().json.cfg;\n  if (typeof c === 'string') c = JSON.parse(c);\n  const idx = (lst, f) => Object.fromEntries((lst || []).map(x => [x.empresa + ':' + x[f], x]));\n  return {\n    empresas: Object.fromEntries((c.empresas || []).map(e => [e.id, e])),\n    tec: idx(c.tecnicos, 'id_func'), loc: idx(c.locais, 'id_condominio'), func: idx(c.funcionarios, 'id_func'),\n    param: c.param || {}, pendentes: c.pendentes || [], lembretes: c.lembretes || [],\n  };\n}\n// Regras de roteamento (iguais para todas as empresas; mapas no Postgres, schema ixc)\nfunction localDe(C, emp, chamado, cliente) {\n  const id = String(chamado.id_condominio || '0') !== '0' ? String(chamado.id_condominio) : String((cliente || {}).id_condominio || '0');\n  return C.loc[emp + ':' + id] || null;\n}\nfunction nomePessoa(C, emp, pid) {\n  const t = C.tec[emp + ':' + pid]; if (t) return t.nome;\n  const f = C.func[emp + ':' + pid]; return f ? f.nome : ('técnico id ' + pid);\n}\n// Sem ninguem atribuido: grupo do shopping marcando quem esta em marcar_sem_tec (+ coordenacao se escalar)\nfunction rotaSemTecnico(C, emp, loc, escalar) {\n  const P = C.param, E = C.empresas[emp] || {};\n  if (loc) {\n    const marcar = [...(loc.marcar_sem_tec || [])];\n    if (escalar) for (const f of (loc.marcar_escalar || [])) if (!marcar.includes(f)) marcar.push(f);\n    return { grupo: loc.grupo, marcar, shopping: loc.nome };\n  }\n  if (!E.semtec_sem_local) return null;\n  const marcar = [P.supervisor_fone];\n  if (escalar && P.coordenador_fone && !marcar.includes(P.coordenador_fone)) marcar.push(P.coordenador_fone);\n  return { grupo: P.grupo_sem_local, marcar, shopping: 'Local não identificado' };\n}\n// Pessoa atribuida (pid): dono do numero -> grupo dele; senao grupo do shopping (ou do tecnico) marcando a pessoa\nfunction rotaPessoa(C, emp, loc, pid) {\n  const P = C.param, E = C.empresas[emp] || {};\n  if (E.dono_id && pid === String(E.dono_id)) return { grupo: P.grupo_dono, marcar: [], nome: P.dono_nome, shopping: loc ? loc.nome : null };\n  const t = C.tec[emp + ':' + pid];\n  const grupo = loc ? loc.grupo : (t ? t.grupo : null);\n  if (!grupo) return null;\n  return { grupo, marcar: t && t.fone ? [t.fone] : [], nome: nomePessoa(C, emp, pid), shopping: null };\n}\nfunction sqlLit(v) { return v === null || v === undefined ? 'NULL' : \"'\" + String(v).replace(/'/g, \"''\") + \"'\"; }\nfunction sqlArr(a) { return 'ARRAY[' + (a || []).map(sqlLit).join(',') + ']::text[]'; }\n\n// Uma linha por IXC ativo + hora atual em Brasilia\nconst C = carregarConfig();\nconst agora = agoraBRT();\nreturn Object.values(C.empresas).map(e => ({ json: { empresa: e.id, base: e.base_url, auth: e.auth, agora } }));\n"
+   }
+  },
+  {
+   "name": "Buscar Agendas",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 3000,
+   "onError": "continueRegularOutput",
+   "position": [
+    600,
+    300
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Empresas').all().find(x => x.json.empresa === $json.empresa).json.base }}/webservice/v1/su_oss_chamado",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Authorization",
+       "value": "={{ $('Empresas').all().find(x => x.json.empresa === $json.empresa).json.auth }}"
+      },
+      {
+       "name": "ixcsoft",
+       "value": "listar"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={\n  \"qtype\": \"su_oss_chamado.data_agenda\",\n  \"query\": \"{{ $json.agora }}\",\n  \"oper\": \">=\",\n  \"page\": \"1\",\n  \"rp\": \"300\",\n  \"sortname\": \"su_oss_chamado.data_agenda\",\n  \"sortorder\": \"asc\"\n}",
+    "options": {}
+   }
+  },
+  {
+   "name": "Filtrar Janela",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    800,
+    300
+   ],
+   "parameters": {
+    "jsCode": "function unwrap(x) {\n  if (x && typeof x === 'object' && typeof x.data === 'string') {\n    try { return JSON.parse(x.data); } catch (e) { return x; }\n  }\n  return x || {};\n}\nfunction paraData(s) { // 'YYYY-MM-DD HH:MM:SS' (horario de Brasilia) -> ms (tratado como UTC, so pra comparar)\n  const [d, h] = s.split(' '); const [Y, M, D] = d.split('-').map(Number); const [hh, mm, ss] = (h || '0:0:0').split(':').map(Number);\n  return Date.UTC(Y, M - 1, D, hh, mm, ss || 0);\n}\nfunction agoraBRT() { return new Date().toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' }); }\nfunction carregarConfig() {\n  let c = $('Carregar Config').first().json.cfg;\n  if (typeof c === 'string') c = JSON.parse(c);\n  const idx = (lst, f) => Object.fromEntries((lst || []).map(x => [x.empresa + ':' + x[f], x]));\n  return {\n    empresas: Object.fromEntries((c.empresas || []).map(e => [e.id, e])),\n    tec: idx(c.tecnicos, 'id_func'), loc: idx(c.locais, 'id_condominio'), func: idx(c.funcionarios, 'id_func'),\n    param: c.param || {}, pendentes: c.pendentes || [], lembretes: c.lembretes || [],\n  };\n}\n// Regras de roteamento (iguais para todas as empresas; mapas no Postgres, schema ixc)\nfunction localDe(C, emp, chamado, cliente) {\n  const id = String(chamado.id_condominio || '0') !== '0' ? String(chamado.id_condominio) : String((cliente || {}).id_condominio || '0');\n  return C.loc[emp + ':' + id] || null;\n}\nfunction nomePessoa(C, emp, pid) {\n  const t = C.tec[emp + ':' + pid]; if (t) return t.nome;\n  const f = C.func[emp + ':' + pid]; return f ? f.nome : ('técnico id ' + pid);\n}\n// Sem ninguem atribuido: grupo do shopping marcando quem esta em marcar_sem_tec (+ coordenacao se escalar)\nfunction rotaSemTecnico(C, emp, loc, escalar) {\n  const P = C.param, E = C.empresas[emp] || {};\n  if (loc) {\n    const marcar = [...(loc.marcar_sem_tec || [])];\n    if (escalar) for (const f of (loc.marcar_escalar || [])) if (!marcar.includes(f)) marcar.push(f);\n    return { grupo: loc.grupo, marcar, shopping: loc.nome };\n  }\n  if (!E.semtec_sem_local) return null;\n  const marcar = [P.supervisor_fone];\n  if (escalar && P.coordenador_fone && !marcar.includes(P.coordenador_fone)) marcar.push(P.coordenador_fone);\n  return { grupo: P.grupo_sem_local, marcar, shopping: 'Local não identificado' };\n}\n// Pessoa atribuida (pid): dono do numero -> grupo dele; senao grupo do shopping (ou do tecnico) marcando a pessoa\nfunction rotaPessoa(C, emp, loc, pid) {\n  const P = C.param, E = C.empresas[emp] || {};\n  if (E.dono_id && pid === String(E.dono_id)) return { grupo: P.grupo_dono, marcar: [], nome: P.dono_nome, shopping: loc ? loc.nome : null };\n  const t = C.tec[emp + ':' + pid];\n  const grupo = loc ? loc.grupo : (t ? t.grupo : null);\n  if (!grupo) return null;\n  return { grupo, marcar: t && t.fone ? [t.fone] : [], nome: nomePessoa(C, emp, pid), shopping: null };\n}\nfunction sqlLit(v) { return v === null || v === undefined ? 'NULL' : \"'\" + String(v).replace(/'/g, \"''\") + \"'\"; }\nfunction sqlArr(a) { return 'ARRAY[' + (a || []).map(sqlLit).join(',') + ']::text[]'; }\n\n// Visitas agendadas: lembrete \"em 1 hora\" (faltando 40-60 min) e \"em 15 minutos\" (3-15 min).\n// Cada lembrete sai 1 vez so (controle em ixc.eventos, tipo lembrete_1h / lembrete_15min, evento = data da agenda),\n// entao se o n8n pular uma execucao o lembrete sai na seguinte (regra de 27/09/2026).\nconst C = carregarConfig();\nconst enviados = new Set(C.lembretes.map(l => l.empresa + '|' + l.id_chamado + '|' + l.tipo + '|' + l.evento));\nconst JANELAS = [\n  { tipo: 'lembrete_1h', de: 40, ate: 60 },\n  { tipo: 'lembrete_15min', de: 3, ate: 15 },\n];\nconst emps = $('Empresas').all().map(x => x.json);\nconst items = $input.all();\nconst out = [];\nemps.forEach((h, k) => {\n  const resp = unwrap(items[k] && items[k].json);\n  const agoraMs = paraData(h.agora);\n  for (const c of (resp.registros || [])) {\n    if (!c.data_agenda || c.data_agenda.startsWith('0000') || ['F', 'C'].includes(c.status)) continue;\n    const faltam = (paraData(c.data_agenda) - agoraMs) / 60000;\n    const jan = JANELAS.find(j => faltam > j.de && faltam <= j.ate);\n    if (!jan) continue;\n    if (enviados.has(h.empresa + '|' + c.id + '|' + jan.tipo + '|' + c.data_agenda)) continue;\n    const titulo = jan.tipo === 'lembrete_1h' ? (faltam > 50 ? 'em 1 hora' : 'em ' + Math.round(faltam) + ' minutos')\n                                               : (faltam > 10 ? 'em 15 minutos' : 'em ' + Math.round(faltam) + ' minutos');\n    out.push({ pairedItem: { item: k }, json: { empresa: h.empresa, tipo: jan.tipo, janela: titulo, chamado: c } });\n  }\n});\nreturn out;\n"
+   }
+  },
+  {
+   "name": "Buscar Cliente",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 3000,
+   "onError": "continueRegularOutput",
+   "position": [
+    1000,
+    300
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Empresas').all().find(x => x.json.empresa === $json.empresa).json.base }}/webservice/v1/cliente",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Authorization",
+       "value": "={{ $('Empresas').all().find(x => x.json.empresa === $json.empresa).json.auth }}"
+      },
+      {
+       "name": "ixcsoft",
+       "value": "listar"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={\n  \"qtype\": \"cliente.id\",\n  \"query\": \"{{ $json.chamado.id_cliente || 0 }}\",\n  \"oper\": \"=\",\n  \"page\": \"1\",\n  \"rp\": \"1\"\n}",
+    "options": {}
+   }
+  },
+  {
+   "name": "Rotear Lembrete",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1200,
+    300
+   ],
+   "parameters": {
+    "jsCode": "function unwrap(x) {\n  if (x && typeof x === 'object' && typeof x.data === 'string') {\n    try { return JSON.parse(x.data); } catch (e) { return x; }\n  }\n  return x || {};\n}\nfunction paraData(s) { // 'YYYY-MM-DD HH:MM:SS' (horario de Brasilia) -> ms (tratado como UTC, so pra comparar)\n  const [d, h] = s.split(' '); const [Y, M, D] = d.split('-').map(Number); const [hh, mm, ss] = (h || '0:0:0').split(':').map(Number);\n  return Date.UTC(Y, M - 1, D, hh, mm, ss || 0);\n}\nfunction agoraBRT() { return new Date().toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' }); }\nfunction carregarConfig() {\n  let c = $('Carregar Config').first().json.cfg;\n  if (typeof c === 'string') c = JSON.parse(c);\n  const idx = (lst, f) => Object.fromEntries((lst || []).map(x => [x.empresa + ':' + x[f], x]));\n  return {\n    empresas: Object.fromEntries((c.empresas || []).map(e => [e.id, e])),\n    tec: idx(c.tecnicos, 'id_func'), loc: idx(c.locais, 'id_condominio'), func: idx(c.funcionarios, 'id_func'),\n    param: c.param || {}, pendentes: c.pendentes || [], lembretes: c.lembretes || [],\n  };\n}\n// Regras de roteamento (iguais para todas as empresas; mapas no Postgres, schema ixc)\nfunction localDe(C, emp, chamado, cliente) {\n  const id = String(chamado.id_condominio || '0') !== '0' ? String(chamado.id_condominio) : String((cliente || {}).id_condominio || '0');\n  return C.loc[emp + ':' + id] || null;\n}\nfunction nomePessoa(C, emp, pid) {\n  const t = C.tec[emp + ':' + pid]; if (t) return t.nome;\n  const f = C.func[emp + ':' + pid]; return f ? f.nome : ('técnico id ' + pid);\n}\n// Sem ninguem atribuido: grupo do shopping marcando quem esta em marcar_sem_tec (+ coordenacao se escalar)\nfunction rotaSemTecnico(C, emp, loc, escalar) {\n  const P = C.param, E = C.empresas[emp] || {};\n  if (loc) {\n    const marcar = [...(loc.marcar_sem_tec || [])];\n    if (escalar) for (const f of (loc.marcar_escalar || [])) if (!marcar.includes(f)) marcar.push(f);\n    return { grupo: loc.grupo, marcar, shopping: loc.nome };\n  }\n  if (!E.semtec_sem_local) return null;\n  const marcar = [P.supervisor_fone];\n  if (escalar && P.coordenador_fone && !marcar.includes(P.coordenador_fone)) marcar.push(P.coordenador_fone);\n  return { grupo: P.grupo_sem_local, marcar, shopping: 'Local não identificado' };\n}\n// Pessoa atribuida (pid): dono do numero -> grupo dele; senao grupo do shopping (ou do tecnico) marcando a pessoa\nfunction rotaPessoa(C, emp, loc, pid) {\n  const P = C.param, E = C.empresas[emp] || {};\n  if (E.dono_id && pid === String(E.dono_id)) return { grupo: P.grupo_dono, marcar: [], nome: P.dono_nome, shopping: loc ? loc.nome : null };\n  const t = C.tec[emp + ':' + pid];\n  const grupo = loc ? loc.grupo : (t ? t.grupo : null);\n  if (!grupo) return null;\n  return { grupo, marcar: t && t.fone ? [t.fone] : [], nome: nomePessoa(C, emp, pid), shopping: loc ? loc.nome : null }; // shopping sempre: tudo no grupo Resolutto Tecnicos (regra de 29/09/2026)\n}\nfunction sqlLit(v) { return v === null || v === undefined ? 'NULL' : \"'\" + String(v).replace(/'/g, \"''\") + \"'\"; }\nfunction sqlArr(a) { return 'ARRAY[' + (a || []).map(sqlLit).join(',') + ']::text[]'; }\n\n// Mesmas regras da notificacao: grupo = shopping (chamado ou cliente); marca a pessoa da agenda;\n// sem ninguem -> grupo do shopping marcando quem esta em marcar_sem_tec.\nconst C = carregarConfig();\nconst items = $input.all();\nconst out = [];\nfor (let i = 0; i < items.length; i++) {\n  const d = $('Filtrar Janela').itemMatching(i).json;\n  const cr = unwrap(items[i].json);\n  const cliente = (cr.registros && cr.registros[0]) || {};\n  const c = d.chamado, emp = d.empresa;\n  if (((C.empresas[emp] || {}).assuntos_financeiros || []).includes(String(c.id_assunto))) continue; // O.S. financeira: sem lembrete\n  const loc = localDe(C, emp, c, cliente);\n  const pid = c.id_tecnico && String(c.id_tecnico) !== '0' ? String(c.id_tecnico) : null;\n  const rota = pid ? rotaPessoa(C, emp, loc, pid) : rotaSemTecnico(C, emp, loc, false);\n  if (!rota) continue;\n  out.push({ pairedItem: { item: i }, json: Object.assign({}, d, { cliente, grupo_jid: rota.grupo, marcar: rota.marcar, nome: rota.nome || null,\n    shopping: rota.shopping, sem_tecnico: !pid }) });\n}\nreturn out;\n"
+   }
+  },
+  {
+   "name": "Buscar Assunto",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 3000,
+   "onError": "continueRegularOutput",
+   "position": [
+    1400,
+    300
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Empresas').all().find(x => x.json.empresa === $json.empresa).json.base }}/webservice/v1/su_oss_assunto",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Authorization",
+       "value": "={{ $('Empresas').all().find(x => x.json.empresa === $json.empresa).json.auth }}"
+      },
+      {
+       "name": "ixcsoft",
+       "value": "listar"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={\n  \"qtype\": \"su_oss_assunto.id\",\n  \"query\": \"{{ $json.chamado.id_assunto || 0 }}\",\n  \"oper\": \"=\",\n  \"page\": \"1\",\n  \"rp\": \"1\"\n}",
+    "options": {}
+   }
+  },
+  {
+   "name": "Montar Lembrete",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1600,
+    300
+   ],
+   "parameters": {
+    "jsCode": "function unwrap(x) {\n  if (x && typeof x === 'object' && typeof x.data === 'string') {\n    try { return JSON.parse(x.data); } catch (e) { return x; }\n  }\n  return x || {};\n}\nfunction paraData(s) { // 'YYYY-MM-DD HH:MM:SS' (horario de Brasilia) -> ms (tratado como UTC, so pra comparar)\n  const [d, h] = s.split(' '); const [Y, M, D] = d.split('-').map(Number); const [hh, mm, ss] = (h || '0:0:0').split(':').map(Number);\n  return Date.UTC(Y, M - 1, D, hh, mm, ss || 0);\n}\nfunction agoraBRT() { return new Date().toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' }); }\nfunction carregarConfig() {\n  let c = $('Carregar Config').first().json.cfg;\n  if (typeof c === 'string') c = JSON.parse(c);\n  const idx = (lst, f) => Object.fromEntries((lst || []).map(x => [x.empresa + ':' + x[f], x]));\n  return {\n    empresas: Object.fromEntries((c.empresas || []).map(e => [e.id, e])),\n    tec: idx(c.tecnicos, 'id_func'), loc: idx(c.locais, 'id_condominio'), func: idx(c.funcionarios, 'id_func'),\n    param: c.param || {}, pendentes: c.pendentes || [], lembretes: c.lembretes || [],\n  };\n}\n// Regras de roteamento (iguais para todas as empresas; mapas no Postgres, schema ixc)\nfunction localDe(C, emp, chamado, cliente) {\n  const id = String(chamado.id_condominio || '0') !== '0' ? String(chamado.id_condominio) : String((cliente || {}).id_condominio || '0');\n  return C.loc[emp + ':' + id] || null;\n}\nfunction nomePessoa(C, emp, pid) {\n  const t = C.tec[emp + ':' + pid]; if (t) return t.nome;\n  const f = C.func[emp + ':' + pid]; return f ? f.nome : ('técnico id ' + pid);\n}\n// Sem ninguem atribuido: grupo do shopping marcando quem esta em marcar_sem_tec (+ coordenacao se escalar)\nfunction rotaSemTecnico(C, emp, loc, escalar) {\n  const P = C.param, E = C.empresas[emp] || {};\n  if (loc) {\n    const marcar = [...(loc.marcar_sem_tec || [])];\n    if (escalar) for (const f of (loc.marcar_escalar || [])) if (!marcar.includes(f)) marcar.push(f);\n    return { grupo: loc.grupo, marcar, shopping: loc.nome };\n  }\n  if (!E.semtec_sem_local) return null;\n  const marcar = [P.supervisor_fone];\n  if (escalar && P.coordenador_fone && !marcar.includes(P.coordenador_fone)) marcar.push(P.coordenador_fone);\n  return { grupo: P.grupo_sem_local, marcar, shopping: 'Local não identificado' };\n}\n// Pessoa atribuida (pid): dono do numero -> grupo dele; senao grupo do shopping (ou do tecnico) marcando a pessoa\nfunction rotaPessoa(C, emp, loc, pid) {\n  const P = C.param, E = C.empresas[emp] || {};\n  if (E.dono_id && pid === String(E.dono_id)) return { grupo: P.grupo_dono, marcar: [], nome: P.dono_nome, shopping: loc ? loc.nome : null };\n  const t = C.tec[emp + ':' + pid];\n  const grupo = loc ? loc.grupo : (t ? t.grupo : null);\n  if (!grupo) return null;\n  return { grupo, marcar: t && t.fone ? [t.fone] : [], nome: nomePessoa(C, emp, pid), shopping: null };\n}\nfunction sqlLit(v) { return v === null || v === undefined ? 'NULL' : \"'\" + String(v).replace(/'/g, \"''\") + \"'\"; }\nfunction sqlArr(a) { return 'ARRAY[' + (a || []).map(sqlLit).join(',') + ']::text[]'; }\n\n// Numero da loja: 1o campo preenchido entre apartamento/complemento do chamado e do cliente (regra de 28/09/2026)\nfunction numeroLoja(c, cli) {\n  for (const v of [(c || {}).apartamento, (c || {}).complemento, (cli || {}).apartamento, (cli || {}).complemento]) {\n    const s = String(v || '').replace(/\\s+/g, ' ').trim();\n    if (!/\\d/.test(s) && !/^(lojas?|lj)\\b/i.test(s)) continue;\n    let n = s.replace(/^(lojas?|lj|luc)\\b\\s*[:.\\-nº°]*\\s*/i, '').replace(/^(lojas?|lj)(?=\\d)/i, '');\n    if (!n) continue;\n    if (n.length > 30) n = n.slice(0, 30).replace(/\\s+\\S*$/, '');\n    return /^\\d/.test(n) || s !== n ? 'Loja ' + n : n;\n  }\n  return '';\n}\n\nconst items = $input.all();\nconst out = [];\nfor (let i = 0; i < items.length; i++) {\n  const d = $('Rotear Lembrete').itemMatching(i).json;\n  const a = unwrap(items[i].json);\n  const assunto = (a.registros && a.registros[0] && a.registros[0].assunto) || '';\n  const c = d.chamado, cli = d.cliente || {};\n  const hora = c.data_agenda.slice(11, 16);\n  const fim = (c.data_agenda_final && !c.data_agenda_final.startsWith('0000')) ? c.data_agenda_final.slice(11, 16) : '';\n  const marcar = d.marcar || [];\n  const quem = marcar.length ? marcar.map(f => '@' + f).join(' ') : (d.nome ? '*' + d.nome + '*' : '');\n  const nomeCliente = (cli.razao || '').trim(), nomeLoja = (cli.fantasia || '').trim();\n  const fone = [cli.whatsapp, cli.telefone_celular, cli.fone, cli.telefone_comercial]\n    .map(f => (f || '').trim()).find(f => f.replace(/\\D/g, '').length >= 8) || '';\n  const numLoja = numeroLoja(c, cli);\n  const local = (numLoja ? (c.referencia || '') : (c.complemento || c.referencia || '')).trim();\n  let texto = '⏰ *Lembrete de visita — ' + d.janela + '*' + (quem ? ' — ' + quem : '');\n  if (d.sem_tecnico) texto += '\\n🏢 ' + (d.shopping || 'Local não identificado') + ' · sem técnico atribuído';\n  else if (d.shopping) texto += '\\n🏢 ' + d.shopping;\n  texto += '\\n🕐 Visita às *' + hora + '*' + (fim && fim !== hora ? ' (até ' + fim + ')' : '');\n  texto += '\\n🎫 #' + c.protocolo + (assunto ? ' · ' + assunto : '');\n  if (nomeCliente) texto += '\\n👤 ' + nomeCliente;\n  const outroNome = nomeLoja && nomeLoja.toLowerCase() !== nomeCliente.toLowerCase();\n  if (numLoja) texto += '\\n🏬 ' + numLoja + (outroNome ? ' · ' + nomeLoja : '');\n  else if (outroNome) texto += '\\n🏬 Loja: ' + nomeLoja;\n  if (local) texto += '\\n📍 ' + local;\n  if (fone) texto += '\\n📞 ' + fone;\n  out.push({ pairedItem: { item: i }, json: { empresa: d.empresa, tipo: d.tipo, id_chamado: c.id, protocolo: c.protocolo, evento: c.data_agenda,\n    texto, grupo_jid: d.grupo_jid, mentioned: marcar } });\n}\n// Modo de envio (ixc.parametros.envio): NENHUM = nao manda (e nao grava: o lembrete sai quando o modo mudar, se ainda estiver na janela);\n// SIMULAR = manda para envio_teste_para com o grupo de destino no cabecalho; REAL = manda para os grupos.\nconst PARAM = carregarConfig().param || {};\nconst ENVIO = String(PARAM.envio || 'NENHUM').trim().toUpperCase();\nconst TESTE = String(PARAM.envio_teste_para || '').replace(/\\D/g, '');\nif (ENVIO === 'NENHUM') return [];\nif (ENVIO !== 'REAL' && !TESTE) throw new Error('parametro envio=' + ENVIO + ' exige envio_teste_para');\nif (ENVIO !== 'REAL') for (const o of out) { o.json.chat_envio = TESTE + '@c.us'; o.json.texto = '🧪 SIMULAÇÃO → ' + o.json.grupo_jid + '\\n' + o.json.texto; o.json.simulado = true; }\nreturn out;\n"
+   }
+  },
+  {
+   "name": "Enviar WhatsApp",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000,
+   "onError": "continueRegularOutput",
+   "position": [
+    1800,
+    300
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "={{ (typeof $('Carregar Config').first().json.cfg === 'string' ? JSON.parse($('Carregar Config').first().json.cfg) : $('Carregar Config').first().json.cfg).param.waha_url }}/api/sendText",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify(Object.assign({ session: (typeof $('Carregar Config').first().json.cfg === 'string' ? JSON.parse($('Carregar Config').first().json.cfg) : $('Carregar Config').first().json.cfg).param.waha_session, chatId: $json.chat_envio || $json.grupo_jid, text: $json.texto, linkPreview: false }, ($json.mentioned && $json.mentioned.length) ? { mentions: $json.mentioned.map(f => String(f).replace(/\\D/g, '') + '@c.us') } : {})) }}",
+    "options": {
+     "batching": {
+      "batch": {
+       "batchSize": 1,
+       "batchInterval": 1500
+      }
+     },
+     "timeout": 30000
+    },
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpHeaderAuth"
+   },
+   "credentials": {
+    "httpHeaderAuth": {
+     "id": "wahaApiKey01",
+     "name": "WAHA API"
+    }
+   }
+  },
+  {
+   "name": "Resultado",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2000,
+    300
+   ],
+   "parameters": {
+    "jsCode": "function unwrap(x) {\n  if (x && typeof x === 'object' && typeof x.data === 'string') {\n    try { return JSON.parse(x.data); } catch (e) { return x; }\n  }\n  return x || {};\n}\nfunction paraData(s) { // 'YYYY-MM-DD HH:MM:SS' (horario de Brasilia) -> ms (tratado como UTC, so pra comparar)\n  const [d, h] = s.split(' '); const [Y, M, D] = d.split('-').map(Number); const [hh, mm, ss] = (h || '0:0:0').split(':').map(Number);\n  return Date.UTC(Y, M - 1, D, hh, mm, ss || 0);\n}\nfunction agoraBRT() { return new Date().toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' }); }\nfunction carregarConfig() {\n  let c = $('Carregar Config').first().json.cfg;\n  if (typeof c === 'string') c = JSON.parse(c);\n  const idx = (lst, f) => Object.fromEntries((lst || []).map(x => [x.empresa + ':' + x[f], x]));\n  return {\n    empresas: Object.fromEntries((c.empresas || []).map(e => [e.id, e])),\n    tec: idx(c.tecnicos, 'id_func'), loc: idx(c.locais, 'id_condominio'), func: idx(c.funcionarios, 'id_func'),\n    param: c.param || {}, pendentes: c.pendentes || [], lembretes: c.lembretes || [],\n  };\n}\n// Regras de roteamento (iguais para todas as empresas; mapas no Postgres, schema ixc)\nfunction localDe(C, emp, chamado, cliente) {\n  const id = String(chamado.id_condominio || '0') !== '0' ? String(chamado.id_condominio) : String((cliente || {}).id_condominio || '0');\n  return C.loc[emp + ':' + id] || null;\n}\nfunction nomePessoa(C, emp, pid) {\n  const t = C.tec[emp + ':' + pid]; if (t) return t.nome;\n  const f = C.func[emp + ':' + pid]; return f ? f.nome : ('técnico id ' + pid);\n}\n// Sem ninguem atribuido: grupo do shopping marcando quem esta em marcar_sem_tec (+ coordenacao se escalar)\nfunction rotaSemTecnico(C, emp, loc, escalar) {\n  const P = C.param, E = C.empresas[emp] || {};\n  if (loc) {\n    const marcar = [...(loc.marcar_sem_tec || [])];\n    if (escalar) for (const f of (loc.marcar_escalar || [])) if (!marcar.includes(f)) marcar.push(f);\n    return { grupo: loc.grupo, marcar, shopping: loc.nome };\n  }\n  if (!E.semtec_sem_local) return null;\n  const marcar = [P.supervisor_fone];\n  if (escalar && P.coordenador_fone && !marcar.includes(P.coordenador_fone)) marcar.push(P.coordenador_fone);\n  return { grupo: P.grupo_sem_local, marcar, shopping: 'Local não identificado' };\n}\n// Pessoa atribuida (pid): dono do numero -> grupo dele; senao grupo do shopping (ou do tecnico) marcando a pessoa\nfunction rotaPessoa(C, emp, loc, pid) {\n  const P = C.param, E = C.empresas[emp] || {};\n  if (E.dono_id && pid === String(E.dono_id)) return { grupo: P.grupo_dono, marcar: [], nome: P.dono_nome, shopping: loc ? loc.nome : null };\n  const t = C.tec[emp + ':' + pid];\n  const grupo = loc ? loc.grupo : (t ? t.grupo : null);\n  if (!grupo) return null;\n  return { grupo, marcar: t && t.fone ? [t.fone] : [], nome: nomePessoa(C, emp, pid), shopping: null };\n}\nfunction sqlLit(v) { return v === null || v === undefined ? 'NULL' : \"'\" + String(v).replace(/'/g, \"''\") + \"'\"; }\nfunction sqlArr(a) { return 'ARRAY[' + (a || []).map(sqlLit).join(',') + ']::text[]'; }\n\n// Registra o lembrete (ok = nao manda de novo; falha = tenta na proxima execucao enquanto estiver na janela)\nreturn $input.all().map((it, i) => {\n  const r = it.json || {};\n  const d = $('Montar Lembrete').itemMatching(i).json;\n  // WAHA: sucesso = objeto de mensagem (id) sem 'error'; erro HTTP vem como { error } (continueRegularOutput)\n  const ok = !!r && !r.error && !!(r.id || (r.key && r.key.id) || r._data);\n  const erro = ok ? (d.simulado ? 'SIMULADO' : null) : String((r.error && (r.error.message || r.error)) || r.message || JSON.stringify(r)).slice(0, 300);\n  return { json: { sql: `INSERT INTO ixc.eventos (empresa, tipo, id_chamado, protocolo, evento, grupo, mentioned, texto, status, motivo, tentativas, ultima_tentativa) VALUES (${sqlLit(d.empresa)}, ${sqlLit(d.tipo)}, ${sqlLit(d.id_chamado)}, ${sqlLit(d.protocolo)}, ${sqlLit(d.evento)}, ${sqlLit(d.grupo_jid)}, ${sqlArr(d.mentioned)}, ${sqlLit(d.texto)}, ${ok ? \"'ok'\" : \"'falha'\"}, ${sqlLit(erro)}, 1, now())` } };\n});\n"
+   }
+  },
+  {
+   "name": "Gravar Resultado",
+   "type": "n8n-nodes-base.postgres",
+   "typeVersion": 2.7,
+   "position": [
+    2200,
+    300
+   ],
+   "parameters": {
+    "operation": "executeQuery",
+    "query": "={{ $json.sql }}",
+    "options": {}
+   },
+   "credentials": {
+    "postgres": {
+     "name": "Postgres IXC State"
+    }
+   }
+  }
+ ],
+ "connections": {
+  "A cada 5 minutos": {
+   "main": [
+    [
+     {
+      "node": "Carregar Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Carregar Config": {
+   "main": [
+    [
+     {
+      "node": "Empresas",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Empresas": {
+   "main": [
+    [
+     {
+      "node": "Buscar Agendas",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Buscar Agendas": {
+   "main": [
+    [
+     {
+      "node": "Filtrar Janela",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Filtrar Janela": {
+   "main": [
+    [
+     {
+      "node": "Buscar Cliente",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Buscar Cliente": {
+   "main": [
+    [
+     {
+      "node": "Rotear Lembrete",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Rotear Lembrete": {
+   "main": [
+    [
+     {
+      "node": "Buscar Assunto",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Buscar Assunto": {
+   "main": [
+    [
+     {
+      "node": "Montar Lembrete",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Montar Lembrete": {
+   "main": [
+    [
+     {
+      "node": "Enviar WhatsApp",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Enviar WhatsApp": {
+   "main": [
+    [
+     {
+      "node": "Resultado",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Resultado": {
+   "main": [
+    [
+     {
+      "node": "Gravar Resultado",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1"
+ },
+ "active": false
+}

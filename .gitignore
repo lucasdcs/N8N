@@ -2,9 +2,11 @@
 *.tgz
 *.zip
 *.sql
+!whatsapp-ixc/banco/*.sql
 *.sql.gz
 .env
 vendor/
 node_modules/
 __pycache__/
 *.pyc
+whatsapp-ixc/scripts/valores.json

@@ -1,0 +1,442 @@
+{
+ "name": "WhatsApp - Comandos ixc e consulta de escala (WAHA)",
+ "nodes": [
+  {
+   "parameters": {
+    "httpMethod": "POST",
+    "path": "ixc-whatsapp",
+    "responseMode": "onReceived",
+    "options": {}
+   },
+   "name": "Webhook WAHA (mensagens dos grupos)",
+   "type": "n8n-nodes-base.webhook",
+   "typeVersion": 2,
+   "position": [
+    0,
+    0
+   ],
+   "webhookId": "ixc-whatsapp"
+  },
+  {
+   "name": "IXC Cmd: Filtrar",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    0,
+    1250
+   ],
+   "parameters": {
+    "jsCode": "// Comandos \"ixc ...\" no grupo de automação: mudam tecnicos/shoppings/feriados das notificacoes IXC (regra de 27/09/2026).\n// So interpreta aqui; a mudanca e registrada como pendente e so vale depois de \"ixc ok\".\nconst body = $('WAHA: Normalizar').first().json;\nconst data = body.data || {};\nconst key = data.key || {};\nconst GRUPO_AUTOMACAO = String(($('Carregar Parametros').first().json || {}).grupo_automacao || '');\nif (!GRUPO_AUTOMACAO || key.remoteJid !== GRUPO_AUTOMACAO) return [];\nconst msg = data.message || {};\nconst texto = (msg.conversation || (msg.extendedTextMessage && msg.extendedTextMessage.text) || '').trim();\nconst m = texto.match(/^ixc\\b[:,]?\\s*([\\s\\S]*)$/i);\nif (!m) return [];\nreturn [{ json: { texto, args: m[1].trim(), autor: data.pushName || (key.fromMe ? 'dono do número' : (key.participant || '?')) } }];\n"
+   }
+  },
+  {
+   "name": "IXC Cmd: Carregar",
+   "type": "n8n-nodes-base.postgres",
+   "typeVersion": 2.6,
+   "position": [
+    220,
+    1250
+   ],
+   "parameters": {
+    "operation": "executeQuery",
+    "query": "SELECT json_build_object(\n 'empresas', (SELECT json_agg(json_build_object('id', e.id, 'nome', e.nome) ORDER BY e.id) FROM ixc.empresas e WHERE e.ativo),\n 'tecnicos', (SELECT coalesce(json_agg(json_build_object('empresa', t.empresa, 'id_func', t.id_func, 'nome', t.nome, 'fone', t.fone)), '[]'::json) FROM ixc.tecnicos t),\n 'locais', (SELECT coalesce(json_agg(json_build_object('empresa', l.empresa, 'id_condominio', l.id_condominio, 'nome', l.nome, 'tec_padrao', l.tec_padrao, 'marcar_sem_tec', l.marcar_sem_tec)), '[]'::json) FROM ixc.locais l),\n 'param', (SELECT json_object_agg(chave, valor) FROM ixc.parametros WHERE chave IN ('supervisor_fone', 'coordenador_fone', 'supervisor_nome', 'coordenador_nome', 'escala_grupos')),\n 'hoje', to_char(now() AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI'),\n 'escala_base', (SELECT coalesce(json_agg(b), '[]'::json) FROM ixc.escala_base b),\n 'escala_dia', (SELECT coalesce(json_agg(json_build_object('data', d.data, 'empresa', d.empresa, 'id_condominio', d.id_condominio, 'tecnico', d.tecnico)), '[]'::json) FROM ixc.escala_dia d WHERE d.data BETWEEN (now() AT TIME ZONE 'America/Sao_Paulo')::date AND (now() AT TIME ZONE 'America/Sao_Paulo')::date + 1),\n 'feriados', (SELECT coalesce(json_agg(json_build_object('data', f.data, 'empresa', f.empresa, 'id_condominio', f.id_condominio, 'descricao', f.descricao) ORDER BY f.data), '[]'::json) FROM ixc.feriados f WHERE f.data >= (now() AT TIME ZONE 'America/Sao_Paulo')::date)\n) AS cfg\n",
+    "options": {}
+   },
+   "credentials": {
+    "postgres": {
+     "name": "Postgres IXC State"
+    }
+   }
+  },
+  {
+   "name": "IXC Cmd: Interpretar",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    440,
+    1250
+   ],
+   "parameters": {
+    "jsCode": "// Interpreta o comando \"ixc ...\" de forma deterministica (sem IA) contra a config do banco (schema ixc).\n// Saida: { resposta } para consulta/erro, ou { acao, resumo } para registrar pendente, ou { aplicar/cancelar: true }.\nlet cfg = $('IXC Cmd: Carregar').first().json.cfg;\nif (typeof cfg === 'string') cfg = JSON.parse(cfg);\nconst f = $('IXC Cmd: Filtrar').first().json;\nconst args = f.args;\nconst norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\\s+/g, ' ').trim();\nconst A = norm(args);\nconst EMP = Object.fromEntries((cfg.empresas || []).map(e => [e.id, e.nome]));\nconst TEC = cfg.tecnicos || [], LOC = cfg.locais || [], P = cfg.param || {};\nconst out = o => [{ json: Object.assign({ resposta: null, acao: null, resumo: null, aplicar: false, cancelar: false, fone_validar: null }, o) }];\n\nconst AJUDA = [\n  '🛠️ *Comandos IXC* (só valem depois de *ixc ok*)',\n  '',\n  '*ixc lista* [empresa ou shopping] — quem é marcado em cada shopping',\n  '*ixc tecnicos* [empresa] — técnicos e números',\n  '*ixc quem* <shopping ou técnico> — quem atende, horário, hoje e amanhã (*ixc quem hoje* = todos)',\n  '',\n  '*ixc shopping* <shopping> *tecnico* <técnico> — troca o técnico do shopping',\n  '*ixc numero* <técnico> <telefone> — troca o número do técnico',\n  '*ixc incluir* <técnico ou telefone> *em* <shopping> — marca também essa pessoa quando o chamado ficar sem técnico',\n  '*ixc remover* <técnico ou telefone> *de* <shopping>',\n  '*ixc novo tecnico* <empresa> <id no IXC> <nome> <telefone>',\n  '',\n  '*ixc ok* — aplica a alteração pendente · *ixc cancelar* — descarta',\n  '',\n  'Ex.: _ixc shopping Tijucas tecnico Joao_ · _ixc numero Fulano 41 99999-0000_',\n].join('\\n');\n\nfunction fmtFone(x) {\n  const d = String(x || '').replace(/\\D/g, '');\n  const m = d.match(/^55(\\d{2})(\\d{4,5})(\\d{4})$/);\n  return m ? '(' + m[1] + ') ' + m[2] + '-' + m[3] : d;\n}\nfunction lerFone(s) {\n  let d = String(s || '').replace(/\\D/g, '').replace(/^0+/, '');\n  if (d.length === 10 || d.length === 11) d = '55' + d;\n  return /^55\\d{10,11}$/.test(d) ? d : null;\n}\nfunction nomeFone(emp, fone) {\n  const t = TEC.find(t => t.fone === fone && (!emp || t.empresa === emp)) || TEC.find(t => t.fone === fone);\n  if (t) return t.nome;\n  if (fone === P.supervisor_fone) return (P.supervisor_nome || 'Supervisor') + ' (supervisor)';\n  if (fone === P.coordenador_fone) return (P.coordenador_nome || 'Coordenador') + ' (coordenador)';\n  return fmtFone(fone);\n}\n// Acha 1 shopping pelo nome (aceita \"4B Palladium\" pra desambiguar)\nfunction acharLocal(q, emp) {\n  let s = norm(q);\n  if (!s) return { erro: 'Faltou o shopping.' };\n  const pref = Object.keys(EMP).find(e => s.startsWith(norm(e) + ' '));\n  if (pref && !emp) { emp = pref; s = s.slice(norm(pref).length + 1); }\n  const cand = LOC.filter(l => !emp || l.empresa === emp);\n  let hits = cand.filter(l => norm(l.nome) === s);\n  if (!hits.length) hits = cand.filter(l => norm(l.nome).includes(s));\n  if (!hits.length) hits = cand.filter(l => s.split(' ').every(p => norm(l.nome).includes(p)));\n  if (hits.length === 1) return { loc: hits[0] };\n  if (!hits.length) return { erro: 'Não achei o shopping \"' + q + '\". Veja os nomes com *ixc lista*.' };\n  return { erro: 'Mais de um shopping bate com \"' + q + '\":\\n' + hits.map(l => '• ' + l.empresa + ' ' + l.nome).join('\\n') + '\\nEscreva com a empresa na frente, ex.: _' + hits[0].empresa + ' ' + hits[0].nome + '_' };\n}\n// Acha 1 tecnico pelo nome (opcionalmente dentro de uma empresa)\nfunction acharTec(q, emp) {\n  let s = norm(q);\n  if (!s) return { erro: 'Faltou o técnico.' };\n  const pref = Object.keys(EMP).find(e => s.startsWith(norm(e) + ' '));\n  if (pref && !emp) { emp = pref; s = s.slice(norm(pref).length + 1); }\n  const cand = TEC.filter(t => !emp || t.empresa === emp);\n  let hits = cand.filter(t => norm(t.nome) === s);\n  if (!hits.length) hits = cand.filter(t => s.split(' ').every(p => norm(t.nome).split(' ').some(w => w.startsWith(p))));\n  if (hits.length === 1) return { tec: hits[0] };\n  if (!hits.length) return { erro: 'Não achei o técnico \"' + q + '\"' + (emp ? ' na ' + emp : '') + '. Veja com *ixc tecnicos*' + (emp ? ' ' + emp : '') + ' (técnico novo: *ixc novo tecnico*).' };\n  return { erro: 'Mais de um técnico bate com \"' + q + '\":\\n' + hits.map(t => '• ' + t.empresa + ' ' + t.nome).join('\\n') + '\\nEscreva o nome completo ou com a empresa na frente.' };\n}\nfunction lerData(s) {\n  const m = String(s).match(/^(\\d{1,2})\\/(\\d{1,2})(?:\\/(\\d{2,4}))?$/);\n  if (!m) return null;\n  const hoje = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));\n  let y = m[3] ? +m[3] : hoje.getFullYear();\n  if (y < 100) y += 2000;\n  const d = new Date(Date.UTC(y, +m[2] - 1, +m[1]));\n  if (d.getUTCDate() !== +m[1] || d.getUTCMonth() !== +m[2] - 1) return null;\n  if (!m[3] && d < Date.UTC(hoje.getFullYear(), hoje.getMonth(), hoje.getDate())) d.setUTCFullYear(y + 1);\n  return d.toISOString().slice(0, 10);\n}\nconst brData = iso => iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4);\nconst locTxt = l => l.nome + ' (' + l.empresa + ')';\n// separa \"X em Y\" / \"X de Y\" pelo ULTIMO separador (nome de shopping nao costuma ter \" em \")\nfunction dividir(s, sep) {\n  const i = s.toLowerCase().lastIndexOf(' ' + sep + ' ');\n  return i < 0 ? null : [s.slice(0, i).trim(), s.slice(i + sep.length + 2).trim()];\n}\n\nconst w0 = A.split(' ')[0] || '';\nconst resto = args.replace(/^\\S+\\s*/, '');\n\n// ---- ixc quem: tecnico x shopping x horario (escala_base + escala_dia sincronizada da planilha ESCALAS) ----\nconst EB = Object.fromEntries((cfg.escala_base || []).map(b => [b.empresa + ':' + b.id_condominio, b]));\nconst ED = cfg.escala_dia || [];\nconst DIAS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];\nconst DIAS_TXT = { dom: 'dom', seg: 'seg', ter: 'ter', qua: 'qua', qui: 'qui', sex: 'sex', sab: 'sáb' };\nconst [hojeIso, horaAgora] = String(cfg.hoje || '').split(' ');\nconst addDia = (iso, n) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };\nconst diaSem = iso => DIAS[new Date(iso + 'T12:00:00Z').getUTCDay()];\nconst ddmm = iso => iso.slice(8, 10) + '/' + iso.slice(5, 7);\nconst hfmt = h => h ? h.replace('-', '–') : null;\nfunction foneDe(nome, loc, b) {\n  const n = norm(nome);\n  const m = String((b && b.tecnicos) || '').split(';').map(x => x.trim()).find(x => norm(x).startsWith(n.split(' ')[0]));\n  const f = m && m.match(/\\(\\d{2}\\)\\s*[\\d-]+/);\n  if (f) return f[0];\n  const t = TEC.find(t => t.empresa === loc.empresa && norm(t.nome).split(' ')[0] === n.split(' ')[0]);\n  return t && t.fone ? fmtFone(t.fone) : '';\n}\nfunction quemNoDia(loc, iso) {\n  const b = EB[loc.empresa + ':' + loc.id_condominio] || {};\n  if (b.tipo === '12x36' || b.tipo === 'escala') {\n    const ns = ED.filter(d => d.empresa === loc.empresa && d.id_condominio === loc.id_condominio && String(d.data).slice(0, 10) === iso).map(d => d.tecnico);\n    if (ns.length) return ns.map(n => n + ' ' + foneDe(n, loc, b)).join(' / ').trim();\n    return b.tecnicos ? b.tecnicos.replace(/;/g, ' /') : '_(escala do dia não encontrada na planilha)_';  // sem escala do dia -> equipe da escala base\n  }\n  const tp = TEC.find(t => t.empresa === loc.empresa && t.id_func === loc.tec_padrao);\n  if (tp) return tp.nome + (tp.fone ? ' ' + fmtFone(tp.fone) : '');\n  return b.tecnicos ? b.tecnicos.replace(/;/g, ' /') : 'sem técnico cadastrado';\n}\nfunction statusAgora(h) {\n  if (!h) return '';\n  const [ini, fim] = h.split('-');\n  if (horaAgora < ini) return ' · ⏳ começa às ' + ini;\n  if (horaAgora <= fim) return ' · 🟢 em atendimento (até ' + fim + ')';\n  return ' · 🔴 encerrou às ' + fim;\n}\nfunction semana(b) {\n  const ordem = ['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'], grupos = [];\n  for (const d of ordem) {\n    const h = b[d] || null, g = grupos[grupos.length - 1];\n    if (g && g.h === h) g.fim = d; else grupos.push({ ini: d, fim: d, h });\n  }\n  return grupos.filter(g => g.h).map(g => DIAS_TXT[g.ini] + (g.fim !== g.ini ? '–' + DIAS_TXT[g.fim] : '') + ' ' + hfmt(g.h)).join(' · ') || 'sem horário cadastrado';\n}\nfunction linhaDia(loc, iso, agora) {\n  const b = EB[loc.empresa + ':' + loc.id_condominio] || {};\n  const h = b[diaSem(iso)];\n  const rot = (agora ? 'Hoje' : 'Amanhã') + ' (' + DIAS_TXT[diaSem(iso)] + ' ' + ddmm(iso) + ')';\n  if (!h) return rot + ': não atende';\n  const pessoas = quemNoDia(loc, iso).split(' / ').map(x => '👤 ' + x.trim().replace(/ (\\(\\d{2}\\))/, ' — $1')).join('\\n');\n  return rot + ' — ' + hfmt(h) + (agora ? statusAgora(h) : '') + '\\n' + pessoas;\n}\n// proximo dia (a partir de depois de amanha) em que o shopping atende - pra sempre mostrar o tecnico\nfunction proximoDia(loc, de) {\n  const b = EB[loc.empresa + ':' + loc.id_condominio] || {};\n  for (let i = de; i <= 7; i++) { const iso = addDia(hojeIso, i); if (b[diaSem(iso)]) return iso; }\n  return null;\n}\nfunction pessoasDe(loc, iso) {\n  return quemNoDia(loc, iso).split(' / ').map(x => '👤 ' + x.trim().replace(/ (\\(\\d{2}\\))/, ' — $1')).join('\\n');\n}\nfunction detalheLocal(loc) {\n  const b = EB[loc.empresa + ':' + loc.id_condominio] || {};\n  const linhas = ['🏬 *' + loc.nome + '* (' + (EMP[loc.empresa] || loc.empresa) + ')' + (b.tipo === '12x36' ? ' · 12x36' : ''),\n    linhaDia(loc, hojeIso, true), linhaDia(loc, addDia(hojeIso, 1), false)];\n  if (!b[diaSem(hojeIso)] && !b[diaSem(addDia(hojeIso, 1))]) {\n    const px = proximoDia(loc, 2);\n    if (px) linhas.push('Próximo atendimento (' + DIAS_TXT[diaSem(px)] + ' ' + ddmm(px) + ') — ' + hfmt(b[diaSem(px)]) + '\\n' + pessoasDe(loc, px));\n  }\n  return linhas.concat(['Horário: ' + semana(b)]).concat(b.obs ? ['_' + b.obs + '_'] : []).join('\\n');\n}\nfunction quem(q) {\n  q = String(q || '').replace(/[?!.]+\\s*$/, '').replace(/^\\s*(e|é|esta|está|ta|tá|atende|trabalha|fica|ficou)?\\s*(hoje\\s+)?(no|na|em|o|a|do|da)?\\s+/i, ' ').trim();\n  if (/\\s(hoje|amanh[aã]|agora)$/i.test(q)) q = q.replace(/\\s+(hoje|amanh[aã]|agora)$/i, '').trim();\n  const s = norm(q);\n  if (!s || s === 'hoje' || s === 'agora') {\n    const linhas = ['👷 *Quem atende hoje* (' + DIAS_TXT[diaSem(hojeIso)] + ' ' + ddmm(hojeIso) + ', ' + horaAgora + ')'];\n    let e0 = null;\n    for (const l of LOC.slice().sort((a, b) => (a.empresa + a.nome).localeCompare(b.empresa + b.nome))) {\n      if (l.empresa !== e0) { e0 = l.empresa; linhas.push('', '*' + (EMP[e0] || e0) + '*'); }\n      const b = EB[l.empresa + ':' + l.id_condominio] || {}, h = b[diaSem(hojeIso)];\n      linhas.push('• ' + l.nome + ': ' + (h ? quemNoDia(l, hojeIso).replace(/ \\(\\d{2}\\)\\s*[\\d-]+/g, '') + ' ' + hfmt(h) + statusAgora(h).replace(/^ · /, ' ') : 'não atende hoje'));\n    }\n    return linhas.join('\\n');\n  }\n  const r = acharLocal(q);\n  if (r.loc) return detalheLocal(r.loc);\n  // tecnico: onde aparece (tecnico padrao, lista da escala base ou escala do dia)\n  const primeiro = s.split(' ')[0];\n  const locs = LOC.filter(l => {\n    const b = EB[l.empresa + ':' + l.id_condominio] || {};\n    const tp = TEC.find(t => t.empresa === l.empresa && t.id_func === l.tec_padrao);\n    const nomes = [tp ? tp.nome : '', b.tecnicos || ''].concat(ED.filter(d => d.empresa === l.empresa && d.id_condominio === l.id_condominio).map(d => d.tecnico));\n    return nomes.some(n => norm(n).split(/[;\\s()]+/).some(w => w && w === primeiro) && s.split(' ').every(p => norm(n).includes(p)));\n  });\n  if (locs.length) return locs.map(detalheLocal).join('\\n\\n');\n  return r.erro.startsWith('Mais de um') ? r.erro : 'Não achei shopping nem técnico \"' + q + '\". Tente *ixc quem hoje* ou *ixc lista*.';\n}\nif (w0 === 'quem' || w0 === 'escala' || w0 === 'horario' || w0 === 'horarios') return out({ resposta: '🤖 *Resposta automática do bot de escalas*\\n\\n' + quem(resto) });\n\nif (!A || w0 === 'ajuda' || w0 === 'help' || w0 === '?') return out({ resposta: AJUDA });\nif (A === 'ok' || A === 'confirmar' || A === 'confirmo' || A === 'sim') return out({ aplicar: true });\nif (A === 'cancelar' || A === 'cancela' || A === 'nao') return out({ cancelar: true });\n\nif (w0 === 'lista' || w0 === 'listar' || w0 === 'shoppings') {\n  const q = norm(resto);\n  let locs = LOC;\n  if (q) {\n    const emp = Object.keys(EMP).find(e => norm(e) === q);\n    locs = emp ? LOC.filter(l => l.empresa === emp) : LOC.filter(l => norm(l.nome).includes(q));\n  }\n  if (!locs.length) return out({ resposta: 'Nada encontrado pra \"' + resto + '\".' });\n  const linhas = ['📋 *Marcação por shopping*', '_técnico → chamado atribuído a ele marca ele; sem técnico → marca a lista_'];\n  let emp = null;\n  for (const l of locs.slice().sort((a, b) => (a.empresa + a.nome).localeCompare(b.empresa + b.nome))) {\n    if (l.empresa !== emp) { emp = l.empresa; linhas.push('', '*' + (EMP[emp] || emp) + '*'); }\n    const tp = TEC.find(t => t.empresa === l.empresa && t.id_func === l.tec_padrao);\n    linhas.push('• ' + l.nome + (tp ? ' — técnico: ' + tp.nome : '') + '\\n   sem técnico marca: ' + ((l.marcar_sem_tec || []).map(x => nomeFone(l.empresa, x)).join(', ') || 'ninguém'));\n  }\n  return out({ resposta: linhas.join('\\n') });\n}\n\nif (w0 === 'tecnicos' || w0 === 'tecnico' && !resto) {\n  const q = norm(resto);\n  const emp = Object.keys(EMP).find(e => norm(e) === q);\n  const ts = TEC.filter(t => !q || t.empresa === emp || norm(t.nome).includes(q));\n  if (!ts.length) return out({ resposta: 'Nenhum técnico encontrado pra \"' + resto + '\".' });\n  const linhas = ['👷 *Técnicos*'];\n  let e0 = null;\n  for (const t of ts.slice().sort((a, b) => (a.empresa + a.nome).localeCompare(b.empresa + b.nome))) {\n    if (t.empresa !== e0) { e0 = t.empresa; linhas.push('', '*' + (EMP[e0] || e0) + '*'); }\n    linhas.push('• ' + t.nome + ' — ' + (t.fone ? fmtFone(t.fone) : 'sem número') + ' (id ' + t.id_func + ')');\n  }\n  return out({ resposta: linhas.join('\\n') });\n}\n\n// Feriados desligados por hora (regra de 27/09/2026) - religar: parametro feriados_ativo=sim + tirar este bloco\nif (w0 === 'feriados' || w0 === 'feriado' || (w0 === 'remover' && norm(resto).startsWith('feriado'))) return out({ resposta: 'Feriados estão desligados por enquanto.' });\nif (w0 === 'feriados') {\n  const fs = (cfg.feriados || []).slice(0, 25);\n  if (!fs.length) return out({ resposta: 'Nenhum feriado cadastrado daqui pra frente.' });\n  return out({ resposta: '📅 *Próximos feriados (sem reaviso)*\\n' + fs.map(x => {\n    const l = x.id_condominio ? LOC.find(l => l.id_condominio === x.id_condominio && (!x.empresa || l.empresa === x.empresa)) : null;\n    return '• ' + brData(x.data) + ' — ' + x.descricao + (l ? ' _(só ' + locTxt(l) + ')_' : x.empresa ? ' _(só ' + x.empresa + ')_' : '');\n  }).join('\\n') });\n}\n\nif (w0 === 'feriado' || (w0 === 'remover' && norm(resto).startsWith('feriado'))) {\n  const del = w0 === 'remover';\n  let s = del ? resto.replace(/^\\S+\\s*/, '') : resto;\n  const dt = lerData(s.split(/\\s+/)[0]);\n  if (!dt) return out({ resposta: 'Data inválida. Use dd/mm/aaaa, ex.: _ixc feriado 20/01/2027 São Sebastião em Porto Belo_' });\n  s = s.replace(/^\\S+\\s*/, '');\n  let loc = null;\n  const d = dividir(' ' + s, 'em');\n  if (d) d[0] = d[0].trim();\n  if (d) { const r = acharLocal(d[1]); if (r.erro) return out({ resposta: r.erro }); loc = r.loc; s = d[0]; }\n  else if (del && s) { const r = acharLocal(s); if (r.erro) return out({ resposta: r.erro }); loc = r.loc; s = ''; }\n  if (!del && !s) return out({ resposta: 'Faltou a descrição do feriado.' });\n  const onde = loc ? ' em ' + locTxt(loc) : ' (todos os shoppings)';\n  return out({\n    acao: { acao: del ? 'feriado_del' : 'feriado_add', data: dt, empresa: loc ? loc.empresa : null, id_condominio: loc ? loc.id_condominio : null, descricao: s || null },\n    resumo: (del ? 'remover feriado ' : 'feriado ') + brData(dt) + (s ? ' — ' + s : '') + onde,\n  });\n}\n\nif (w0 === 'shopping' || w0 === 'trocar') {\n  const d = dividir(resto, 'tecnico') || dividir(resto, 'técnico') || dividir(resto, 'para') || dividir(resto, 'pro');\n  if (!d) return out({ resposta: 'Use: _ixc shopping <shopping> tecnico <técnico>_' });\n  const r = acharLocal(d[0]); if (r.erro) return out({ resposta: r.erro });\n  const t = acharTec(d[1], r.loc.empresa); if (t.erro) return out({ resposta: t.erro });\n  if (!t.tec.fone) return out({ resposta: t.tec.nome + ' está sem número. Primeiro: _ixc numero ' + t.tec.nome + ' <telefone>_' });\n  const atual = TEC.find(x => x.empresa === r.loc.empresa && x.id_func === r.loc.tec_padrao);\n  if (atual && atual.id_func === t.tec.id_func && (r.loc.marcar_sem_tec || []).includes(t.tec.fone)) return out({ resposta: t.tec.nome + ' já é o técnico de ' + locTxt(r.loc) + '.' });\n  return out({\n    acao: { acao: 'shopping_tecnico', empresa: r.loc.empresa, id_condominio: r.loc.id_condominio, id_func: t.tec.id_func, fone: t.tec.fone },\n    resumo: locTxt(r.loc) + ': técnico ' + (atual ? atual.nome + ' → ' : '') + t.tec.nome + ' ' + fmtFone(t.tec.fone) + ' (chamado sem técnico passa a marcar ' + t.tec.nome + ' no lugar do técnico anterior; supervisor/coordenação continuam)',\n  });\n}\n\nif (w0 === 'numero' || w0 === 'número' || w0 === 'telefone') {\n  const m = resto.match(/^(.*?)\\s*((?:\\+?\\d[\\d\\s().-]{8,}\\d))\\s*$/);\n  if (!m) return out({ resposta: 'Use: _ixc numero <técnico> <telefone>_, ex.: _ixc numero Fulano 41 99999-0000_' });\n  const fone = lerFone(m[2]); if (!fone) return out({ resposta: 'Telefone inválido: ' + m[2] + ' (use DDD + número).' });\n  const t = acharTec(m[1]); if (t.erro) return out({ resposta: t.erro });\n  if (t.tec.fone === fone) return out({ resposta: t.tec.nome + ' já está com esse número.' });\n  return out({\n    acao: { acao: 'numero', empresa: t.tec.empresa, id_func: t.tec.id_func, fone, fone_antigo: t.tec.fone || null },\n    resumo: 'número de ' + t.tec.nome + ' (' + t.tec.empresa + '): ' + (t.tec.fone ? fmtFone(t.tec.fone) + ' → ' : '') + fmtFone(fone),\n    fone_validar: fone,\n  });\n}\n\nif (w0 === 'incluir' || w0 === 'adicionar' || w0 === 'remover' || w0 === 'tirar') {\n  const inc = w0 === 'incluir' || w0 === 'adicionar';\n  const d = inc ? dividir(resto, 'em') || dividir(resto, 'no') || dividir(resto, 'na')\n                : dividir(resto, 'de') || dividir(resto, 'do') || dividir(resto, 'da') || dividir(resto, 'em');\n  if (!d) return out({ resposta: inc ? 'Use: _ixc incluir <técnico ou telefone> em <shopping>_' : 'Use: _ixc remover <técnico ou telefone> de <shopping>_' });\n  const r = acharLocal(d[1]); if (r.erro) return out({ resposta: r.erro });\n  let fone = /\\d{8,}/.test(d[0].replace(/\\D/g, '')) ? lerFone(d[0]) : null, nome;\n  if (fone) nome = nomeFone(r.loc.empresa, fone);\n  else {\n    const q = norm(d[0]);\n    const primeiro = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').split(/\\s+/)[0];\n    if (P.supervisor_nome && q.startsWith(primeiro(P.supervisor_nome))) { fone = P.supervisor_fone; nome = P.supervisor_nome + ' (supervisor)'; }\n    else if (P.coordenador_nome && q.startsWith(primeiro(P.coordenador_nome))) { fone = P.coordenador_fone; nome = P.coordenador_nome + ' (coordenador)'; }\n    else {\n      const t = acharTec(d[0], r.loc.empresa);\n      if (t.erro) { const t2 = acharTec(d[0]); if (t2.erro) return out({ resposta: t.erro }); t.tec = t2.tec; }\n      if (!t.tec.fone) return out({ resposta: t.tec.nome + ' está sem número cadastrado.' });\n      fone = t.tec.fone; nome = t.tec.nome;\n    }\n  }\n  const lista = r.loc.marcar_sem_tec || [];\n  if (inc && lista.includes(fone)) return out({ resposta: nome + ' já é marcado em ' + locTxt(r.loc) + '.' });\n  if (!inc && !lista.includes(fone)) return out({ resposta: nome + ' não está na lista de ' + locTxt(r.loc) + ' (lista: ' + (lista.map(x => nomeFone(r.loc.empresa, x)).join(', ') || 'vazia') + ').' });\n  return out({\n    acao: { acao: inc ? 'incluir' : 'remover', empresa: r.loc.empresa, id_condominio: r.loc.id_condominio, fone },\n    resumo: (inc ? 'incluir ' : 'remover ') + (nome === fmtFone(fone) ? nome : nome + ' ' + fmtFone(fone)) + (inc ? ' em ' : ' de ') + locTxt(r.loc) + ' (chamado sem técnico)',\n    fone_validar: inc ? fone : null,\n  });\n}\n\nif (A.startsWith('novo tecnico') || A.startsWith('novo técnico')) {\n  const m = args.replace(/^\\S+\\s+\\S+\\s*/, '').match(/^(\\S+)\\s+(\\d+)\\s+(.+?)\\s+((?:\\+?\\d[\\d\\s().-]{8,}\\d))\\s*$/);\n  if (!m) return out({ resposta: 'Use: _ixc novo tecnico <empresa> <id no IXC> <nome> <telefone>_, ex.: _ixc novo tecnico PONTO 88 Carlos Silva 41 99999-0000_' });\n  const emp = Object.keys(EMP).find(e => norm(e) === norm(m[1]));\n  if (!emp) return out({ resposta: 'Empresa \"' + m[1] + '\" não existe. Use: ' + Object.keys(EMP).join(', ') });\n  const fone = lerFone(m[4]); if (!fone) return out({ resposta: 'Telefone inválido: ' + m[4] });\n  const ex = TEC.find(t => t.empresa === emp && t.id_func === m[2]);\n  return out({\n    acao: { acao: 'novo_tecnico', empresa: emp, id_func: m[2], nome: m[3].trim(), fone, grupo: null },\n    resumo: (ex ? 'atualizar técnico ' + ex.nome + ' → ' : 'novo técnico ') + m[3].trim() + ' (' + emp + ', id ' + m[2] + ') ' + fmtFone(fone),\n    fone_validar: fone,\n  });\n}\n\nreturn out({ resposta: 'Não entendi o comando. Mande *ixc ajuda* pra ver a lista.' });\n"
+   }
+  },
+  {
+   "name": "IXC Cmd: Validar Numero",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "executeOnce": true,
+   "alwaysOutputData": true,
+   "onError": "continueRegularOutput",
+   "position": [
+    660,
+    1250
+   ],
+   "parameters": {
+    "method": "GET",
+    "url": "={{ $('Carregar Parametros').first().json.waha_url }}/api/contacts/check-exists",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      }
+     ]
+    },
+    "options": {
+     "timeout": 30000
+    },
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpHeaderAuth",
+    "sendQuery": true,
+    "queryParameters": {
+     "parameters": [
+      {
+       "name": "phone",
+       "value": "={{ $json.fone_validar || '55__TELEFONE__' }}"
+      },
+      {
+       "name": "session",
+       "value": "={{ $('Carregar Parametros').first().json.waha_session }}"
+      }
+     ]
+    }
+   },
+   "credentials": {
+    "httpHeaderAuth": {
+     "id": "wahaApiKey01",
+     "name": "WAHA API"
+    }
+   }
+  },
+  {
+   "name": "IXC Cmd: Finalizar",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    880,
+    1250
+   ],
+   "parameters": {
+    "jsCode": "// Confere no WAHA (/api/contacts/check-exists) se o numero tem WhatsApp (usa o chatId real, que resolve o 9o digito) e monta o SQL.\n// Valores do usuario vao escapados como literal; quem altera as tabelas e a funcao ixc.aplicar_comando.\nconst d = $('IXC Cmd: Interpretar').first().json;\nconst f = $('IXC Cmd: Filtrar').first().json;\nconst lit = v => v === null || v === undefined ? 'NULL' : \"'\" + String(v).replace(/'/g, \"''\") + \"'\";\nlet resposta = d.resposta, sql = 'SELECT NULL::text AS msg';\nif (d.aplicar) sql = 'SELECT ixc.aplicar_comando(' + lit(f.autor) + ') AS msg';\nelse if (d.cancelar) sql = 'SELECT ixc.cancelar_comando() AS msg';\nelse if (d.acao) {\n  const acao = Object.assign({}, d.acao);\n  let aviso = '';\n  if (d.fone_validar) {\n    let r = $input.first().json;\n    if (typeof r.data === 'string') { try { r = JSON.parse(r.data); } catch (e) {} }\n    if (Array.isArray(r)) r = r[0] || {};\n    const existe = (r.numberExists !== undefined) ? r.numberExists : r.exists; // WAHA: numberExists/chatId; Evolution: exists/jid\n    const jidRaw = r.chatId || r.jid || '';\n    if (existe === false) {\n      return [{ json: { sql, resposta: '❌ O número ' + d.fone_validar + ' não tem WhatsApp. Confere e manda de novo.' } }];\n    }\n    const jid = String(jidRaw).split('@')[0];\n    if (existe && /^\\d+$/.test(jid)) { if (jid !== acao.fone) aviso = '\\n(no WhatsApp o número é ' + jid + ', vou usar esse)'; acao.fone = jid; }\n    else aviso = '\\n⚠️ Não consegui confirmar se o número tem WhatsApp.';\n  }\n  sql = 'SELECT ixc.registrar_comando(' + lit(JSON.stringify(acao)) + '::jsonb, ' + lit(d.resumo) + ', ' + lit(f.autor) + ', ' + lit(f.texto) + ')::text AS msg';\n  resposta = '📝 *Alteração pendente:* ' + d.resumo + aviso + '\\n\\nResponda *ixc ok* em até 15 min pra aplicar (ou *ixc cancelar*).';\n}\nreturn [{ json: { sql, resposta } }];\n"
+   }
+  },
+  {
+   "name": "IXC Cmd: Executar",
+   "type": "n8n-nodes-base.postgres",
+   "typeVersion": 2.6,
+   "position": [
+    1100,
+    1250
+   ],
+   "parameters": {
+    "operation": "executeQuery",
+    "query": "={{ $json.sql }}",
+    "options": {}
+   },
+   "credentials": {
+    "postgres": {
+     "name": "Postgres IXC State"
+    }
+   }
+  },
+  {
+   "name": "IXC Cmd: Responder",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "executeOnce": true,
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 3000,
+   "position": [
+    1320,
+    1250
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Carregar Parametros').first().json.waha_url }}/api/sendText",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ session: $('Carregar Parametros').first().json.waha_session, chatId: $('Carregar Parametros').first().json.grupo_automacao, text: $('IXC Cmd: Finalizar').first().json.resposta || String($json.msg || 'Feito.'), linkPreview: false }) }}",
+    "options": {
+     "timeout": 30000
+    },
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpHeaderAuth"
+   },
+   "credentials": {
+    "httpHeaderAuth": {
+     "id": "wahaApiKey01",
+     "name": "WAHA API"
+    }
+   }
+  },
+  {
+   "name": "Escala: Filtrar Pergunta",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    0,
+    1500
+   ],
+   "parameters": {
+    "jsCode": "// Pergunta livre de escala nos grupos (ex.: \"quem ta no jockey?\") -> resposta fixa do banco, sem Hermes (regra de 27/09/2026).\n// Aqui so o filtro barato: tem texto, tem palavra de pergunta, nao e comando nem resposta do proprio bot.\nconst body = $('WAHA: Normalizar').first().json;\nconst data = body.data || {};\nconst key = data.key || {};\nif (!key.remoteJid || !key.remoteJid.endsWith('@g.us')) return [];\nconst msg = data.message || {};\nconst texto = (msg.conversation || (msg.extendedTextMessage && msg.extendedTextMessage.text) || '').trim();\nif (!texto || texto.length > 300) return [];\nif (/^(ixc|hermes|analisar|ia)\\b/i.test(texto)) return [];\nif (/^((hermes[,:]?\\s+)?(me lembr|lembr[ae]r?[- ]me|me cobr|cobr[ae]r?[- ]me|lembrete|anot[ae]|nova demanda)|feit[oa]s?\\b|adia|cancel|ignorar\\b|demandas?\\b|pend[eê]ncias\\b|resumo\\b)/i.test(texto)) return []; // assistente de demandas (29/09)\nif (/\\b(lembrete|lembretes|lembra|lembrar|lembre|cobran[cç]as?|demandas?)\\b/i.test(texto)) return [];                 // comandos tem ramo proprio\nif (/^[^\\p{L}\\p{N}]/u.test(texto) || /\\*ixc|^n[aã]o (achei|entendi)/i.test(texto)) return []; // respostas do bot (comecam com emoji)\nconst n = texto.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');\n// Gatilhos tirados do historico real do N1/N2 (27/07-26/09/2026). n = texto sem acento, minusculo.\nfunction ehPergunta(n) {\n  if (/\\beu quem\\b|\\bsou eu\\b/.test(n)) return false;                                          // \"sou eu quem ta no patio\"\n  if (/\\b(quem|qm)\\s+(esta|ta|estaria|estara|vai estar|vai ta|e|eh|fica|ficara|atende|atendera|vai atender|trabalha|responde)\\b/.test(n)) return true;          // quem esta/ta/e o tecnico/e o responsavel\n  if (n.length > 90) return false;                                                               // o resto so em mensagem curta\n  if (/\\b(tem|temos|ha|hoje tem|amanha tem)\\s+(alguem|algum tecnico|tecnico)\\b/.test(n)) return true; // tem alguem no X\n  if (/^\\W*((bom dia|boa tarde|boa noite|opa|ola|oi)\\W+)?(alguem|algum tecnico)\\s+(no|na|em)\\b/.test(n)) return true; // alguem no X hoje?\n  if (/\\btecnico\\s+(do|da|de|em|no|na)\\b/.test(n)) return true;                                 // tecnico do jockey / favor tecnico de cascavel\n  if (/\\brespons[a]vel\\s+(do|da|pelo|pela|de)\\b/.test(n)) return true;                          // responsavel pelo shopping X\n  return false;\n}\n// SETORES (04/10): \"alguem do financeiro?\", \"algum n2 disponivel?\", \"comercial na ativa?\", \"contato do rh\" -> contatos + horario\nconst SET = { financeiro: 'financeiro|financeiron|faturamento|cobranca', comercial: 'comercial|vendas', rh: 'rh|recursos humanos', compras: 'compras', n2: 'n2' };\nconst setores = [];\nif (n.length <= 200) for (const [s, re] of Object.entries(SET)) {\n  const R = '(' + re + ')';\n  if (new RegExp('\\\\b(alguem|algum|alguma|algúem|quem)\\\\s+(ai\\\\s+|la\\\\s+)?((do|da|de|no|na)\\\\s+)?((time|setor|equipe|pessoal)\\\\s+)?((do|da)\\\\s+)?' + R + '\\\\b').test(n)\n   || new RegExp('\\\\bquem\\\\s+(esta|ta|e|fica)\\\\s+(de|no|na)\\\\s+' + R + '\\\\b').test(n)\n   || new RegExp('^\\\\W*([a-z]+\\\\W+){0,4}' + R + '\\\\s+(disponivel|on|online|na ativa|ativo|agr|agora)\\\\b').test(n)\n   || new RegExp('\\\\b(contato|numero|telefone|whats|whatsapp|ramal)\\\\s+(do|da|de)\\\\s+' + R + '\\\\b').test(n))\n    setores.push(s);\n}\nif (setores.length) return [{ json: { grupo: key.remoteJid, texto, id: key.id, participant: key.participant || null, fromMe: !!key.fromMe, setores } }];\nif (!ehPergunta(n)) return [];\nreturn [{ json: { grupo: key.remoteJid, texto, id: key.id, participant: key.participant || null, fromMe: !!key.fromMe } }];\n"
+   }
+  },
+  {
+   "name": "Escala: Buscar Dados",
+   "type": "n8n-nodes-base.postgres",
+   "typeVersion": 2.6,
+   "position": [
+    220,
+    1500
+   ],
+   "parameters": {
+    "operation": "executeQuery",
+    "query": "SELECT json_build_object(\n 'empresas', (SELECT json_agg(json_build_object('id', e.id, 'nome', e.nome) ORDER BY e.id) FROM ixc.empresas e WHERE e.ativo),\n 'tecnicos', (SELECT coalesce(json_agg(json_build_object('empresa', t.empresa, 'id_func', t.id_func, 'nome', t.nome, 'fone', t.fone)), '[]'::json) FROM ixc.tecnicos t),\n 'locais', (SELECT coalesce(json_agg(json_build_object('empresa', l.empresa, 'id_condominio', l.id_condominio, 'nome', l.nome, 'tec_padrao', l.tec_padrao, 'marcar_sem_tec', l.marcar_sem_tec)), '[]'::json) FROM ixc.locais l),\n 'param', (SELECT json_object_agg(chave, valor) FROM ixc.parametros WHERE chave IN ('supervisor_fone', 'coordenador_fone', 'supervisor_nome', 'coordenador_nome', 'escala_grupos', 'setores_grupo')),\n 'setores', (SELECT coalesce(json_agg(s ORDER BY s.setor, s.ordem), '[]'::json) FROM ixc.contatos_setor s WHERE s.ativo),\n 'hoje', to_char(now() AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI'),\n 'escala_base', (SELECT coalesce(json_agg(b), '[]'::json) FROM ixc.escala_base b),\n 'escala_dia', (SELECT coalesce(json_agg(json_build_object('data', d.data, 'empresa', d.empresa, 'id_condominio', d.id_condominio, 'tecnico', d.tecnico)), '[]'::json) FROM ixc.escala_dia d WHERE d.data BETWEEN (now() AT TIME ZONE 'America/Sao_Paulo')::date AND (now() AT TIME ZONE 'America/Sao_Paulo')::date + 1),\n 'feriados', (SELECT coalesce(json_agg(json_build_object('data', f.data, 'empresa', f.empresa, 'id_condominio', f.id_condominio, 'descricao', f.descricao) ORDER BY f.data), '[]'::json) FROM ixc.feriados f WHERE f.data >= (now() AT TIME ZONE 'America/Sao_Paulo')::date)\n) AS cfg\n",
+    "options": {}
+   },
+   "credentials": {
+    "postgres": {
+     "name": "Postgres IXC State"
+    }
+   }
+  },
+  {
+   "name": "Escala: Montar Resposta",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    440,
+    1500
+   ],
+   "parameters": {
+    "jsCode": "// Interpreta o comando \"ixc ...\" de forma deterministica (sem IA) contra a config do banco (schema ixc).\n// Saida: { resposta } para consulta/erro, ou { acao, resumo } para registrar pendente, ou { aplicar/cancelar: true }.\nlet cfg = $('Escala: Buscar Dados').first().json.cfg;\nif (typeof cfg === 'string') cfg = JSON.parse(cfg);\nconst f = { args: '' };\nconst args = f.args;\nconst norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\\s+/g, ' ').trim();\nconst A = norm(args);\nconst EMP = Object.fromEntries((cfg.empresas || []).map(e => [e.id, e.nome]));\nconst TEC = cfg.tecnicos || [], LOC = cfg.locais || [], P = cfg.param || {};\nconst out = o => [{ json: Object.assign({ resposta: null, acao: null, resumo: null, aplicar: false, cancelar: false, fone_validar: null }, o) }];\n\nconst AJUDA = [\n  '🛠️ *Comandos IXC* (só valem depois de *ixc ok*)',\n  '',\n  '*ixc lista* [empresa ou shopping] — quem é marcado em cada shopping',\n  '*ixc tecnicos* [empresa] — técnicos e números',\n  '*ixc quem* <shopping ou técnico> — quem atende, horário, hoje e amanhã (*ixc quem hoje* = todos)',\n  '',\n  '*ixc shopping* <shopping> *tecnico* <técnico> — troca o técnico do shopping',\n  '*ixc numero* <técnico> <telefone> — troca o número do técnico',\n  '*ixc incluir* <técnico ou telefone> *em* <shopping> — marca também essa pessoa quando o chamado ficar sem técnico',\n  '*ixc remover* <técnico ou telefone> *de* <shopping>',\n  '*ixc novo tecnico* <empresa> <id no IXC> <nome> <telefone>',\n  '',\n  '*ixc ok* — aplica a alteração pendente · *ixc cancelar* — descarta',\n  '',\n  'Ex.: _ixc shopping Tijucas tecnico Joao_ · _ixc numero Fulano 41 99999-0000_',\n].join('\\n');\n\nfunction fmtFone(x) {\n  const d = String(x || '').replace(/\\D/g, '');\n  const m = d.match(/^55(\\d{2})(\\d{4,5})(\\d{4})$/);\n  return m ? '(' + m[1] + ') ' + m[2] + '-' + m[3] : d;\n}\nfunction lerFone(s) {\n  let d = String(s || '').replace(/\\D/g, '').replace(/^0+/, '');\n  if (d.length === 10 || d.length === 11) d = '55' + d;\n  return /^55\\d{10,11}$/.test(d) ? d : null;\n}\nfunction nomeFone(emp, fone) {\n  const t = TEC.find(t => t.fone === fone && (!emp || t.empresa === emp)) || TEC.find(t => t.fone === fone);\n  if (t) return t.nome;\n  if (fone === P.supervisor_fone) return (P.supervisor_nome || 'Supervisor') + ' (supervisor)';\n  if (fone === P.coordenador_fone) return (P.coordenador_nome || 'Coordenador') + ' (coordenador)';\n  return fmtFone(fone);\n}\n// Acha 1 shopping pelo nome (aceita \"4B Palladium\" pra desambiguar)\nfunction acharLocal(q, emp) {\n  let s = norm(q);\n  if (!s) return { erro: 'Faltou o shopping.' };\n  const pref = Object.keys(EMP).find(e => s.startsWith(norm(e) + ' '));\n  if (pref && !emp) { emp = pref; s = s.slice(norm(pref).length + 1); }\n  const cand = LOC.filter(l => !emp || l.empresa === emp);\n  let hits = cand.filter(l => norm(l.nome) === s);\n  if (!hits.length) hits = cand.filter(l => norm(l.nome).includes(s));\n  if (!hits.length) hits = cand.filter(l => s.split(' ').every(p => norm(l.nome).includes(p)));\n  if (hits.length === 1) return { loc: hits[0] };\n  if (!hits.length) return { erro: 'Não achei o shopping \"' + q + '\". Veja os nomes com *ixc lista*.' };\n  return { erro: 'Mais de um shopping bate com \"' + q + '\":\\n' + hits.map(l => '• ' + l.empresa + ' ' + l.nome).join('\\n') + '\\nEscreva com a empresa na frente, ex.: _' + hits[0].empresa + ' ' + hits[0].nome + '_' };\n}\n// Acha 1 tecnico pelo nome (opcionalmente dentro de uma empresa)\nfunction acharTec(q, emp) {\n  let s = norm(q);\n  if (!s) return { erro: 'Faltou o técnico.' };\n  const pref = Object.keys(EMP).find(e => s.startsWith(norm(e) + ' '));\n  if (pref && !emp) { emp = pref; s = s.slice(norm(pref).length + 1); }\n  const cand = TEC.filter(t => !emp || t.empresa === emp);\n  let hits = cand.filter(t => norm(t.nome) === s);\n  if (!hits.length) hits = cand.filter(t => s.split(' ').every(p => norm(t.nome).split(' ').some(w => w.startsWith(p))));\n  if (hits.length === 1) return { tec: hits[0] };\n  if (!hits.length) return { erro: 'Não achei o técnico \"' + q + '\"' + (emp ? ' na ' + emp : '') + '. Veja com *ixc tecnicos*' + (emp ? ' ' + emp : '') + ' (técnico novo: *ixc novo tecnico*).' };\n  return { erro: 'Mais de um técnico bate com \"' + q + '\":\\n' + hits.map(t => '• ' + t.empresa + ' ' + t.nome).join('\\n') + '\\nEscreva o nome completo ou com a empresa na frente.' };\n}\nfunction lerData(s) {\n  const m = String(s).match(/^(\\d{1,2})\\/(\\d{1,2})(?:\\/(\\d{2,4}))?$/);\n  if (!m) return null;\n  const hoje = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));\n  let y = m[3] ? +m[3] : hoje.getFullYear();\n  if (y < 100) y += 2000;\n  const d = new Date(Date.UTC(y, +m[2] - 1, +m[1]));\n  if (d.getUTCDate() !== +m[1] || d.getUTCMonth() !== +m[2] - 1) return null;\n  if (!m[3] && d < Date.UTC(hoje.getFullYear(), hoje.getMonth(), hoje.getDate())) d.setUTCFullYear(y + 1);\n  return d.toISOString().slice(0, 10);\n}\nconst brData = iso => iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4);\nconst locTxt = l => l.nome + ' (' + l.empresa + ')';\n// separa \"X em Y\" / \"X de Y\" pelo ULTIMO separador (nome de shopping nao costuma ter \" em \")\nfunction dividir(s, sep) {\n  const i = s.toLowerCase().lastIndexOf(' ' + sep + ' ');\n  return i < 0 ? null : [s.slice(0, i).trim(), s.slice(i + sep.length + 2).trim()];\n}\n\n// ---- ixc quem: tecnico x shopping x horario (escala_base + escala_dia sincronizada da planilha ESCALAS) ----\nconst EB = Object.fromEntries((cfg.escala_base || []).map(b => [b.empresa + ':' + b.id_condominio, b]));\nconst ED = cfg.escala_dia || [];\nconst DIAS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];\nconst DIAS_TXT = { dom: 'dom', seg: 'seg', ter: 'ter', qua: 'qua', qui: 'qui', sex: 'sex', sab: 'sáb' };\nconst [hojeIso, horaAgora] = String(cfg.hoje || '').split(' ');\nconst addDia = (iso, n) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };\nconst diaSem = iso => DIAS[new Date(iso + 'T12:00:00Z').getUTCDay()];\nconst ddmm = iso => iso.slice(8, 10) + '/' + iso.slice(5, 7);\nconst hfmt = h => h ? h.replace('-', '–') : null;\nfunction foneDe(nome, loc, b) {\n  const n = norm(nome);\n  const m = String((b && b.tecnicos) || '').split(';').map(x => x.trim()).find(x => norm(x).startsWith(n.split(' ')[0]));\n  const f = m && m.match(/\\(\\d{2}\\)\\s*[\\d-]+/);\n  if (f) return f[0];\n  const t = TEC.find(t => t.empresa === loc.empresa && norm(t.nome).split(' ')[0] === n.split(' ')[0]);\n  return t && t.fone ? fmtFone(t.fone) : '';\n}\nfunction quemNoDia(loc, iso) {\n  const b = EB[loc.empresa + ':' + loc.id_condominio] || {};\n  if (b.tipo === '12x36' || b.tipo === 'escala') {\n    const ns = ED.filter(d => d.empresa === loc.empresa && d.id_condominio === loc.id_condominio && String(d.data).slice(0, 10) === iso).map(d => d.tecnico);\n    if (ns.length) return ns.map(n => n + ' ' + foneDe(n, loc, b)).join(' / ').trim();\n    return b.tecnicos ? b.tecnicos.replace(/;/g, ' /') : '_(escala do dia não encontrada na planilha)_';  // sem escala do dia -> equipe da escala base\n  }\n  const tp = TEC.find(t => t.empresa === loc.empresa && t.id_func === loc.tec_padrao);\n  if (tp) return tp.nome + (tp.fone ? ' ' + fmtFone(tp.fone) : '');\n  return b.tecnicos ? b.tecnicos.replace(/;/g, ' /') : 'sem técnico cadastrado';\n}\nfunction statusAgora(h) {\n  if (!h) return '';\n  const [ini, fim] = h.split('-');\n  if (horaAgora < ini) return ' · ⏳ começa às ' + ini;\n  if (horaAgora <= fim) return ' · 🟢 em atendimento (até ' + fim + ')';\n  return ' · 🔴 encerrou às ' + fim;\n}\nfunction semana(b) {\n  const ordem = ['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'], grupos = [];\n  for (const d of ordem) {\n    const h = b[d] || null, g = grupos[grupos.length - 1];\n    if (g && g.h === h) g.fim = d; else grupos.push({ ini: d, fim: d, h });\n  }\n  return grupos.filter(g => g.h).map(g => DIAS_TXT[g.ini] + (g.fim !== g.ini ? '–' + DIAS_TXT[g.fim] : '') + ' ' + hfmt(g.h)).join(' · ') || 'sem horário cadastrado';\n}\nfunction linhaDia(loc, iso, agora) {\n  const b = EB[loc.empresa + ':' + loc.id_condominio] || {};\n  const h = b[diaSem(iso)];\n  const rot = '*' + (agora ? 'Hoje' : 'Amanhã') + ' (' + DIAS_TXT[diaSem(iso)] + ' ' + ddmm(iso) + ')*';\n  if (!h) return rot + ': não atende';\n  const pessoas = quemNoDia(loc, iso).split(' / ').map(x => '👤 ' + x.trim().replace(/ (\\(\\d{2}\\))/, ' — $1')).join('\\n');\n  return rot + ' — ' + hfmt(h) + (agora ? statusAgora(h) : '') + '\\n' + pessoas;\n}\n// proximo dia (a partir de depois de amanha) em que o shopping atende - pra sempre mostrar o tecnico\nfunction proximoDia(loc, de) {\n  const b = EB[loc.empresa + ':' + loc.id_condominio] || {};\n  for (let i = de; i <= 7; i++) { const iso = addDia(hojeIso, i); if (b[diaSem(iso)]) return iso; }\n  return null;\n}\nfunction pessoasDe(loc, iso) {\n  return quemNoDia(loc, iso).split(' / ').map(x => '👤 ' + x.trim().replace(/ (\\(\\d{2}\\))/, ' — $1')).join('\\n');\n}\nfunction detalheLocal(loc) {\n  const b = EB[loc.empresa + ':' + loc.id_condominio] || {};\n  const linhas = ['🏬 *' + loc.nome + '* (' + (EMP[loc.empresa] || loc.empresa) + ')' + (b.tipo === '12x36' ? ' · 12x36' : ''),\n    linhaDia(loc, hojeIso, true), '\\n', linhaDia(loc, addDia(hojeIso, 1), false)];  // blocos separados (formato de 02/10)\n  if (!b[diaSem(hojeIso)] && !b[diaSem(addDia(hojeIso, 1))]) {\n    const px = proximoDia(loc, 2);\n    if (px) linhas.push('\\n', '*Próximo atendimento (' + DIAS_TXT[diaSem(px)] + ' ' + ddmm(px) + ')* — ' + hfmt(b[diaSem(px)]) + '\\n' + pessoasDe(loc, px));\n  }\n  return linhas.concat(['Horário: ' + semana(b)]).concat(b.obs ? ['_' + b.obs + '_'] : []).join('\\n');\n}\nfunction quem(q) {\n  q = String(q || '').replace(/[?!.]+\\s*$/, '').replace(/^\\s*(e|é|esta|está|ta|tá|atende|trabalha|fica|ficou)?\\s*(hoje\\s+)?(no|na|em|o|a|do|da)?\\s+/i, ' ').trim();\n  if (/\\s(hoje|amanh[aã]|agora)$/i.test(q)) q = q.replace(/\\s+(hoje|amanh[aã]|agora)$/i, '').trim();\n  const s = norm(q);\n  if (!s || s === 'hoje' || s === 'agora') {\n    const linhas = ['👷 *Quem atende hoje* (' + DIAS_TXT[diaSem(hojeIso)] + ' ' + ddmm(hojeIso) + ', ' + horaAgora + ')'];\n    let e0 = null;\n    for (const l of LOC.slice().sort((a, b) => (a.empresa + a.nome).localeCompare(b.empresa + b.nome))) {\n      if (l.empresa !== e0) { e0 = l.empresa; linhas.push('', '*' + (EMP[e0] || e0) + '*'); }\n      const b = EB[l.empresa + ':' + l.id_condominio] || {}, h = b[diaSem(hojeIso)];\n      linhas.push('• ' + l.nome + ': ' + (h ? quemNoDia(l, hojeIso).replace(/ \\(\\d{2}\\)\\s*[\\d-]+/g, '') + ' ' + hfmt(h) + statusAgora(h).replace(/^ · /, ' ') : 'não atende hoje'));\n    }\n    return linhas.join('\\n');\n  }\n  const r = acharLocal(q);\n  if (r.loc) return detalheLocal(r.loc);\n  // tecnico: onde aparece (tecnico padrao, lista da escala base ou escala do dia)\n  const primeiro = s.split(' ')[0];\n  const locs = LOC.filter(l => {\n    const b = EB[l.empresa + ':' + l.id_condominio] || {};\n    const tp = TEC.find(t => t.empresa === l.empresa && t.id_func === l.tec_padrao);\n    const nomes = [tp ? tp.nome : '', b.tecnicos || ''].concat(ED.filter(d => d.empresa === l.empresa && d.id_condominio === l.id_condominio).map(d => d.tecnico));\n    return nomes.some(n => norm(n).split(/[;\\s()]+/).some(w => w && w === primeiro) && s.split(' ').every(p => norm(n).includes(p)));\n  });\n  if (locs.length) return locs.map(detalheLocal).join('\\n\\n');\n  return r.erro.startsWith('Mais de um') ? r.erro : 'Não achei shopping nem técnico \"' + q + '\". Tente *ixc quem hoje* ou *ixc lista*.';\n}\nconst P0 = $('Escala: Filtrar Pergunta').first().json;\nconst ALIAS = { \n  '4B:199': ['palladium curitiba', 'palladium cwb', 'palladium ctba', 'paladiun curitiba', 'paladium curitiba', 'palladium', 'paladiun', 'paladium'], '4B:199|4B:200|CACTA:263|BUZZ:269': ['curitiba'], '4B:201': ['catuai palladium', 'catuai foz', 'palladium foz', 'foz do iguacu', 'foz'],\n  '4B:202': ['palladium umuarama', 'umuarama'], '4B:275': ['cidade dos lagos', 'guarapuava'], '4B:244': ['outlet city center', 'city center campo largo', 'city center', 'citty center', 'city centre', 'cit center', 'sity center', 'citycenter', 'outlet campo largo', 'campo largo'],\n  '4B:276': ['pato branco'], '4B:243': ['petropolis'], '4B:200': ['ventura'],\n  'BUZZ:280': ['plaza campos gerais', 'campos gerais', 'ponta grossa'], 'BUZZ:269': ['estacao'], 'BUZZ:271': ['gravatai'],\n  'CACTA:260': ['catuai cascavel', 'cascavel'], 'CACTA:263': ['jockey plaza', 'jockey plazza', 'jockey'], 'CACTA:253': ['park city sumare', 'parck city sumare', 'park city', 'parck city', 'parque city', 'park citi', 'parkcity', 'park sumare', 'shopping sumare', 'sumare'],\n  'CACTA:247': ['patteo urupema', 'patteo', 'pateo', 'patio urupema', 'urupema', 'mogi das cruzes'], 'CACTA:253|CACTA:248': ['park shopping', 'parkshopping', 'parck shopping', 'park', 'parck'], 'CACTA:248': ['parkshopping mogi mirim', 'park shopping mogi mirim', 'parkshopping mogi', 'park shopping mogi', 'parck shopping mogi', 'parque shopping mogi', 'park mogi', 'parck mogi', 'shopping mogi mirim', 'mogi mirim', 'mogi mirin'], 'CACTA:206': ['pontal'],\n  'PONTO:144': ['ifashion', 'i fashion', 'fashion outlet', 'ifosc', 'tijucas'], 'PONTO:104': ['itajai'], 'PONTO:134': ['porto belo', 'portobelo'],\n  'PONTO:159': ['passo fundo'], 'PONTO:273': ['pulse'], 'PONTO:84': ['patio chapeco', 'patio'], 'PONTO:84|PONTO:273': ['chapeco'], 'PONTO:110': ['riviera'],\n  'PONTO:216': ['sinop'], 'PELOTAS': ['pelotas'], '4B:201|CACTA:260': ['catuai'] };  // apelidos vistos no historico do N1/N2 (27/07-26/09)\nconst GENERICOS = ['curitiba'];  // so vale se nenhum shopping especifico foi citado\n\nconst grupos = String((cfg.param || {}).escala_grupos || '').split(',').map(s => s.trim()).filter(Boolean);\nif (!grupos.includes(P0.grupo)) return [];\n// RESPOSTA DE SETOR (regra de 04/10): contatos de ixc.contatos_setor + horario + se esta atendendo agora; marca o numero\nif (P0.setores && P0.setores.length) {\n  const ST = cfg.setores || [];\n  const TIT = { rh: '👥 *RH*', financeiro: '💰 *Financeiro*', compras: '🛒 *Compras*', comercial: '💼 *Comercial*', n2: '🛠️ *Suporte N2*' };\n  const ORD = ['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'];\n  const ivs = h => String(h || '').split(',').map(x => x.trim()).filter(Boolean).map(x => x.split('-'));\n  const fH = h => ivs(h).map(([a, b]) => a + '–' + b).join(' e ');\n  const sem = c => { const g = []; for (const d of ORD) { const h = c[d] || null, u = g[g.length - 1]; if (u && u.h === h) u.f = d; else g.push({ i: d, f: d, h }); }\n    return g.filter(x => x.h).map(x => DIAS_TXT[x.i] + (x.f !== x.i ? '–' + DIAS_TXT[x.f] : '') + ' ' + fH(x.h)).join(' · '); };\n  // ESCALA 12x36 NO SETOR (04/10): contato com c.escala ('4B:199') segue a escala do shopping (__NOME__/__NOME__ = 12x36 Palladium Curitiba)\n  const plantao = (c, iso) => ED.some(d => d.empresa + ':' + d.id_condominio === c.escala && String(d.data).slice(0, 10) === iso && norm(d.tecnico).split(' ')[0] === norm(c.nome).split(' ')[0]);\n  const hEsc = (c, iso) => ((EB[c.escala] || {})[diaSem(iso)]) || null;\n  const nomeEsc = c => { const l = LOC.find(l => l.empresa + ':' + l.id_condominio === c.escala); return l ? l.nome : c.escala; };\n  const agora = c => {\n    if (c.escala) { const h = hEsc(c, hojeIso); if (!h || !plantao(c, hojeIso)) return false; const [a, b] = h.split('-'); return horaAgora >= a && horaAgora <= b; }\n    for (const [a, b] of ivs(c[diaSem(hojeIso)])) if (horaAgora >= a && horaAgora <= b) return true; return false; };\n  const status = c => {\n    if (c.escala) {\n      const h = hEsc(c, hojeIso), amanha = addDia(hojeIso, 1);\n      if (plantao(c, hojeIso) && h) { const [a, b] = h.split('-'); if (horaAgora < a) return '⏳ de plantão hoje, começa às ' + a; if (horaAgora <= b) return '🟢 de plantão agora (até ' + b + ')';\n        const px = addDia(hojeIso, 2); return '🔴 plantão de hoje encerrou às ' + b + ' · próximo ' + DIAS_TXT[diaSem(px)] + ' ' + ddmm(px) + ' às ' + ((hEsc(c, px) || a + '-').split('-')[0]); }\n      if (plantao(c, amanha) && hEsc(c, amanha)) return '🔴 folga hoje · plantão amanhã às ' + hEsc(c, amanha).split('-')[0];\n      return '🔴 folga hoje (12x36)';\n    }\n    const iv = ivs(c[diaSem(hojeIso)]);\n    if (!ORD.some(d => c[d])) return '⚪ horário não informado';\n    for (const [a, b] of iv) if (horaAgora >= a && horaAgora <= b) return '🟢 atendendo agora (até ' + b + ')';\n    for (const [a] of iv) if (horaAgora < a) return '⏳ volta hoje às ' + a;\n    for (let i = 1; i <= 7; i++) { const iso = addDia(hojeIso, i), iv2 = ivs(c[diaSem(iso)]); if (iv2.length) return '🔴 fora do horário · volta ' + (i === 1 ? 'amanhã' : DIAS_TXT[diaSem(iso)] + ' ' + ddmm(iso)) + ' às ' + iv2[0][0]; }\n    return '⚪ horário não informado';\n  };\n  // SO NO RECADOS (regra de 04/10): escala N1/N2 responde em qualquer grupo; financeiro/comercial/compras/rh so no grupo de Recados\n  const RECADOS = String((cfg.param || {}).setores_grupo || '__GRUPO_RECADOS__@g.us');\n  const NOME_S = { financeiro: 'Financeiro', comercial: 'Comercial', compras: 'Compras', rh: 'RH' };\n  const foraRecados = P0.grupo !== RECADOS ? P0.setores.filter(s => s !== 'n2') : [];\n  const blocos = [];\n  for (const s of ['n2', 'financeiro', 'comercial', 'compras', 'rh']) {\n    if (!P0.setores.includes(s) || foraRecados.includes(s)) continue;\n    let cs = ST.filter(c => c.setor === s);\n    if (s === 'n2') cs = cs.slice().sort((a, b) => agora(b) - agora(a));\n    const L = [TIT[s] || s];\n    const obsSetor = s === 'comercial' && cs[0] && cs[0].obs ? cs[0].obs : null;\n    if (obsSetor) L.push(obsSetor);\n    for (const c of cs) {\n      L.push('👤 ' + c.nome + ' — ' + fmtFone(c.fone) + '\\n🕐 ' + (c.escala ? '12x36 ' + nomeEsc(c) + ' ' + hfmt((EB[c.escala] || {})[diaSem(hojeIso)] || '') : (sem(c) || 'sem horário')) + ' · ' + status(c));\n      if (c.obs && c.obs !== obsSetor && !/sem horário/i.test(c.obs)) L.push('_' + c.obs + '_');\n    }\n    if (!cs.length) L.push('_sem contato cadastrado_');\n    blocos.push(L.join('\\n'));\n  }\n  if (foraRecados.length) {\n    const lista = foraRecados.map(s => NOME_S[s]);\n    const txt = lista.length > 1 ? lista.slice(0, -1).join(', ') + ' e ' + lista[lista.length - 1] : lista[0];\n    blocos.push('📌 Para falar com *' + txt + '*, pergunte no grupo *Resolutto - Recados*: é lá que estão todos os setores (Financeiro, Comercial, Compras e RH).');\n  }\n  let resp = '🤖 *Resposta automática do bot de escalas*\\n\\n' + blocos.join('\\n\\n');\n  const menc = [];\n  resp = resp.replace(/(👤[^\\n]*?)\\((\\d{2})\\)\\s*(\\d{4,5})-(\\d{4})/g, (x, pre, dd, p1, p2) => { const num = '55' + dd + p1 + p2; if (!menc.includes(num)) menc.push(num); return pre + '@' + num; });\n  return [{ json: { grupo: P0.grupo, resposta: resp, mentioned: menc, quoted: { key: { id: P0.id, remoteJid: P0.grupo, fromMe: P0.fromMe, participant: P0.participant }, message: { conversation: P0.texto } } } }];\n}\nlet t = ' ' + norm(P0.texto).replace(/[^a-z0-9 ]/g, ' ') + ' ';\nconst achados = [];\nconst todos = [];\nfor (const [k, al] of Object.entries(ALIAS)) for (const a of al) todos.push([a, k]);\ntodos.sort((a, b) => (GENERICOS.includes(a[0]) - GENERICOS.includes(b[0])) || b[0].length - a[0].length);\nfor (const [a, k] of todos) {\n  if (GENERICOS.includes(a) && achados.some(k => k !== 'PELOTAS')) continue;  // Pelotas nao e shopping cadastrado, nao conta\n  const re = new RegExp(' ' + a + ' ');\n  if (re.test(t)) { t = t.replace(re, ' # '); for (const kk of k.split('|')) if (!achados.includes(kk)) achados.push(kk); }\n}\nconst locs = achados.map(k => LOC.find(l => l.empresa + ':' + l.id_condominio === k)).filter(Boolean);\nconst extras = achados.includes('PELOTAS') ? ['🏬 *Shopping Pelotas*\\nSem técnico no momento (em fase de entrega de contrato).'] : [];\nfunction compacto(l) {  // varios shoppings de uma vez (ex.: \"quem esta em curitiba\")\n  const b = EB[l.empresa + ':' + l.id_condominio] || {}, h = b[diaSem(hojeIso)];\n  if (!h) { const px = proximoDia(l, 1); return '🏬 *' + l.nome + '* — não atende hoje' + (px ? ' (volta ' + DIAS_TXT[diaSem(px)] + ' ' + (b[diaSem(px)] || '').split('-')[0] + ')\\n' + pessoasDe(l, px) : ''); }\n  return '🏬 *' + l.nome + '* — hoje ' + hfmt(h) + statusAgora(h).replace(/^ · /, ' ') + '\\n' +\n    quemNoDia(l, hojeIso).split(' / ').map(x => '👤 ' + x.trim().replace(/ (\\(\\d{2}\\))/, ' — $1')).join('\\n');\n}\nlet resposta;\nif (!locs.length && extras.length) resposta = extras.join('\\n\\n');\nelse if (!locs.length) {\n  if (!/\\bhoje\\b|\\bagora\\b/.test(t) || !/\\bquem\\b/.test(t)) return [];   // \"quem ta hoje?\" sem shopping -> lista geral\n  resposta = quem('hoje');\n} else resposta = (locs.length > 2 ? locs.map(compacto) : locs.map(detalheLocal)).concat(extras).join('\\n\\n');\nresposta = '🤖 *Resposta automática do bot de escalas*\\n\\n' + resposta;  // legenda do bot (regra de 04/10)\n// Marca os tecnicos (regra de 02/10/2026): telefone da linha 👤 vira mencao de verdade (@55...). Lista geral \"quem atende hoje\" nao tem telefone -> nao marca ninguem.\nconst mencoes = [];\nresposta = resposta.replace(/(👤[^\\n]*?)\\((\\d{2})\\)\\s*(\\d{4,5})-(\\d{4})/g, (m, pre, dd, p1, p2) => {\n  const num = '55' + dd + p1 + p2;\n  if (!mencoes.includes(num)) mencoes.push(num);\n  return pre + '@' + num;\n});\nreturn [{ json: { grupo: P0.grupo, resposta, mentioned: mencoes, quoted: { key: { id: P0.id, remoteJid: P0.grupo, fromMe: P0.fromMe, participant: P0.participant }, message: { conversation: P0.texto } } } }];\n"
+   }
+  },
+  {
+   "name": "Escala: Responder",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "retryOnFail": true,
+   "maxTries": 2,
+   "waitBetweenTries": 3000,
+   "onError": "continueRegularOutput",
+   "position": [
+    660,
+    1500
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Carregar Parametros').first().json.waha_url }}/api/sendText",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify(Object.assign({ session: $('Carregar Parametros').first().json.waha_session, chatId: $json.grupo, text: $json.resposta, linkPreview: false }, ($json.quoted && $json.quoted.key && $json.quoted.key.id) ? { reply_to: $json.quoted.key.id } : {}, ($json.mentioned || []).length ? { mentions: $json.mentioned.map(f => String(f).replace(/\\D/g, '') + '@c.us') } : {})) }}",
+    "options": {
+     "timeout": 30000
+    },
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpHeaderAuth"
+   },
+   "credentials": {
+    "httpHeaderAuth": {
+     "id": "wahaApiKey01",
+     "name": "WAHA API"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "jsCode": "// WAHA -> formato interno (27/10/2026)\n// O WAHA entrega os eventos 'message' / 'message.any' com payload { id, from, fromMe, participant, body, hasMedia, _data }.\n// Este no converte para o formato que o resto do workflow ja entende (data.key / data.message, igual ao da Evolution),\n// para que os filtros, o interpretador e o bot de escalas nao mudem.\n// So mensagem de GRUPO segue. Outros eventos (session.status, message.ack, ...) e conversas privadas do numero sao descartados aqui.\nconst b = $json.body || $json;\nconst ev = String(b.event || '');\nif (!/^message(\\.any)?$/.test(ev)) return [];\nconst p = b.payload || {};\nconst jid = String(p.from || '');\nif (!jid.endsWith('@g.us')) return [];\nconst d = p._data || {};\nconst info = d.Info || {};\nconst pushName = info.PushName || d.notifyName || d.pushName || d.PushName || '';\nconst texto = typeof p.body === 'string' ? p.body : '';\nreturn [{ json: { event: 'messages.upsert', origem: 'waha', sessao: b.session || null, data: {\n  key: { remoteJid: jid, fromMe: !!p.fromMe, id: String(p.id || ''), participant: p.participant || null },\n  pushName,\n  messageType: p.hasMedia ? 'media' : 'conversation',\n  message: { conversation: texto },\n  timestamp: p.timestamp || null,\n} } }];\n"
+   },
+   "name": "WAHA: Normalizar",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    220,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "operation": "executeQuery",
+    "query": "-- Parametros do WAHA e do grupo de automacao, em colunas de texto (sem depender do parse de json pelo no Postgres)\nSELECT max(CASE WHEN chave = 'waha_url' THEN valor END) AS waha_url,\n       max(CASE WHEN chave = 'waha_session' THEN valor END) AS waha_session,\n       max(CASE WHEN chave = 'grupo_automacao' THEN valor END) AS grupo_automacao\nFROM ixc.parametros",
+    "options": {}
+   },
+   "name": "Carregar Parametros",
+   "type": "n8n-nodes-base.postgres",
+   "typeVersion": 2.6,
+   "position": [
+    440,
+    0
+   ],
+   "alwaysOutputData": true,
+   "credentials": {
+    "postgres": {
+     "name": "Postgres IXC State"
+    }
+   }
+  }
+ ],
+ "connections": {
+  "IXC Cmd: Filtrar": {
+   "main": [
+    [
+     {
+      "node": "IXC Cmd: Carregar",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "IXC Cmd: Carregar": {
+   "main": [
+    [
+     {
+      "node": "IXC Cmd: Interpretar",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "IXC Cmd: Interpretar": {
+   "main": [
+    [
+     {
+      "node": "IXC Cmd: Validar Numero",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "IXC Cmd: Validar Numero": {
+   "main": [
+    [
+     {
+      "node": "IXC Cmd: Finalizar",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "IXC Cmd: Finalizar": {
+   "main": [
+    [
+     {
+      "node": "IXC Cmd: Executar",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "IXC Cmd: Executar": {
+   "main": [
+    [
+     {
+      "node": "IXC Cmd: Responder",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Escala: Filtrar Pergunta": {
+   "main": [
+    [
+     {
+      "node": "Escala: Buscar Dados",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Escala: Buscar Dados": {
+   "main": [
+    [
+     {
+      "node": "Escala: Montar Resposta",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Escala: Montar Resposta": {
+   "main": [
+    [
+     {
+      "node": "Escala: Responder",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Webhook WAHA (mensagens dos grupos)": {
+   "main": [
+    [
+     {
+      "node": "WAHA: Normalizar",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "WAHA: Normalizar": {
+   "main": [
+    [
+     {
+      "node": "Carregar Parametros",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Carregar Parametros": {
+   "main": [
+    [
+     {
+      "node": "IXC Cmd: Filtrar",
+      "type": "main",
+      "index": 0
+     },
+     {
+      "node": "Escala: Filtrar Pergunta",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1"
+ },
+ "active": false
+}

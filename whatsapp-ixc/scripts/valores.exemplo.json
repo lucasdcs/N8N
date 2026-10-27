@@ -1,0 +1,24 @@
+{
+ "waha_session": "session_xxxxxxxx",
+ "grupo_automacao": "__GRUPO_AUTOMACAO__@g.us",
+ "envio_teste_para": "55__TELEFONE__",
+ "supervisor_nome": "__NOME_SUPERVISOR__",
+ "coordenador_nome": "__NOME_COORDENADOR__",
+ "grupos_publicos": {
+  "<JID do grupo de automacao>": "__GRUPO_AUTOMACAO__@g.us",
+  "<JID do grupo dos tecnicos>": "__GRUPO_TECNICOS__@g.us",
+  "<JID do N1/N2>": "__GRUPO_N1N2__@g.us",
+  "<JID do Recados>": "__GRUPO_RECADOS__@g.us"
+ },
+ "nomes_publicos": {
+  "<nome do supervisor>": "__NOME_SUPERVISOR__",
+  "<nome do coordenador>": "__NOME_COORDENADOR__",
+  "<nome do dono do numero>": "__NOME_DONO__"
+ },
+ "comentarios": [
+  [
+   "<texto com nome de pessoa nos comentarios do codigo original>",
+   "<texto sem o nome>"
+  ]
+ ]
+}

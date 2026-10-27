@@ -1,0 +1,222 @@
+{
+ "name": "Escalas - Sync planilha ESCALAS (aba HOJE) (WAHA)",
+ "nodes": [
+  {
+   "name": "A cada hora (:20)",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    0
+   ],
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "cronExpression",
+       "expression": "20 * * * *"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "Baixar aba HOJE",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000,
+   "onError": "continueRegularOutput",
+   "position": [
+    220,
+    0
+   ],
+   "parameters": {
+    "method": "GET",
+    "url": "https://docs.google.com/spreadsheets/d/__PLANILHA_ID__/export?format=csv&gid=__GID_HOJE__",
+    "options": {
+     "response": {
+      "response": {
+       "responseFormat": "text",
+       "outputPropertyName": "data"
+      }
+     },
+     "timeout": 30000
+    }
+   }
+  },
+  {
+   "name": "Montar Escala",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    440,
+    0
+   ],
+   "parameters": {
+    "jsCode": "// Le a aba HOJE da planilha ESCALAS (export CSV) e monta o SQL de ixc.escala_dia: quem trabalha hoje/amanha\n// nos shoppings 12x36 e em Porto Belo/Tijucas. Substitui o script do CT106 (regra de 27/09/2026).\n// 3 falhas seguidas -> 1 aviso no grupo de automação.\nconst st = $getWorkflowStaticData('global');\nconst PREFIXOS = { 'PALLADIUM CURITIBA': ['4B', '199'], 'FOZ': ['4B', '201'], 'JOCKEY': ['CACTA', '263'], 'CASCAVEL': ['CACTA', '260'] };\nconst PB = { 'porto belo': ['PONTO', '134'], 'tijucas': ['PONTO', '144'] };\n\nfunction lerCsv(t) {\n  const linhas = []; let lin = [], cel = '', aspas = false;\n  for (let i = 0; i < t.length; i++) {\n    const c = t[i];\n    if (aspas) {\n      if (c === '\"' && t[i + 1] === '\"') { cel += '\"'; i++; }\n      else if (c === '\"') aspas = false;\n      else cel += c;\n    } else if (c === '\"') aspas = true;\n    else if (c === ',') { lin.push(cel); cel = ''; }\n    else if (c === '\\n') { lin.push(cel); linhas.push(lin); lin = []; cel = ''; }\n    else if (c !== '\\r') cel += c;\n  }\n  if (cel || lin.length) { lin.push(cel); linhas.push(lin); }\n  return linhas;\n}\nconst celula = (v, i, j) => ((v[i] || [])[j] || '').trim();\nfunction achar(v, texto) {\n  for (let i = 0; i < v.length; i++) for (let j = 0; j < v[i].length; j++)\n    if (v[i][j].trim().toUpperCase().startsWith(texto.toUpperCase())) return [i, j];\n  return null;\n}\nconst hojeIso = new Date().toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' }).slice(0, 10);\nconst addDia = (iso, n) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };\nfunction dataDe(txt) {  // \"27/09\" -> ISO, ano pelo mais proximo de hoje\n  const m = String(txt).match(/^(\\d{1,2})\\/(\\d{1,2})/);\n  if (!m) throw new Error('data inválida no cabeçalho: \"' + txt + '\"');\n  const [y, mes] = [+hojeIso.slice(0, 4), +hojeIso.slice(5, 7)];\n  const ano = y + (+m[2] < mes - 6 ? 1 : +m[2] > mes + 6 ? -1 : 0);\n  return ano + '-' + String(m[2]).padStart(2, '0') + '-' + String(m[1]).padStart(2, '0');\n}\nconst titulo = s => s.toLowerCase().replace(/(^|\\s)\\S/g, x => x.toUpperCase());\n\ntry {\n  const r = $input.first().json;\n  const txt = typeof r.data === 'string' ? r.data : '';\n  if (!txt || /<html/i.test(txt.slice(0, 300))) throw new Error('a planilha não devolveu CSV (acesso mudou?)' + (r.error ? ': ' + JSON.stringify(r.error).slice(0, 150) : ''));\n  const v = lerCsv(txt);\n  const linhas = [];\n  for (const cab of ['QUEM TRABALHA HOJE', 'QUEM TRABALHA AMANH']) {\n    const p = achar(v, cab);\n    if (!p) throw new Error('cabeçalho não encontrado: ' + cab);\n    const [i, j] = p, dia = dataDe(celula(v, i, j + 1));\n    for (let k = i + 1; celula(v, k, j) && !celula(v, k, j).startsWith('#'); k++) {\n      const t = celula(v, k, j);\n      const [pre, nome = ''] = t.split(/\\s*-\\s*/);\n      const loc = PREFIXOS[pre.trim().toUpperCase()];\n      if (!loc || !nome.trim()) throw new Error('linha não reconhecida na aba HOJE: ' + t);\n      linhas.push([dia, loc[0], loc[1], titulo(nome.replace('(N2)', '').replace(/\\s+/g, ' ').trim())]);\n    }\n  }\n  for (const [cab, delta] of [['Hoje em Porto Belo', 0], ['Amanhã em Porto Belo', 1]]) {\n    const p = achar(v, cab);\n    if (!p) { if (delta === 0) throw new Error('cabeçalho não encontrado: ' + cab); continue; }\n    const t = celula(v, p[0] + 1, p[1]);\n    if (!t) continue;\n    // Formatos: \"X atende Porto Belo e Tijucas\" | \"X em/atende Porto Belo e Y em/atende Tijucas\" | \"Ninguém\".\n    // (A troca fixa de nome que existia aqui foi removida em 27/10/2026: a formula da aba HOJE foi corrigida em 03/10.)\n    const t2 = t;\n    if (/^ningu/i.test(t2)) continue;\n    const m = t2.match(/^(.+?)\\s+(?:em|atende)\\s+Porto Belo\\s+e\\s+(.+?)\\s+(?:em|atende)\\s+Tijucas/i);\n    const pares = m ? [[PB['porto belo'], m[1]], [PB['tijucas'], m[2]]]\n      : Object.entries(PB).filter(([k]) => t2.toLowerCase().includes(k)).map(([, loc]) => [loc, t2.split(' atende')[0]]);\n    for (const [loc, nome] of pares) linhas.push([addDia(hojeIso, delta), loc[0], loc[1], nome.trim()]);\n  }\n  if (!linhas.length) throw new Error('nenhum técnico lido da aba HOJE');\n  const lit = s => \"'\" + String(s).replace(/'/g, \"''\") + \"'\";\n  const dias = [...new Set(linhas.map(l => l[0]))];\n  const sql = 'BEGIN;\\nDELETE FROM ixc.escala_dia WHERE data IN (' + dias.map(lit).join(',') + ');\\n' +\n    linhas.map(l => \"INSERT INTO ixc.escala_dia (data, empresa, id_condominio, tecnico, fonte) VALUES (\" + l.map(lit).join(',') + \", 'planilha ESCALAS aba HOJE (n8n)') ON CONFLICT DO NOTHING;\").join('\\n') +\n    '\\nCOMMIT;';\n  st.falhas = 0;\n  return [{ json: { sql, resumo: linhas.map(l => l.join(' ')).join('; '), alerta: null } }];\n} catch (e) {\n  st.falhas = (st.falhas || 0) + 1;\n  return [{ json: { sql: 'SELECT 1', resumo: 'FALHA ' + st.falhas + ': ' + e.message,\n    alerta: st.falhas === 3 ? '⚠️ Leitura da planilha ESCALAS falhou 3x seguidas (quem está no shopping pode ficar desatualizado): ' + e.message : null } }];\n}\n"
+   }
+  },
+  {
+   "name": "Gravar Escala",
+   "type": "n8n-nodes-base.postgres",
+   "typeVersion": 2.6,
+   "alwaysOutputData": true,
+   "position": [
+    660,
+    0
+   ],
+   "parameters": {
+    "operation": "executeQuery",
+    "query": "={{ $json.sql }}",
+    "options": {}
+   },
+   "credentials": {
+    "postgres": {
+     "name": "Postgres IXC State"
+    }
+   }
+  },
+  {
+   "name": "Tem Alerta?",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    880,
+    0
+   ],
+   "parameters": {
+    "jsCode": "const a = $('Montar Escala').first().json.alerta;\nreturn a ? [{ json: { texto: a } }] : [];"
+   }
+  },
+  {
+   "name": "Avisar Grupo",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1100,
+    0
+   ],
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Carregar Parametros').first().json.waha_url }}/api/sendText",
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ session: $('Carregar Parametros').first().json.waha_session, chatId: $('Carregar Parametros').first().json.grupo_automacao, text: $('Tem Alerta?').first().json.texto, linkPreview: false }) }}",
+    "options": {
+     "timeout": 30000
+    },
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpHeaderAuth"
+   },
+   "credentials": {
+    "httpHeaderAuth": {
+     "id": "wahaApiKey01",
+     "name": "WAHA API"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "operation": "executeQuery",
+    "query": "-- Parametros do WAHA e do grupo de automacao, em colunas de texto (sem depender do parse de json pelo no Postgres)\nSELECT max(CASE WHEN chave = 'waha_url' THEN valor END) AS waha_url,\n       max(CASE WHEN chave = 'waha_session' THEN valor END) AS waha_session,\n       max(CASE WHEN chave = 'grupo_automacao' THEN valor END) AS grupo_automacao\nFROM ixc.parametros",
+    "options": {}
+   },
+   "name": "Carregar Parametros",
+   "type": "n8n-nodes-base.postgres",
+   "typeVersion": 2.6,
+   "position": [
+    1100,
+    0
+   ],
+   "credentials": {
+    "postgres": {
+     "name": "Postgres IXC State"
+    }
+   }
+  }
+ ],
+ "connections": {
+  "A cada hora (:20)": {
+   "main": [
+    [
+     {
+      "node": "Baixar aba HOJE",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Baixar aba HOJE": {
+   "main": [
+    [
+     {
+      "node": "Montar Escala",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Montar Escala": {
+   "main": [
+    [
+     {
+      "node": "Gravar Escala",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Gravar Escala": {
+   "main": [
+    [
+     {
+      "node": "Tem Alerta?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Tem Alerta?": {
+   "main": [
+    [
+     {
+      "node": "Carregar Parametros",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Carregar Parametros": {
+   "main": [
+    [
+     {
+      "node": "Avisar Grupo",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "timezone": "America/Sao_Paulo",
+  "executionOrder": "v1"
+ },
+ "active": false
+}

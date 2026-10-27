@@ -7,6 +7,7 @@ Repositório da verdade das automações sobre a API do IXC em 5 bases (Resolutt
 | `painelixc/` | Plugin **Painel IXC** para GLPI 11 (autor SCDell, GPLv3+). Copie para `glpi/plugins/painelixc` | tags `painelixc-vX.Y.Z` + Release com o zip |
 | `painelixc/n8n/` | Modelos e scripts de geração dos workflows do painel | junto com o plugin |
 | `n8n/` | Cópia limpa dos workflows **ativos** na produção ([detalhes](n8n/README.md)) | tags `n8n-AAAA-MM-DD` |
+| `whatsapp-ixc/` | Notificações de chamados IXC nos grupos de WhatsApp (WAHA): 4 workflows + schema `ixc` no PostgreSQL ([detalhes](whatsapp-ixc/README.md)) | tags `whatsapp-ixc-vX.Y.Z` + Release com o zip |
 
 ## Plugin: instalar / atualizar
 
