@@ -1,6 +1,6 @@
 # whatsapp-ixc — Notificações de chamados IXC no WhatsApp (WAHA)
 
-Versão **0.1.0** (27/10/2026). Adaptação para o **WAHA** da automação "IXC → WhatsApp" recebida de terceiro (feita para a Evolution API, documentação de 04/10/2026). Sem IA (o assistente "Hermes", workflows 05/06, ficou de fora).
+Versão **0.1.2** (28/10/2026). Adaptação para o **WAHA** da automação "IXC → WhatsApp" recebida de terceiro (feita para a Evolution API, documentação de 04/10/2026). Sem IA (o assistente "Hermes", workflows 05/06, ficou de fora).
 
 | Pasta | Conteúdo |
 |---|---|
@@ -52,6 +52,7 @@ Removidos: `evolution_url`, `evolution_apikey`, `hermes_token`; a troca fixa de 
 | `envio_teste_para` | número do remetente | quem recebe no modo SIMULAR |
 | `supervisor_nome` / `coordenador_nome` | nomes | exibidos junto de `supervisor_fone` / `coordenador_fone` |
 | `planta_ativo` | `nao` | `sim` só com o serviço `planta-loja` no ar |
+| `escala_trocar_nomes` | `Quem Saiu=Quem Cobre;Outro=Substituto@2026-10-30` | WF 04 (0.1.1/0.1.2): trocas aplicadas ao CSV da planilha ESCALAS antes de ler (quem saiu, férias, atestado). `@AAAA-MM-DD` = vale até essa data, inclusive; sem data = até você tirar. Vazio = nenhuma |
 
 Os demais (`semtec_min`, `realerta_horarios`, `escalar_min`, `escala_grupos`, `setores_grupo`, `grupo_dono`, `dono_nome`, …) são os do pacote original; estão comentados no `02_configuracao_atual.sql`.
 
@@ -105,5 +106,7 @@ Pré-requisitos: WAHA `WORKING` com o 2121; o 2121 **membro de todos os grupos**
 | Versão | Data | O quê |
 |---|---|---|
 | 0.1.0 | 27/10/2026 | Adaptação Evolution → WAHA (2121), sem Hermes, modos NENHUM/SIMULAR/REAL, parâmetros no banco, nomes fora do código |
+| 0.1.1 | 28/10/2026 | WF 04: nó "Carregar Trocas" + parâmetro `escala_trocar_nomes` (quem saiu → quem cobre); `banco/atualizacao-escalas-2026-10-28.sql` (Porto Belo/Tijucas, Ventura, Itajaí/Riviera) |
+| 0.1.2 | 28/10/2026 | `escala_trocar_nomes` com validade (`De=Para@AAAA-MM-DD`): a troca expira sozinha |
 
 Regenerar a partir do pacote original: `python3 scripts/adaptar_waha.py <Exportacao_Automacao_IXC> <saída>`; cópia pública: `python3 scripts/sanitizar_publico.py n8n/sanitizar-workflows.py <saída> <Exportacao_Automacao_IXC> <pública>`; validar: `node scripts/check/valida.js <saída>/n8n && node scripts/check/teste01.js && node scripts/check/teste03.js`.

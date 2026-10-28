@@ -413,6 +413,7 @@ INSERT INTO ixc.parametros (chave, valor, descricao) VALUES ('coordenador_nome',
 INSERT INTO ixc.parametros (chave, valor, descricao) VALUES ('planta_ativo', 'nao', 'sim = manda o recorte da planta (servico planta-loja no ar); nao = so texto');
 INSERT INTO ixc.parametros (chave, valor, descricao) VALUES ('envio', 'NENHUM', 'Modo dos workflows 01/02: NENHUM (so avanca o estado, nao manda), SIMULAR (manda tudo para envio_teste_para) ou REAL');
 INSERT INTO ixc.parametros (chave, valor, descricao) VALUES ('envio_teste_para', '55__TELEFONE__', 'Numero que recebe as mensagens no modo SIMULAR');
+INSERT INTO ixc.parametros (chave, valor, descricao) VALUES ('escala_trocar_nomes', '__NOME__=__NOME__ __NOME__', 'WF 04: trocas aplicadas ao CSV da planilha ESCALAS, formato Quem Saiu=Quem Cobre;Outro=Substituto@AAAA-MM-DD (validade opcional; vazio = nenhuma)');
 
 
 --

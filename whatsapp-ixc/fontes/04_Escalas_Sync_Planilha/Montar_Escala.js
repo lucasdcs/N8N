@@ -42,8 +42,18 @@ function dataDe(txt) {  // "27/09" -> ISO, ano pelo mais proximo de hoje
 const titulo = s => s.toLowerCase().replace(/(^|\s)\S/g, x => x.toUpperCase());
 
 try {
-  const r = $input.first().json;
-  const txt = typeof r.data === 'string' ? r.data : '';
+  const r = $('Baixar aba HOJE').first().json;
+  let txt = typeof r.data === 'string' ? r.data : '';
+  // 0.1.1: parametro escala_trocar_nomes = 'Quem Saiu=Quem Cobre;Outro=Substituto' (nome inteiro, sem diferenciar maiusculas)
+  // 0.1.2: validade opcional 'De=Para@AAAA-MM-DD' (a troca vale ate essa data, inclusive; depois e ignorada sozinha)
+  const trocasTxt = String((($('Carregar Trocas').first() || {}).json || {}).escala_trocar_nomes || '');
+  for (const par of trocasTxt.split(';').map(x => x.trim()).filter(Boolean)) {
+    const [regra, ate] = par.split('@').map(x => (x || '').trim());
+    if (ate && /^\d{4}-\d{2}-\d{2}$/.test(ate) && hojeIso > ate) continue;
+    const [de, para] = regra.split('=').map(x => (x || '').trim());
+    if (!de || !para) continue;
+    txt = txt.replace(new RegExp('(^|[^\\p{L}])' + de.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\p{L}])', 'giu'), '$1' + para);
+  }
   if (!txt || /<html/i.test(txt.slice(0, 300))) throw new Error('a planilha não devolveu CSV (acesso mudou?)' + (r.error ? ': ' + JSON.stringify(r.error).slice(0, 150) : ''));
   const v = lerCsv(txt);
   const linhas = [];

@@ -334,6 +334,7 @@ def adaptar_03(wf, arq):
 # ----------------------------------------------------------------------------- 04
 def adaptar_04(wf, arq):
     N = by_name(wf)
+    conn = wf["connections"]
     bx = N["Baixar aba HOJE"]
     bx["parameters"]["url"] = bx["parameters"]["url"].replace("ID_DA_PLANILHA_DE_ESCALAS", "__PLANILHA_ID__").replace("GID_DA_ABA_HOJE", "__GID_HOJE__")
     log(arq, "Baixar aba HOJE: marcadores __PLANILHA_ID__ / __GID_HOJE__ (mesma planilha ESCALAS do lembrete)")
@@ -344,7 +345,6 @@ def adaptar_04(wf, arq):
            "type": "n8n-nodes-base.postgres", "typeVersion": 2.6, "position": [pos[0] + 220, pos[1]],
            "credentials": {"postgres": {"name": "Postgres IXC State"}}}
     wf["nodes"].append(par)
-    conn = wf["connections"]
     conn["Tem Alerta?"] = {"main": [[{"node": "Carregar Parametros", "type": "main", "index": 0}]]}
     conn["Carregar Parametros"] = {"main": [[{"node": "Avisar Grupo", "type": "main", "index": 0}]]}
     waha_http(N["Avisar Grupo"], "={{ " + PX + ".waha_url }}/api/sendText",
@@ -352,7 +352,32 @@ def adaptar_04(wf, arq):
               "text: $('Tem Alerta?').first().json.texto, linkPreview: false }) }}")
     log(arq, "Avisar Grupo: sendText WAHA no grupo_automacao (parametros do banco)")
 
+    # 0.1.1 (28/10/2026): troca de nomes "quem saiu -> quem cobre" vem do parametro escala_trocar_nomes ("Fulano=Beltrano;X=Y")
+    bx_pos = bx.get("position", [0, 0])
+    trocas = {"parameters": {"operation": "executeQuery", "options": {},
+                             "query": "-- 0.1.1: trocas de nome aplicadas ao CSV da planilha antes de ler (quem saiu -> quem cobre)\n"
+                                      "SELECT coalesce(max(CASE WHEN chave = 'escala_trocar_nomes' THEN valor END), '') AS escala_trocar_nomes FROM ixc.parametros"},
+              "name": "Carregar Trocas", "type": "n8n-nodes-base.postgres", "typeVersion": 2.6,
+              "position": [bx_pos[0] + 200, bx_pos[1] + 160], "alwaysOutputData": True,
+              "credentials": {"postgres": {"name": "Postgres IXC State"}}}
+    wf["nodes"].append(trocas)
+    conn["Baixar aba HOJE"] = {"main": [[{"node": "Carregar Trocas", "type": "main", "index": 0}]]}
+    conn["Carregar Trocas"] = {"main": [[{"node": "Montar Escala", "type": "main", "index": 0}]]}
     c = N["Montar Escala"]["parameters"]["jsCode"]
+    c = sub_once(c, "  const r = $input.first().json;\n  const txt = typeof r.data === 'string' ? r.data : '';",
+                 "  const r = $('Baixar aba HOJE').first().json;\n"
+                 "  let txt = typeof r.data === 'string' ? r.data : '';\n"
+                 "  // 0.1.1: parametro escala_trocar_nomes = 'Quem Saiu=Quem Cobre;Outro=Substituto' (nome inteiro, sem diferenciar maiusculas)\n"
+                 "  // 0.1.2: validade opcional 'De=Para@AAAA-MM-DD' (a troca vale ate essa data, inclusive; depois e ignorada sozinha)\n"
+                 "  const trocasTxt = String((($('Carregar Trocas').first() || {}).json || {}).escala_trocar_nomes || '');\n"
+                 "  for (const par of trocasTxt.split(';').map(x => x.trim()).filter(Boolean)) {\n"
+                 "    const [regra, ate] = par.split('@').map(x => (x || '').trim());\n"
+                 "    if (ate && /^\\d{4}-\\d{2}-\\d{2}$/.test(ate) && hojeIso > ate) continue;\n"
+                 "    const [de, para] = regra.split('=').map(x => (x || '').trim());\n"
+                 "    if (!de || !para) continue;\n"
+                 "    txt = txt.replace(new RegExp('(^|[^\\\\p{L}])' + de.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&') + '(?![\\\\p{L}])', 'giu'), '$1' + para);\n"
+                 "  }", arq, "Montar Escala")
+    log(arq, "0.1.1/0.1.2: no 'Carregar Trocas' + parametro escala_trocar_nomes aplicado ao CSV (quem saiu -> quem cobre, com validade @data)")
     rx = re.compile(r"    // A fórmula da aba HOJE tem o nome \"[^\"]+\" fixo[^\n]*\n    // \([^\n]*\n    const t2 = t\.replace\(/[^/]+/gi, '[^']*'\);")
     if not rx.search(c):
         raise SystemExit(f"[{arq}] Montar Escala: bloco da troca fixa de nome nao encontrado")
@@ -409,6 +434,7 @@ def adaptar_sql_config(txt):
         "INSERT INTO ixc.parametros (chave, valor, descricao) VALUES ('planta_ativo', 'nao', 'sim = manda o recorte da planta (servico planta-loja no ar); nao = so texto');\n"
         "INSERT INTO ixc.parametros (chave, valor, descricao) VALUES ('envio', 'NENHUM', 'Modo dos workflows 01/02: NENHUM (so avanca o estado, nao manda), SIMULAR (manda tudo para envio_teste_para) ou REAL');\n"
         f"INSERT INTO ixc.parametros (chave, valor, descricao) VALUES ('envio_teste_para', '{VAL['envio_teste_para']}', 'Numero que recebe as mensagens no modo SIMULAR');\n"
+        f"INSERT INTO ixc.parametros (chave, valor, descricao) VALUES ('escala_trocar_nomes', '{VAL.get('escala_trocar_nomes', '')}', 'WF 04: trocas aplicadas ao CSV da planilha ESCALAS, formato Quem Saiu=Quem Cobre;Outro=Substituto@AAAA-MM-DD (validade opcional; vazio = nenhuma)');\n"
     )
     marca = "INSERT INTO ixc.parametros (chave, valor, descricao) VALUES ('setores_grupo'"
     i = txt.index(marca)
