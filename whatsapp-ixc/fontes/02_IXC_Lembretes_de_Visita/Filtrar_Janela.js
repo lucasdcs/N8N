@@ -56,14 +56,15 @@ function rotaPessoa(C, emp, loc, pid) {
 function sqlLit(v) { return v === null || v === undefined ? 'NULL' : "'" + String(v).replace(/'/g, "''") + "'"; }
 function sqlArr(a) { return 'ARRAY[' + (a || []).map(sqlLit).join(',') + ']::text[]'; }
 
-// Visitas agendadas: lembrete "em 1 hora" (faltando 40-60 min) e "em 15 minutos" (3-15 min).
+// Visitas agendadas: lembrete "em 1 hora" (faltando 40-60 min, com a planta da loja) e lembrete curto
+// "daqui 10 minutos" (3-10 min, so texto). Regra de 28/10/2026 (0.2.0); antes era "em 15 minutos" (3-15 min).
 // Cada lembrete sai 1 vez so (controle em ixc.eventos, tipo lembrete_1h / lembrete_15min, evento = data da agenda),
 // entao se o n8n pular uma execucao o lembrete sai na seguinte (regra de 27/09/2026).
 const C = carregarConfig();
 const enviados = new Set(C.lembretes.map(l => l.empresa + '|' + l.id_chamado + '|' + l.tipo + '|' + l.evento));
 const JANELAS = [
   { tipo: 'lembrete_1h', de: 40, ate: 60 },
-  { tipo: 'lembrete_15min', de: 3, ate: 15 },
+  { tipo: 'lembrete_10min', de: 3, ate: 10 },
 ];
 const emps = $('Empresas').all().map(x => x.json);
 const items = $input.all();
@@ -78,8 +79,8 @@ emps.forEach((h, k) => {
     if (!jan) continue;
     if (enviados.has(h.empresa + '|' + c.id + '|' + jan.tipo + '|' + c.data_agenda)) continue;
     const titulo = jan.tipo === 'lembrete_1h' ? (faltam > 50 ? 'em 1 hora' : 'em ' + Math.round(faltam) + ' minutos')
-                                               : (faltam > 10 ? 'em 15 minutos' : 'em ' + Math.round(faltam) + ' minutos');
-    out.push({ pairedItem: { item: k }, json: { empresa: h.empresa, tipo: jan.tipo, janela: titulo, chamado: c } });
+                                               : 'em ' + Math.max(1, Math.round(faltam)) + ' minutos';
+    out.push({ pairedItem: { item: k }, json: { empresa: h.empresa, tipo: jan.tipo, janela: titulo, faltam: Math.max(1, Math.round(faltam)), chamado: c } });
   }
 });
 return out;

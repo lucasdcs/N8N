@@ -69,6 +69,7 @@ function numeroLoja(c, cli) {
   return '';
 }
 
+const PLANTA_ATIVA = String(carregarConfig().param.planta_ativo || 'nao').trim().toLowerCase() !== 'nao';
 const items = $input.all();
 const out = [];
 for (let i = 0; i < items.length; i++) {
@@ -85,6 +86,23 @@ for (let i = 0; i < items.length; i++) {
     .map(f => (f || '').trim()).find(f => f.replace(/\D/g, '').length >= 8) || '';
   const numLoja = numeroLoja(c, cli);
   const local = (numLoja ? (c.referencia || '') : (c.complemento || c.referencia || '')).trim();
+  // Lembrete curto (10 min antes): uma linha, sem planta (a planta ja foi no de 1h). Regra de 28/10/2026 (0.2.0).
+  if (d.tipo === 'lembrete_10min') {
+    const quemVisita = nomeLoja || nomeCliente;
+    const onde = [d.shopping, numLoja].filter(Boolean).join(', ');
+    const n = d.faltam || 10;
+    let curto = '⏰ Não esqueça: visita' + (quemVisita ? ' na *' + quemVisita + '*' : ' do chamado #' + c.protocolo) + (onde ? ' (' + onde + ')' : '')
+      + ' daqui ' + n + (n === 1 ? ' minuto' : ' minutos') + ', às ' + hora + '.';
+    if (quem) curto += '\n' + quem + (d.sem_tecnico ? ' · sem técnico atribuído' : '');
+    out.push({ pairedItem: { item: i }, json: { empresa: d.empresa, tipo: d.tipo, id_chamado: c.id, protocolo: c.protocolo, evento: c.data_agenda,
+      texto: curto, grupo_jid: d.grupo_jid, mentioned: marcar, planta: null } });
+    continue;
+  }
+  // Lembrete de 1h: pede a planta (servico planta-loja) quando ha numero de loja e shopping; desligar: planta_ativo = 'nao'
+  const idCond = String(c.id_condominio || '0') !== '0' ? String(c.id_condominio) : String(cli.id_condominio || '0');
+  const planta = (PLANTA_ATIVA && /\d/.test(numLoja) && idCond !== '0')
+    ? { empresa: d.empresa, id_condominio: idCond, loja: numLoja.replace(/^Loja\s+/i, ''), nome: nomeLoja || nomeCliente }
+    : null;
   let texto = '⏰ *Lembrete de visita — ' + d.janela + '*' + (quem ? ' — ' + quem : '');
   if (d.sem_tecnico) texto += '\n🏢 ' + (d.shopping || 'Local não identificado') + ' · sem técnico atribuído';
   else if (d.shopping) texto += '\n🏢 ' + d.shopping;
@@ -97,7 +115,7 @@ for (let i = 0; i < items.length; i++) {
   if (local) texto += '\n📍 ' + local;
   if (fone) texto += '\n📞 ' + fone;
   out.push({ pairedItem: { item: i }, json: { empresa: d.empresa, tipo: d.tipo, id_chamado: c.id, protocolo: c.protocolo, evento: c.data_agenda,
-    texto, grupo_jid: d.grupo_jid, mentioned: marcar } });
+    texto, grupo_jid: d.grupo_jid, mentioned: marcar, planta } });
 }
 // Modo de envio (ixc.parametros.envio): NENHUM = nao manda (e nao grava: o lembrete sai quando o modo mudar, se ainda estiver na janela);
 // SIMULAR = manda para envio_teste_para com o grupo de destino no cabecalho; REAL = manda para os grupos.

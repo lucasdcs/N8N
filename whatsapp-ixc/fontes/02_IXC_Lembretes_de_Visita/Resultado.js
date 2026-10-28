@@ -62,7 +62,9 @@ return $input.all().map((it, i) => {
   const d = $('Montar Lembrete').itemMatching(i).json;
   // WAHA: sucesso = objeto de mensagem (id) sem 'error'; erro HTTP vem como { error } (continueRegularOutput)
   const ok = !!r && !r.error && !!(r.id || (r.key && r.key.id) || r._data);
-  const erro = ok ? (d.simulado ? 'SIMULADO' : null) : String((r.error && (r.error.message || r.error)) || r.message || JSON.stringify(r)).slice(0, 300);
+  const pi = $('Anexar Planta').itemMatching(i).json.planta_info; // 0.2.0: com/sem planta (lembrete de 1h)
+  const erro = ok ? ([d.simulado ? 'SIMULADO' : null, pi].filter(Boolean).join(' · ') || null)
+                  : String((r.error && (r.error.message || r.error)) || r.message || JSON.stringify(r)).slice(0, 300);
   return { json: { sql: `INSERT INTO ixc.eventos (empresa, tipo, id_chamado, protocolo, evento, grupo, mentioned, texto, status, motivo, tentativas, ultima_tentativa) VALUES (${sqlLit(d.empresa)}, ${sqlLit(d.tipo)}, ${sqlLit(d.id_chamado)}, ${sqlLit(d.protocolo)}, ${sqlLit(d.evento)}, ${sqlLit(d.grupo_jid)}, ${sqlArr(d.mentioned)}, ${sqlLit(d.texto)}, ${ok ? "'ok'" : "'falha'"}, ${sqlLit(erro)}, 1, now())` } };
 });
 

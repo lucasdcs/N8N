@@ -41,6 +41,8 @@ check('WF02 SIMULAR', l.length === 1 && l[0].json.chat_envio === '5541900000001@
 l = run(c2['Montar Lembrete'], { items: ass, nodes: { 'Carregar Config': cfg, 'Rotear Lembrete': rot } });
 check('WF02 REAL', l.length === 1 && !l[0].json.chat_envio && l[0].json.grupo_jid === 'g@g.us');
 check('WF02 NENHUM', run(c2['Montar Lembrete'], { items: ass, nodes: { 'Carregar Config': cfgN, 'Rotear Lembrete': rot } }).length === 0);
-const r2 = run(c2['Resultado'], { items: [{ json: { id: 'ok1' } }], nodes: { 'Carregar Config': cfgS, 'Montar Lembrete': run(c2['Montar Lembrete'], { items: ass, nodes: { 'Carregar Config': cfgS, 'Rotear Lembrete': rot } }) } });
+const ml2 = run(c2['Montar Lembrete'], { items: ass, nodes: { 'Carregar Config': cfgS, 'Rotear Lembrete': rot } });
+const an2 = c2['Anexar Planta'] ? run(c2['Anexar Planta'], { items: [{ json: {} }], nodes: { 'Carregar Config': cfgS, 'Montar Lembrete': ml2 } }) : [];
+const r2 = run(c2['Resultado'], { items: [{ json: { id: 'ok1' } }], nodes: { 'Carregar Config': cfgS, 'Montar Lembrete': ml2, 'Anexar Planta': an2 } });
 check('WF02 resultado SIMULADO', r2[0].json.sql.includes("'SIMULADO'"));
 console.log('ok:', ok, 'falhas:', falhas); process.exit(falhas.length ? 1 : 0);
