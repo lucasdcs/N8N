@@ -95,7 +95,7 @@ for (let i = 0; i < items.length; i++) {
       + ' daqui ' + n + (n === 1 ? ' minuto' : ' minutos') + ', às ' + hora + '.';
     if (quem) curto += '\n' + quem + (d.sem_tecnico ? ' · sem técnico atribuído' : '');
     out.push({ pairedItem: { item: i }, json: { empresa: d.empresa, tipo: d.tipo, id_chamado: c.id, protocolo: c.protocolo, evento: c.data_agenda,
-      texto: curto, grupo_jid: d.grupo_jid, mentioned: marcar, planta: null } });
+      texto: curto, grupo_jid: d.grupo_jid, mentioned: marcar, planta: null, privado: !!d.privado } });
     continue;
   }
   // Lembrete de 1h: pede a planta (servico planta-loja) quando ha numero de loja e shopping; desligar: planta_ativo = 'nao'
@@ -115,7 +115,7 @@ for (let i = 0; i < items.length; i++) {
   if (local) texto += '\n📍 ' + local;
   if (fone) texto += '\n📞 ' + fone;
   out.push({ pairedItem: { item: i }, json: { empresa: d.empresa, tipo: d.tipo, id_chamado: c.id, protocolo: c.protocolo, evento: c.data_agenda,
-    texto, grupo_jid: d.grupo_jid, mentioned: marcar, planta } });
+    texto, grupo_jid: d.grupo_jid, mentioned: marcar, planta, privado: !!d.privado } });
 }
 // Modo de envio (ixc.parametros.envio): NENHUM = nao manda (e nao grava: o lembrete sai quando o modo mudar, se ainda estiver na janela);
 // SIMULAR = manda para envio_teste_para com o grupo de destino no cabecalho; REAL = manda para os grupos.

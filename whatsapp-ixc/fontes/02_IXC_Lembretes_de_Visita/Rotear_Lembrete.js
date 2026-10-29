@@ -59,6 +59,7 @@ function sqlArr(a) { return 'ARRAY[' + (a || []).map(sqlLit).join(',') + ']::tex
 // Mesmas regras da notificacao: grupo = shopping (chamado ou cliente); marca a pessoa da agenda;
 // sem ninguem -> grupo do shopping marcando quem esta em marcar_sem_tec.
 const C = carregarConfig();
+const PRIVADO = String(C.param.lembrete_privado || 'sim').trim().toLowerCase() !== 'nao';
 const items = $input.all();
 const out = [];
 for (let i = 0; i < items.length; i++) {
@@ -69,10 +70,21 @@ for (let i = 0; i < items.length; i++) {
   if (((C.empresas[emp] || {}).assuntos_financeiros || []).includes(String(c.id_assunto))) continue; // O.S. financeira: sem lembrete
   const loc = localDe(C, emp, c, cliente);
   const pid = c.id_tecnico && String(c.id_tecnico) !== '0' ? String(c.id_tecnico) : null;
+  // 0.2.1 (29/10/2026): com tecnico atribuido e telefone cadastrado -> particular dele (sem @, sem copia no grupo).
+  // Sem tecnico, sem telefone ou dono do numero -> grupo do shopping, como antes. Desligar: lembrete_privado = 'nao'.
+  const E = C.empresas[emp] || {};
+  const tec = pid ? C.tec[emp + ':' + pid] : null;
+  const foneTec = tec ? String(tec.fone || '').replace(/\D/g, '') : '';
+  const dono = !!(pid && E.dono_id && pid === String(E.dono_id));
+  if (PRIVADO && pid && !dono && foneTec.length >= 12) {
+    out.push({ pairedItem: { item: i }, json: Object.assign({}, d, { cliente, grupo_jid: foneTec + '@c.us', marcar: [], nome: null,
+      shopping: loc ? loc.nome : null, sem_tecnico: false, privado: true, tecnico: tec.nome || null }) });
+    continue;
+  }
   const rota = pid ? rotaPessoa(C, emp, loc, pid) : rotaSemTecnico(C, emp, loc, false);
   if (!rota) continue;
   out.push({ pairedItem: { item: i }, json: Object.assign({}, d, { cliente, grupo_jid: rota.grupo, marcar: rota.marcar, nome: rota.nome || null,
-    shopping: rota.shopping, sem_tecnico: !pid }) });
+    shopping: rota.shopping, sem_tecnico: !pid, privado: false }) });
 }
 return out;
 

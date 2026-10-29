@@ -1,6 +1,6 @@
 # whatsapp-ixc — Notificações de chamados IXC no WhatsApp (WAHA)
 
-Versão **0.2.0** (28/10/2026). Adaptação para o **WAHA** da automação "IXC → WhatsApp" recebida de terceiro (feita para a Evolution API, documentação de 04/10/2026). Sem IA (o assistente "Hermes", workflows 05/06, ficou de fora).
+Versão **0.2.1** (29/10/2026). Adaptação para o **WAHA** da automação "IXC → WhatsApp" recebida de terceiro (feita para a Evolution API, documentação de 04/10/2026). Sem IA (o assistente "Hermes", workflows 05/06, ficou de fora).
 
 | Pasta | Conteúdo |
 |---|---|
@@ -16,7 +16,7 @@ Versão **0.2.0** (28/10/2026). Adaptação para o **WAHA** da automação "IXC 
 | Workflow | Gatilho | O que faz |
 |---|---|---|
 | **01** Notificações de chamados | a cada 3 min | Lê os eventos novos de O.S. (aberto, transferido, assumido) dos IXCs e avisa no grupo, marcando (@) o técnico. Chamado sem responsável: aviso aos 10 min, reaviso 11:00 e 15:30 (nunca domingo), "escalado" com 4 h. Pedido de infra escrito na O.S. → grupo do responsável pela infra. Técnico de folga pela escala → marca quem está de plantão. Reenvio automático do que falhou (até 5×). |
-| **02** Lembretes de visita | a cada 5 min | 1 hora antes de cada visita agendada: aviso completo **com a planta da loja** (0.2.0); 10 minutos antes: só um texto curto ("Não esqueça: visita na *Loja* (Shopping, loja) daqui 10 minutos, às 14:00."). No grupo, marcando o técnico. |
+| **02** Lembretes de visita | a cada 5 min | 1 hora antes de cada visita agendada: aviso completo **com a planta da loja** (0.2.0); 10 minutos antes: só um texto curto ("Não esqueça: visita na *Loja* (Shopping, loja) daqui 10 minutos, às 14:00."). **No particular do técnico** (0.2.1); sem técnico atribuído ou sem telefone cadastrado → grupo do shopping, marcando quem está em `marcar_sem_tec`. |
 | **03** Comandos e consulta de escala | webhook `/webhook/ixc-whatsapp` | No grupo de automação: comandos `ixc …` (lista, técnicos, quem, trocar técnico/número, incluir/remover, novo técnico) com confirmação `ixc ok`. Nos grupos liberados: "quem está no jockey?", "alguém do financeiro?", "algum N2?". |
 | **04** Sync planilha ESCALAS | a cada hora (min 20) | Lê a aba HOJE da planilha e grava quem trabalha hoje/amanhã nos shoppings 12x36 e Porto Belo/Tijucas (`ixc.escala_dia`). 3 falhas seguidas → aviso no grupo de automação. |
 
@@ -51,6 +51,7 @@ Removidos: `evolution_url`, `evolution_apikey`, `hermes_token`; a troca fixa de 
 | `envio` | `NENHUM` → `SIMULAR` → `REAL` | WF 01/02: `NENHUM` só avança o estado (consome o histórico sem mandar nada); `SIMULAR` manda tudo para `envio_teste_para` com "🧪 SIMULAÇÃO → <grupo>" no topo; `REAL` manda para os grupos |
 | `envio_teste_para` | número do remetente | quem recebe no modo SIMULAR |
 | `supervisor_nome` / `coordenador_nome` | nomes | exibidos junto de `supervisor_fone` / `coordenador_fone` |
+| `lembrete_privado` | `sim` (padrão, mesmo sem a linha) | WF 02 (0.2.1): lembretes de visita no particular do técnico atribuído (`tecnicos.fone`); `nao` = volta tudo para o grupo |
 | `planta_ativo` | `nao` → `sim` | `sim` só com o serviço `planta-loja` no ar (WF 01: Ativação/Vistoria; WF 02: lembrete de 1 h). Ver a seção Planta da loja |
 | `escala_trocar_nomes` | `Quem Saiu=Quem Cobre;Outro=Substituto@2026-10-30` | WF 04 (0.1.1/0.1.2): trocas aplicadas ao CSV da planilha ESCALAS antes de ler (quem saiu, férias, atestado). `@AAAA-MM-DD` = vale até essa data, inclusive; sem data = até você tirar. Vazio = nenhuma |
 
@@ -109,10 +110,11 @@ Pré-requisitos: WAHA `WORKING` com o 2121; o 2121 **membro de todos os grupos**
 | 0.1.1 | 28/10/2026 | WF 04: nó "Carregar Trocas" + parâmetro `escala_trocar_nomes` (quem saiu → quem cobre); `banco/atualizacao-escalas-2026-10-28.sql` (Porto Belo/Tijucas, Ventura, Itajaí/Riviera) |
 | 0.1.2 | 28/10/2026 | `escala_trocar_nomes` com validade (`De=Para@AAAA-MM-DD`): a troca expira sozinha |
 | 0.2.0 | 28/10/2026 | Planta da loja: serviço `planta-loja` (23 shoppings, Docker na rede do n8n); WF 02 com a planta no lembrete de 1 h e lembrete curto de 10 min (antes 15 min, texto completo) |
+| 0.2.1 | 29/10/2026 | WF 02: lembretes (1 h com planta e 10 min) no **particular do técnico**, sem @ e sem cópia no grupo; sem técnico/sem telefone/dono do número → grupo como antes; parâmetro `lembrete_privado` |
 
 Regenerar a partir do pacote original: `python3 scripts/adaptar_waha.py <Exportacao_Automacao_IXC> <saída>`; cópia pública: `python3 scripts/sanitizar_publico.py n8n/sanitizar-workflows.py <saída> <Exportacao_Automacao_IXC> <pública>`; validar: `node scripts/check/valida.js <saída>/n8n && node scripts/check/teste01.js && node scripts/check/teste03.js`.
 
-A partir da 0.2.0, depois do `adaptar_waha.py`: `python3 scripts/v020_lembrete_planta.py <saída>` (WF 02 com a planta) e `node scripts/check/teste02.js <saída>/n8n`.
+A partir da 0.2.0, depois do `adaptar_waha.py`: `python3 scripts/v020_lembrete_planta.py <saída>` (WF 02 com a planta) e `node scripts/check/teste02.js <saída>/n8n`. Na 0.2.1, depois do v020: `python3 scripts/v021_lembrete_particular.py <saída>`.
 
 ## Planta da loja (0.2.0)
 
@@ -121,7 +123,7 @@ Recorte da planta comercial do shopping com a loja marcada em vermelho, mandado 
 | Onde | Quando sai a planta |
 |---|---|
 | WF 01 | 1ª notificação ou transferência de O.S. de **Ativação/Vistoria** (`planta_assuntos`), com número de loja |
-| WF 02 | **lembrete de 1 h** de qualquer visita agendada com número de loja; o de **10 min** é só texto curto |
+| WF 02 | **lembrete de 1 h** de qualquer visita agendada com número de loja; o de **10 min** é só texto curto. Desde a 0.2.1 os dois vão no **particular do técnico** |
 
 - **Número da loja:** 1º campo preenchido entre apartamento/complemento do chamado e apartamento/complemento do cliente; shopping = `id_condominio` do chamado (ou do cliente).
 - **Sem planta** (shopping sem planta — Riviera e Tijucas —, loja não achada ou repetida na planta, serviço fora do ar, `planta_ativo = 'nao'`): sai só o texto, como antes. O motivo fica em `ixc.eventos.motivo` (`com planta: L1 loja 102` / `sem planta: ...`).

@@ -1,4 +1,4 @@
-// Testes do WF 02 (lembretes de visita) na 0.2.0: janelas 1h / 10 min, texto curto, planta no de 1h.
+// Testes do WF 02 (lembretes de visita): 0.2.0 janelas 1h / 10 min, texto curto, planta no de 1h; 0.2.1 particular do tecnico.
 // Uso: node scripts/check/teste02.js [pasta n8n]
 const fs = require('fs'); const { run } = require('./harness');
 const w = JSON.parse(fs.readFileSync((process.argv[2] || 'n8n') + '/02_IXC_Lembretes_de_Visita.json', 'utf8'));
@@ -87,5 +87,42 @@ check('Montar -> Buscar Planta -> Anexar -> Enviar', con['Montar Lembrete'].main
 const env = w.nodes.find(n => n.name === 'Enviar WhatsApp'), bp = w.nodes.find(n => n.name === 'Buscar Planta');
 check('Enviar usa endpoint/corpo', env.parameters.url === '={{ $json.endpoint }}' && env.parameters.jsonBody === '={{ JSON.stringify($json.corpo) }}' && env.credentials.httpHeaderAuth.name === 'WAHA API');
 check('Buscar Planta nunca para o fluxo', bp.onError === 'continueRegularOutput' && bp.alwaysOutputData === true && bp.parameters.url === 'http://planta-loja:3100/planta');
+
+// ---- 0.2.1: particular do tecnico (Rotear Lembrete)
+const cfgP = clone(cfg);
+Object.assign(cfgP[0].json.cfg, {
+  empresas: [{ id: 'PONTO', dono_id: '99', assuntos_financeiros: [] }],
+  tecnicos: [{ empresa: 'PONTO', id_func: '7', nome: 'Tecnico PONTO-7', fone: '5549900000002', grupo: 'gt@g.us' },
+             { empresa: 'PONTO', id_func: '8', nome: 'Tecnico PONTO-8', fone: '', grupo: 'gt@g.us' },
+             { empresa: 'PONTO', id_func: '99', nome: 'Dono', fone: '5541900000009', grupo: 'gt@g.us' }],
+  locais: [{ empresa: 'PONTO', id_condominio: '84', nome: 'Pátio Chapecó', grupo: 'g@g.us', marcar_sem_tec: ['5541900000005'], marcar_escalar: [] }],
+});
+cfgP[0].json.cfg.param.grupo_dono = 'gdono@g.us';
+const fjA = (tec) => [{ json: { empresa: 'PONTO', tipo: 'lembrete_1h', janela: 'em 1 hora', faltam: 55, chamado: Object.assign({}, chamado, { id_tecnico: tec }) } }];
+const cliR = [{ json: { registros: [clone(base.cliente)] } }];
+const rotear = (tec, c) => run(code['Rotear Lembrete'], { items: cliR, nodes: { 'Carregar Config': c || cfgP, 'Filtrar Janela': fjA(tec) } });
+let ro = rotear('7');
+check('0.2.1: tecnico com fone -> particular', ro[0].json.grupo_jid === '5549900000002@c.us' && ro[0].json.privado === true && ro[0].json.marcar.length === 0 && ro[0].json.shopping === 'Pátio Chapecó');
+ro = rotear('8');
+check('0.2.1: tecnico sem fone -> grupo', ro[0].json.grupo_jid === 'g@g.us' && ro[0].json.privado === false);
+ro = rotear('0');
+check('0.2.1: sem tecnico -> grupo marcando marcar_sem_tec', ro[0].json.grupo_jid === 'g@g.us' && ro[0].json.sem_tecnico && ro[0].json.marcar[0] === '5541900000005');
+ro = rotear('99');
+check('0.2.1: dono do numero -> grupo do dono', ro[0].json.grupo_jid === 'gdono@g.us' && ro[0].json.privado === false);
+const cfgPn = clone(cfgP); cfgPn[0].json.cfg.param.lembrete_privado = 'nao';
+check('0.2.1: lembrete_privado=nao -> grupo', rotear('7', cfgPn)[0].json.grupo_jid === 'g@g.us');
+const rp = rotear('7');
+m = run(code['Montar Lembrete'], { items: ass, nodes: { 'Carregar Config': cfgP, 'Rotear Lembrete': rp } });
+check('0.2.1: 1h no particular sem @', m[0].json.texto.split('\n')[0] === '⏰ *Lembrete de visita — em 1 hora*' && m[0].json.grupo_jid === '5549900000002@c.us' && m[0].json.privado === true && m[0].json.planta);
+a = run(code['Anexar Planta'], { items: okPl, nodes: { 'Carregar Config': cfgP, 'Montar Lembrete': m } });
+check('0.2.1: foto vai para o particular, sem mentions', a[0].json.corpo.chatId === '5549900000002@c.us' && a[0].json.corpo.mentions === undefined && a[0].json.endpoint.endsWith('/api/sendImage'));
+r = run(code['Resultado'], { items: [{ json: { id: 'x' } }], nodes: { 'Carregar Config': cfgP, 'Montar Lembrete': m, 'Anexar Planta': a } });
+check('0.2.1: motivo particular · com planta', r[0].json.sql.includes("'particular · com planta: L1 loja 102'") && r[0].json.sql.includes("'5549900000002@c.us'"));
+const rp10 = clone(rp); rp10[0].json.tipo = 'lembrete_10min'; rp10[0].json.faltam = 10;
+m = run(code['Montar Lembrete'], { items: ass, nodes: { 'Carregar Config': cfgP, 'Rotear Lembrete': rp10 } });
+check('0.2.1: 10 min no particular, uma linha', m[0].json.texto === '⏰ Não esqueça: visita na *Ortobom* (Pátio Chapecó, SALA 102) daqui 10 minutos, às 14:00.');
+const cfgPS = clone(cfgP); cfgPS[0].json.cfg.param.envio = 'SIMULAR';
+m = run(code['Montar Lembrete'], { items: ass, nodes: { 'Carregar Config': cfgPS, 'Rotear Lembrete': rp } });
+check('0.2.1: SIMULAR mostra o destino particular', m[0].json.chat_envio === '5541900000001@c.us' && m[0].json.texto.startsWith('🧪 SIMULAÇÃO → 5549900000002@c.us'));
 
 console.log('ok:', ok, 'falhas:', falhas); process.exit(falhas.length ? 1 : 0);
