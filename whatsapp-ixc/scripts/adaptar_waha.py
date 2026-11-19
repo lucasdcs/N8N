@@ -324,6 +324,11 @@ def adaptar_03(wf, arq):
         N[no]["parameters"]["query"] = q
     log(arq, "supervisor/coordenador: nomes vem dos parametros supervisor_nome/coordenador_nome (antes fixos no codigo)")
 
+    # 0.2.6 (19/11/2026): Shopping Canoas (BUZZ 281) no bot de escalas
+    c = N["Escala: Montar Resposta"]["parameters"]["jsCode"]
+    c = sub_once(c, "'BUZZ:271': ['gravatai'],", "'BUZZ:271': ['gravatai'], 'BUZZ:281': ['canoas shopping', 'canoas'],", arq, "Escala: Montar Resposta")
+    N["Escala: Montar Resposta"]["parameters"]["jsCode"] = c
+    log(arq, "0.2.6: apelidos do Shopping Canoas (BUZZ:281) no bot de escalas")
     for n in wf["nodes"]:
         if n["type"].endswith(".code"):
             n["parameters"]["jsCode"] = limpar_comentarios(n["parameters"]["jsCode"])
@@ -356,7 +361,9 @@ def adaptar_04(wf, arq):
     bx_pos = bx.get("position", [0, 0])
     trocas = {"parameters": {"operation": "executeQuery", "options": {},
                              "query": "-- 0.1.1: trocas de nome aplicadas ao CSV da planilha antes de ler (quem saiu -> quem cobre)\n"
-                                      "SELECT coalesce(max(CASE WHEN chave = 'escala_trocar_nomes' THEN valor END), '') AS escala_trocar_nomes FROM ixc.parametros"},
+                                      "SELECT coalesce(max(CASE WHEN chave = 'escala_trocar_nomes' THEN valor END), '') AS escala_trocar_nomes,\n"
+                                      "       coalesce(max(CASE WHEN chave = 'escala_ler_porto_belo' THEN valor END), 'sim') AS escala_ler_porto_belo\n"
+                                      "FROM ixc.parametros"},
               "name": "Carregar Trocas", "type": "n8n-nodes-base.postgres", "typeVersion": 2.6,
               "position": [bx_pos[0] + 200, bx_pos[1] + 160], "alwaysOutputData": True,
               "credentials": {"postgres": {"name": "Postgres IXC State"}}}
@@ -378,6 +385,11 @@ def adaptar_04(wf, arq):
                  "    txt = txt.replace(new RegExp('(^|[^\\\\p{L}])' + de.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&') + '(?![\\\\p{L}])', 'giu'), '$1' + para);\n"
                  "  }", arq, "Montar Escala")
     log(arq, "0.1.1/0.1.2: no 'Carregar Trocas' + parametro escala_trocar_nomes aplicado ao CSV (quem saiu -> quem cobre, com validade @data)")
+    c = sub_once(c, "  for (const [cab, delta] of [['Hoje em Porto Belo', 0], ['Amanhã em Porto Belo', 1]]) {",
+                 "  // 0.1.3: parametro escala_ler_porto_belo = 'nao' -> Porto Belo/Tijucas deixam de vir da planilha (tecnico fixo pela escala_base)\n"
+                 "  const lerPB = String((($('Carregar Trocas').first() || {}).json || {}).escala_ler_porto_belo || 'sim').trim().toLowerCase() !== 'nao';\n"
+                 "  for (const [cab, delta] of (lerPB ? [['Hoje em Porto Belo', 0], ['Amanhã em Porto Belo', 1]] : [])) {", arq, "Montar Escala")
+    log(arq, "0.1.3: parametro escala_ler_porto_belo (nao = Porto Belo/Tijucas fixos, fora da planilha)")
     rx = re.compile(r"    // A fórmula da aba HOJE tem o nome \"[^\"]+\" fixo[^\n]*\n    // \([^\n]*\n    const t2 = t\.replace\(/[^/]+/gi, '[^']*'\);")
     if not rx.search(c):
         raise SystemExit(f"[{arq}] Montar Escala: bloco da troca fixa de nome nao encontrado")
@@ -434,6 +446,7 @@ def adaptar_sql_config(txt):
         "INSERT INTO ixc.parametros (chave, valor, descricao) VALUES ('planta_ativo', 'nao', 'sim = manda o recorte da planta (servico planta-loja no ar); nao = so texto');\n"
         "INSERT INTO ixc.parametros (chave, valor, descricao) VALUES ('envio', 'NENHUM', 'Modo dos workflows 01/02: NENHUM (so avanca o estado, nao manda), SIMULAR (manda tudo para envio_teste_para) ou REAL');\n"
         f"INSERT INTO ixc.parametros (chave, valor, descricao) VALUES ('envio_teste_para', '{VAL['envio_teste_para']}', 'Numero que recebe as mensagens no modo SIMULAR');\n"
+        "INSERT INTO ixc.parametros (chave, valor, descricao) VALUES ('escala_ler_porto_belo', 'sim', 'WF 04: sim = Porto Belo/Tijucas vem da planilha ESCALAS (escala do dia); nao = tecnico fixo pela escala_base');\n"
         f"INSERT INTO ixc.parametros (chave, valor, descricao) VALUES ('escala_trocar_nomes', '{VAL.get('escala_trocar_nomes', '')}', 'WF 04: trocas aplicadas ao CSV da planilha ESCALAS, formato Quem Saiu=Quem Cobre;Outro=Substituto@AAAA-MM-DD (validade opcional; vazio = nenhuma)');\n"
     )
     marca = "INSERT INTO ixc.parametros (chave, valor, descricao) VALUES ('setores_grupo'"

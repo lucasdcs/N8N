@@ -13,7 +13,7 @@ const csv = [
   '"","","CASCAVEL - GOLF ","","","","CASCAVEL - HOTEL","","","","","",""',
 ].join('\n');
 let ok = 0, falhas = []; const check = (n, c) => c ? ok++ : falhas.push(n);
-const nodes = (trocas) => ({ 'Baixar aba HOJE': [{ json: { data: csv } }], 'Carregar Trocas': [{ json: { escala_trocar_nomes: trocas } }] });
+const nodes = (trocas, pb) => ({ 'Baixar aba HOJE': [{ json: { data: csv } }], 'Carregar Trocas': [{ json: { escala_trocar_nomes: trocas, escala_ler_porto_belo: pb } }] });
 let r = run(code['Montar Escala'], { item: { json: {} }, nodes: nodes('Saiu=Cobre'), static_: {} });
 check('quem saiu nao aparece', !/'Saiu'/.test(r[0].json.sql));
 check('Porto Belo e Tijucas com quem cobre (4x)', (r[0].json.sql.match(/'Cobre'/g) || []).length === 4);
@@ -30,4 +30,8 @@ r = run(code['Montar Escala'], { item: { json: {} }, nodes: nodes(''), static_: 
 check('sem trocas = planilha como esta', /'PONTO','134','Saiu'/.test(r[0].json.sql));
 r = run(code['Montar Escala'], { item: { json: {} }, nodes: { 'Baixar aba HOJE': [{ json: { data: '<html>login' } }], 'Carregar Trocas': [{ json: { escala_trocar_nomes: '' } }] }, static_: { falhas: 2 } });
 check('3a falha gera alerta', r[0].json.alerta && r[0].json.alerta.startsWith('⚠️'));
+r = run(code['Montar Escala'], { item: { json: {} }, nodes: nodes('', 'nao'), static_: {} });
+check('ler_porto_belo=nao: sem 134/144, 12x36 continuam', !/'PONTO'/.test(r[0].json.sql) && /'4B','199','Alfa'/.test(r[0].json.sql) && r[0].json.alerta === null);
+r = run(code['Montar Escala'], { item: { json: {} }, nodes: nodes('', undefined), static_: {} });
+check('ler_porto_belo ausente = sim', /'PONTO','134'/.test(r[0].json.sql));
 console.log('ok:', ok, 'falhas:', falhas); process.exit(falhas.length ? 1 : 0);

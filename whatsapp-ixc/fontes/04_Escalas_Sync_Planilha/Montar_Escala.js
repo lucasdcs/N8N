@@ -69,7 +69,9 @@ try {
       linhas.push([dia, loc[0], loc[1], titulo(nome.replace('(N2)', '').replace(/\s+/g, ' ').trim())]);
     }
   }
-  for (const [cab, delta] of [['Hoje em Porto Belo', 0], ['Amanhã em Porto Belo', 1]]) {
+  // 0.1.3: parametro escala_ler_porto_belo = 'nao' -> Porto Belo/Tijucas deixam de vir da planilha (tecnico fixo pela escala_base)
+  const lerPB = String((($('Carregar Trocas').first() || {}).json || {}).escala_ler_porto_belo || 'sim').trim().toLowerCase() !== 'nao';
+  for (const [cab, delta] of (lerPB ? [['Hoje em Porto Belo', 0], ['Amanhã em Porto Belo', 1]] : [])) {
     const p = achar(v, cab);
     if (!p) { if (delta === 0) throw new Error('cabeçalho não encontrado: ' + cab); continue; }
     const t = celula(v, p[0] + 1, p[1]);

@@ -1,6 +1,6 @@
 # whatsapp-ixc — Notificações de chamados IXC no WhatsApp (WAHA)
 
-Versão **0.2.1** (29/10/2026). Adaptação para o **WAHA** da automação "IXC → WhatsApp" recebida de terceiro (feita para a Evolution API, documentação de 04/10/2026). Sem IA (o assistente "Hermes", workflows 05/06, ficou de fora).
+Versão **0.2.6** (19/11/2026). Adaptação para o **WAHA** da automação "IXC → WhatsApp" recebida de terceiro (feita para a Evolution API, documentação de 04/10/2026). Sem IA (o assistente "Hermes", workflows 05/06, ficou de fora).
 
 | Pasta | Conteúdo |
 |---|---|
@@ -54,6 +54,7 @@ Removidos: `evolution_url`, `evolution_apikey`, `hermes_token`; a troca fixa de 
 | `lembrete_privado` | `sim` (padrão, mesmo sem a linha) | WF 02 (0.2.1): lembretes de visita no particular do técnico atribuído (`tecnicos.fone`); `nao` = volta tudo para o grupo |
 | `planta_ativo` | `nao` → `sim` | `sim` só com o serviço `planta-loja` no ar (WF 01: Ativação/Vistoria; WF 02: lembrete de 1 h). Ver a seção Planta da loja |
 | `escala_trocar_nomes` | `Quem Saiu=Quem Cobre;Outro=Substituto@2026-10-30` | WF 04 (0.1.1/0.1.2): trocas aplicadas ao CSV da planilha ESCALAS antes de ler (quem saiu, férias, atestado). `@AAAA-MM-DD` = vale até essa data, inclusive; sem data = até você tirar. Vazio = nenhuma |
+| `escala_ler_porto_belo` | `sim` / `nao` | WF 04 (0.2.6): `sim` = Porto Belo/Tijucas vêm da planilha (escala do dia); `nao` = técnico fixo de cada um pela `escala_base`/`locais.tec_padrao` |
 
 Os demais (`semtec_min`, `realerta_horarios`, `escalar_min`, `escala_grupos`, `setores_grupo`, `grupo_dono`, `dono_nome`, …) são os do pacote original; estão comentados no `02_configuracao_atual.sql`.
 
@@ -94,6 +95,9 @@ Pré-requisitos: WAHA `WORKING` com o 2121; o 2121 **membro de todos os grupos**
 
 ## 6. Armadilhas conhecidas
 
+- **Reimportar um workflow** de `n8n/` não religa as credenciais e traz a URL da planilha como marcador: confira os nós Postgres (`Postgres IXC State`), os HTTP do WAHA (`WAHA API`), recoloque a URL no "Baixar aba HOJE" do 04 e clique em **Publish** (*Execute workflow* roda o rascunho; o agendamento roda só a versão publicada).
+- **Sessão do WAHA**: o nome está em `ixc.parametros.waha_session` e no nó Config do lembrete diário e do aviso de O.S. nova. Para reconectar o celular use Logout/Start na sessão existente; criar uma sessão nova muda o nome e para os envios.
+
 - Resposta do IXC vem como texto em `json.data` → sempre `JSON.parse` (função `unwrap`).
 - `@` de quem **não é membro** do grupo não notifica: conferir os participantes antes de cadastrar.
 - `last_evento_id` zerado ou antigo reenvia histórico: acertar antes de ativar.
@@ -111,6 +115,7 @@ Pré-requisitos: WAHA `WORKING` com o 2121; o 2121 **membro de todos os grupos**
 | 0.1.2 | 28/10/2026 | `escala_trocar_nomes` com validade (`De=Para@AAAA-MM-DD`): a troca expira sozinha |
 | 0.2.0 | 28/10/2026 | Planta da loja: serviço `planta-loja` (23 shoppings, Docker na rede do n8n); WF 02 com a planta no lembrete de 1 h e lembrete curto de 10 min (antes 15 min, texto completo) |
 | 0.2.1 | 29/10/2026 | WF 02: lembretes (1 h com planta e 10 min) no **particular do técnico**, sem @ e sem cópia no grupo; sem técnico/sem telefone/dono do número → grupo como antes; parâmetro `lembrete_privado` |
+| 0.2.6 | 19/11/2026 | WF 03: apelidos do Shopping Canoas (BUZZ 281). WF 04: `escala_ler_porto_belo` (Porto Belo/Tijucas podem sair da planilha e virar técnico fixo); armadilhas de reimportação e da sessão do WAHA no README |
 
 Regenerar a partir do pacote original: `python3 scripts/adaptar_waha.py <Exportacao_Automacao_IXC> <saída>`; cópia pública: `python3 scripts/sanitizar_publico.py n8n/sanitizar-workflows.py <saída> <Exportacao_Automacao_IXC> <pública>`; validar: `node scripts/check/valida.js <saída>/n8n && node scripts/check/teste01.js && node scripts/check/teste03.js`.
 
