@@ -1,0 +1,53 @@
+{# Painel do Bot — aba em Configurar > Geral: conexão com o Postgres do bot (schema ixc) #}
+<div class="card">
+  <div class="card-header"><h3 class="card-title"><i class="ti ti-robot me-2"></i>Painel do Bot — banco do bot</h3></div>
+  <form method="post" action="{{ action }}">
+    <div class="card-body">
+      <div class="form-hint mb-3" style="max-width: 900px">
+        O Painel do Bot lê o Postgres da automação <b>whatsapp-ixc</b> (schema <code>ixc</code>). Use o usuário <code>painel_glpi</code>
+        (criado pelo <code>painelbot/sql/02-usuario-painel.sql</code>): ele não tem acesso aos tokens do IXC.
+        A senha fica cifrada e não aparece aqui. Quem pode ver e editar fica no perfil:
+        <a href="{{ url_perfis }}">Administração &gt; Perfis</a> &gt; (perfil) &gt; aba <b>Painel do Bot</b>.
+      </div>
+
+      <div class="alert {{ teste.ok ? 'alert-success' : 'alert-warning' }} mb-3" style="max-width: 900px">
+        <i class="ti {{ teste.ok ? 'ti-plug-connected' : 'ti-plug-off' }} me-1"></i>{{ teste.msg }}
+      </div>
+
+      <div class="row g-3" style="max-width: 1100px">
+        <div class="col-md-3">
+          <label class="form-label">Host</label>
+          <input type="text" class="form-control" name="pg_host" maxlength="120" value="{{ cfg.pg_host }}" {{ pode_editar ? '' : 'readonly' }}>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Porta</label>
+          <input type="number" class="form-control" name="pg_porta" min="1" max="65535" value="{{ cfg.pg_porta }}" {{ pode_editar ? '' : 'readonly' }}>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Banco</label>
+          <input type="text" class="form-control" name="pg_banco" maxlength="63" value="{{ cfg.pg_banco }}" {{ pode_editar ? '' : 'readonly' }}>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Usuário</label>
+          <input type="text" class="form-control" name="pg_usuario" maxlength="63" value="{{ cfg.pg_usuario }}" {{ pode_editar ? '' : 'readonly' }}>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Senha {% if tem_senha %}<span class="badge bg-success-lt">gravada</span>{% else %}<span class="badge bg-warning-lt">não gravada</span>{% endif %}</label>
+          {% if pode_editar %}
+            <input type="password" class="form-control" name="pg_senha" autocomplete="new-password" placeholder="{{ tem_senha ? 'vazio = mantém a atual' : 'senha do usuário' }}">
+            {% if tem_senha %}<label class="form-check mt-1"><input type="checkbox" class="form-check-input" name="pg_apagar_senha" value="1"> <span class="form-check-label">apagar a senha</span></label>{% endif %}
+          {% else %}
+            <input type="text" class="form-control" readonly value="{{ tem_senha ? '••••••••' : '' }}">
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <input type="hidden" name="_glpi_csrf_token" value="{{ csrf_token() }}">
+    <div class="card-footer d-flex gap-2">
+      {% if pode_editar %}
+        <button type="submit" name="salvar" value="1" class="btn btn-primary"><i class="ti ti-device-floppy me-1"></i>Salvar</button>
+      {% endif %}
+      <a class="btn btn-outline-secondary" href="{{ url_painel }}"><i class="ti ti-robot me-1"></i>Abrir o Painel do Bot</a>
+    </div>
+  </form>
+</div>

@@ -1,0 +1,122 @@
+{# Painel do Bot — tela única com as seções que o perfil vê (nav.secoes). Leitura do Postgres do bot (schema ixc). #}
+<link rel="stylesheet" href="{{ nav.url_assets }}/css/painelbot.css?v={{ nav.assets }}">
+
+{% set abas = {
+  'geral':      ['ti-layout-dashboard', 'Visão geral'],
+  'shoppings':  ['ti-building-store', 'Shoppings e escala'],
+  'tecnicos':   ['ti-user-cog', 'Técnicos'],
+  'contatos':   ['ti-address-book', 'Contatos de setor'],
+  'mensagens':  ['ti-message-2', 'Mensagens'],
+  'parametros': ['ti-adjustments', 'Parâmetros'],
+  'eventos':    ['ti-list-details', 'Últimos envios']
+} %}
+{% set primeira = nav.secoes|first %}
+
+<div class="pbot" id="pbot"
+     data-api="{{ nav.url_dados }}"
+     data-direitos="{{ nav.direitos|json_encode }}"
+     data-tema="{{ nav.tema }}" data-tema-ativo="{{ nav.tema == 'escuro' ? 'escuro' : 'claro' }}" data-url-tema="{{ nav.url_tema }}">
+
+  <div class="pbot-cabecalho">
+    <div>
+      <h2 class="pbot-titulo"><i class="ti ti-robot"></i> Painel do Bot</h2>
+      <div class="pbot-sub">whatsapp-ixc · avisos de chamado, lembretes de visita e bot de escalas · <span id="pbot-status">carregando…</span></div>
+    </div>
+    <div class="pbot-acoes">
+      <button type="button" class="pbot-tema-btn" id="pbot-tema-btn" aria-pressed="{{ nav.tema == 'escuro' ? 'true' : 'false' }}"
+              title="{{ nav.tema == 'escuro' ? 'Tema: escuro — clique para o claro' : 'Tema: claro — clique para o escuro' }}"
+              aria-label="{{ nav.tema == 'escuro' ? 'Tema: escuro — clique para o claro' : 'Tema: claro — clique para o escuro' }}">
+        <i class="ti {{ nav.tema == 'escuro' ? 'ti-sun' : 'ti-moon' }}"></i>
+      </button>
+      {% if nav.pode_config %}
+        <a class="pbot-tema-btn" href="{{ nav.url_config }}" title="Conexão com o banco do bot" aria-label="Conexão com o banco do bot"><i class="ti ti-settings"></i></a>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if not nav.conexao.pronta %}
+    <div class="pbot-aviso">
+      <i class="ti ti-plug-off"></i>
+      <div><b>Banco do bot não configurado.</b>
+        {% if nav.pode_config %}Preencha host, porta, banco, usuário e senha em <a href="{{ nav.url_config }}">Configurar &gt; Geral &gt; Painel do Bot</a>.
+        {% else %}Peça a quem tem "Parâmetros e conexão" no perfil para preencher a conexão.{% endif %}
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="pbot-abas" role="tablist" aria-label="Seções do Painel do Bot">
+    {% for s in nav.secoes %}
+      <button type="button" class="pbot-aba{{ s == primeira ? ' ativa' : '' }}" data-sec="{{ s }}" role="tab" aria-selected="{{ s == primeira ? 'true' : 'false' }}"><i class="ti {{ abas[s][0] }}"></i>{{ abas[s][1] }}</button>
+    {% endfor %}
+  </div>
+
+  <div class="pbot-erro" id="pbot-erro" hidden></div>
+
+  {% if 'geral' in nav.secoes %}
+  <section class="pbot-sec" data-sec="geral" {{ primeira == 'geral' ? '' : 'hidden' }}>
+    <div class="pbot-funcoes" id="pbot-funcoes"></div>
+    <h5 class="pbot-h">IXCs lidos pelo bot</h5>
+    <div class="pbot-tabela-wrap"><table class="pbot-tabela" id="pbot-empresas"></table></div>
+  </section>
+  {% endif %}
+
+  {% if 'shoppings' in nav.secoes %}
+  <section class="pbot-sec" data-sec="shoppings" {{ primeira == 'shoppings' ? '' : 'hidden' }}>
+    <div class="pbot-filtro">
+      <input type="search" class="form-control" id="pbot-busca-loc" placeholder="Filtrar por shopping, técnico ou base" maxlength="60">
+      <span class="pbot-sub" id="pbot-legenda-loc"></span>
+    </div>
+    <div class="pbot-tabela-wrap"><table class="pbot-tabela" id="pbot-shoppings"></table></div>
+    <div class="pbot-nota">"Responde hoje" é o que o bot diz em <i>quem está no &lt;shopping&gt;?</i>: nos 12x36 vem da planilha ESCALAS (escala do dia); nos fixos, do técnico padrão do IXC ou da equipe cadastrada.</div>
+  </section>
+  {% endif %}
+
+  {% if 'tecnicos' in nav.secoes %}
+  <section class="pbot-sec" data-sec="tecnicos" {{ primeira == 'tecnicos' ? '' : 'hidden' }}>
+    <div class="pbot-filtro">
+      <input type="search" class="form-control" id="pbot-busca-tec" placeholder="Filtrar por nome, base ou shopping" maxlength="60">
+    </div>
+    <div class="pbot-tabela-wrap"><table class="pbot-tabela" id="pbot-tecnicos"></table></div>
+    <div class="pbot-nota">Técnicos de campo: quem é marcado com @ quando a O.S. é atribuída a ele. O id é o do colaborador no IXC da base.</div>
+  </section>
+  {% endif %}
+
+  {% if 'contatos' in nav.secoes %}
+  <section class="pbot-sec" data-sec="contatos" {{ primeira == 'contatos' ? '' : 'hidden' }}>
+    <div class="pbot-tabela-wrap"><table class="pbot-tabela" id="pbot-contatos"></table></div>
+    <div class="pbot-nota">Respondidos em perguntas como <i>algum N2?</i> e <i>alguém do financeiro?</i>. Inativos não aparecem nas respostas.</div>
+  </section>
+  {% endif %}
+
+  {% if 'mensagens' in nav.secoes %}
+  <section class="pbot-sec" data-sec="mensagens" {{ primeira == 'mensagens' ? '' : 'hidden' }}>
+    <div class="pbot-msg">
+      <div class="pbot-msg-lista">
+        <input type="search" class="form-control" id="pbot-busca-msg" placeholder="Buscar texto, pergunta ou chave (ex.: n2, folga, lembrete)" maxlength="60">
+        <div class="pbot-chips" id="pbot-msg-filtros"></div>
+        <div id="pbot-msg-itens"></div>
+      </div>
+      <div class="pbot-msg-ed" id="pbot-msg-ed"></div>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if 'parametros' in nav.secoes %}
+  <section class="pbot-sec" data-sec="parametros" {{ primeira == 'parametros' ? '' : 'hidden' }}>
+    <div class="pbot-tabela-wrap"><table class="pbot-tabela" id="pbot-parametros"></table></div>
+    <h5 class="pbot-h">Próximos feriados (sem reaviso de chamado sem técnico)</h5>
+    <div class="pbot-tabela-wrap"><table class="pbot-tabela" id="pbot-feriados"></table></div>
+  </section>
+  {% endif %}
+
+  {% if 'eventos' in nav.secoes %}
+  <section class="pbot-sec" data-sec="eventos" {{ primeira == 'eventos' ? '' : 'hidden' }}>
+    <div class="pbot-tabela-wrap"><table class="pbot-tabela" id="pbot-eventos"></table></div>
+  </section>
+  {% endif %}
+
+  <div class="pbot-rodape">painelbot {{ nav.versao }} · banco do bot {{ nav.conexao.host }}:{{ nav.conexao.porta }}/{{ nav.conexao.banco }} · edição nas próximas versões</div>
+</div>
+
+<script src="{{ nav.url_assets }}/js/pbot-tema.js?v={{ nav.assets }}"></script>
+<script src="{{ nav.url_assets }}/js/painel.js?v={{ nav.assets }}"></script>

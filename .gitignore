@@ -3,6 +3,7 @@
 *.zip
 *.sql
 !whatsapp-ixc/banco/*.sql
+!painelbot/sql/*.sql
 *.sql.gz
 .env
 vendor/
