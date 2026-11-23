@@ -1,7 +1,7 @@
--- Painel do Bot 0.1.0 — tabelas de MENSAGENS e PERGUNTAS do bot (schema ixc, Postgres do whatsapp-ixc).
+-- Painel do Bot 0.2.1 — tabelas de MENSAGENS e PERGUNTAS do bot (schema ixc, Postgres do whatsapp-ixc).
 -- Rodar como o dono do banco (usuário ixc). Idempotente: pode rodar de novo; NÃO sobrescreve textos já editados.
 --   docker exec -i n8n-compose-postgres-ixc-1 psql -U ixc -d ixc -v ON_ERROR_STOP=1 < 01-mensagens-perguntas.sql
--- Nesta versão os workflows ainda NÃO leem estas tabelas (whatsapp-ixc 0.3.0 passa a ler): criar não muda nada no bot.
+-- O whatsapp-ixc 0.3.0 lê estas tabelas (texto editado + perguntas). Rodar ANTES de importar os workflows 0.3.0.
 -- Gerado por sql/gerar-sql.py a partir dos textos atuais dos workflows 01/02/03/04.
 
 BEGIN;
@@ -111,15 +111,20 @@ INSERT INTO ixc.mensagens (chave, grupo, ordem, titulo, wf, exemplo, texto_padra
 INSERT INTO ixc.mensagens (chave, grupo, ordem, titulo, wf, exemplo, texto_padrao, variaveis) VALUES ('setor.ir_recados', 'Setores (algum N2? / financeiro? …)', 217, 'Pergunta de Financeiro/Comercial/Compras/RH fora do grupo Recados', '03', 'alguém do financeiro? (num grupo de shopping)', '📌 Para falar com *{setores}*, pergunte no grupo *Resolutto - Recados*: é lá que estão todos os setores (Financeiro, Comercial, Compras e RH).', ARRAY['setores']::text[])
   ON CONFLICT (chave) DO UPDATE SET grupo = EXCLUDED.grupo, ordem = EXCLUDED.ordem, titulo = EXCLUDED.titulo, wf = EXCLUDED.wf, exemplo = EXCLUDED.exemplo, texto_padrao = EXCLUDED.texto_padrao, variaveis = EXCLUDED.variaveis;
 INSERT INTO ixc.mensagens (chave, grupo, ordem, titulo, wf, exemplo, texto_padrao, variaveis) VALUES ('cmd.ajuda', 'Comandos ixc (alterações pelo grupo)', 301, 'Resposta de *ixc ajuda*', '03', 'ixc ajuda', '🛠️ *Comandos IXC* (só valem depois de *ixc ok*)
+
 *ixc lista* [empresa ou shopping] — quem é marcado em cada shopping
 *ixc tecnicos* [empresa] — técnicos e números
 *ixc quem* <shopping ou técnico> — quem atende, horário, hoje e amanhã (*ixc quem hoje* = todos)
+
 *ixc shopping* <shopping> *tecnico* <técnico> — troca o técnico do shopping
 *ixc numero* <técnico> <telefone> — troca o número do técnico
 *ixc incluir* <técnico ou telefone> *em* <shopping> — marca também essa pessoa quando o chamado ficar sem técnico
 *ixc remover* <técnico ou telefone> *de* <shopping>
 *ixc novo tecnico* <empresa> <id no IXC> <nome> <telefone>
-*ixc ok* — aplica a alteração pendente · *ixc cancelar* — descarta', '{}'::text[])
+
+*ixc ok* — aplica a alteração pendente · *ixc cancelar* — descarta
+
+Ex.: _ixc shopping Tijucas tecnico Joao_ · _ixc numero Fulano 41 99999-0000_', '{}'::text[])
   ON CONFLICT (chave) DO UPDATE SET grupo = EXCLUDED.grupo, ordem = EXCLUDED.ordem, titulo = EXCLUDED.titulo, wf = EXCLUDED.wf, exemplo = EXCLUDED.exemplo, texto_padrao = EXCLUDED.texto_padrao, variaveis = EXCLUDED.variaveis;
 INSERT INTO ixc.mensagens (chave, grupo, ordem, titulo, wf, exemplo, texto_padrao, variaveis) VALUES ('cmd.lista.titulo', 'Comandos ixc (alterações pelo grupo)', 302, 'Resposta de *ixc lista*', '03', 'ixc lista', '📋 *Marcação por shopping*
 _técnico → chamado atribuído a ele marca ele; sem técnico → marca a lista_', '{}'::text[])
@@ -138,7 +143,7 @@ INSERT INTO ixc.mensagens (chave, grupo, ordem, titulo, wf, exemplo, texto_padra
   ON CONFLICT (chave) DO UPDATE SET grupo = EXCLUDED.grupo, ordem = EXCLUDED.ordem, titulo = EXCLUDED.titulo, wf = EXCLUDED.wf, exemplo = EXCLUDED.exemplo, texto_padrao = EXCLUDED.texto_padrao, variaveis = EXCLUDED.variaveis;
 INSERT INTO ixc.mensagens (chave, grupo, ordem, titulo, wf, exemplo, texto_padrao, variaveis) VALUES ('cmd.nao_achei_shopping', 'Comandos ixc (alterações pelo grupo)', 308, 'Shopping digitado não existe', '03', 'ixc quem Xpto', 'Não achei o shopping "{busca}". Veja os nomes com *ixc lista*.', ARRAY['busca']::text[])
   ON CONFLICT (chave) DO UPDATE SET grupo = EXCLUDED.grupo, ordem = EXCLUDED.ordem, titulo = EXCLUDED.titulo, wf = EXCLUDED.wf, exemplo = EXCLUDED.exemplo, texto_padrao = EXCLUDED.texto_padrao, variaveis = EXCLUDED.variaveis;
-INSERT INTO ixc.mensagens (chave, grupo, ordem, titulo, wf, exemplo, texto_padrao, variaveis) VALUES ('cmd.nao_achei_tecnico', 'Comandos ixc (alterações pelo grupo)', 309, 'Técnico digitado não existe', '03', NULL, 'Não achei o técnico "{busca}"{empresa}. Veja com *ixc tecnicos* (técnico novo: *ixc novo tecnico*).', ARRAY['busca','empresa']::text[])
+INSERT INTO ixc.mensagens (chave, grupo, ordem, titulo, wf, exemplo, texto_padrao, variaveis) VALUES ('cmd.nao_achei_tecnico', 'Comandos ixc (alterações pelo grupo)', 309, 'Técnico digitado não existe', '03', NULL, 'Não achei o técnico "{busca}"{na_empresa}. Veja com *ixc tecnicos*{empresa} (técnico novo: *ixc novo tecnico*).', ARRAY['busca','na_empresa','empresa']::text[])
   ON CONFLICT (chave) DO UPDATE SET grupo = EXCLUDED.grupo, ordem = EXCLUDED.ordem, titulo = EXCLUDED.titulo, wf = EXCLUDED.wf, exemplo = EXCLUDED.exemplo, texto_padrao = EXCLUDED.texto_padrao, variaveis = EXCLUDED.variaveis;
 INSERT INTO ixc.mensagens (chave, grupo, ordem, titulo, wf, exemplo, texto_padrao, variaveis) VALUES ('cmd.nao_achei_nada', 'Comandos ixc (alterações pelo grupo)', 310, '*ixc quem* sem resultado', '03', 'ixc quem Fulano', 'Não achei shopping nem técnico "{busca}". Tente *ixc quem hoje* ou *ixc lista*.', ARRAY['busca']::text[])
   ON CONFLICT (chave) DO UPDATE SET grupo = EXCLUDED.grupo, ordem = EXCLUDED.ordem, titulo = EXCLUDED.titulo, wf = EXCLUDED.wf, exemplo = EXCLUDED.exemplo, texto_padrao = EXCLUDED.texto_padrao, variaveis = EXCLUDED.variaveis;
@@ -165,19 +170,19 @@ INSERT INTO ixc.mensagens (chave, grupo, ordem, titulo, wf, exemplo, texto_padra
 📞 {telefone}
 💬 {resumo}', ARRAY['protocolo','assunto','shopping','cliente','loja','telefone','resumo']::text[])
   ON CONFLICT (chave) DO UPDATE SET grupo = EXCLUDED.grupo, ordem = EXCLUDED.ordem, titulo = EXCLUDED.titulo, wf = EXCLUDED.wf, exemplo = EXCLUDED.exemplo, texto_padrao = EXCLUDED.texto_padrao, variaveis = EXCLUDED.variaveis;
-INSERT INTO ixc.mensagens (chave, grupo, ordem, titulo, wf, exemplo, texto_padrao, variaveis) VALUES ('aviso.sem_tecnico_linha', 'Avisos de chamado (grupo do shopping)', 409, 'Linha do shopping quando o chamado está sem técnico', '01', NULL, '🏢 {shopping} · sem técnico atribuído', ARRAY['shopping']::text[])
+INSERT INTO ixc.mensagens (chave, grupo, ordem, titulo, wf, exemplo, texto_padrao, variaveis) VALUES ('aviso.sem_tecnico_linha', 'Avisos de chamado (grupo do shopping)', 409, 'Linha do shopping quando o chamado está sem técnico', '01', NULL, '{shopping} · sem técnico atribuído', ARRAY['shopping']::text[])
   ON CONFLICT (chave) DO UPDATE SET grupo = EXCLUDED.grupo, ordem = EXCLUDED.ordem, titulo = EXCLUDED.titulo, wf = EXCLUDED.wf, exemplo = EXCLUDED.exemplo, texto_padrao = EXCLUDED.texto_padrao, variaveis = EXCLUDED.variaveis;
-INSERT INTO ixc.mensagens (chave, grupo, ordem, titulo, wf, exemplo, texto_padrao, variaveis) VALUES ('lembrete.1h', 'Lembretes de visita', 501, '1 hora antes da visita agendada (vai com a planta da loja)', '02', NULL, '⏰ *Lembrete de visita — em 1 hora* — {marcados}
+INSERT INTO ixc.mensagens (chave, grupo, ordem, titulo, wf, exemplo, texto_padrao, variaveis) VALUES ('lembrete.1h', 'Lembretes de visita', 501, '1 hora antes da visita agendada (vai com a planta da loja)', '02', NULL, '⏰ *Lembrete de visita — {janela}* — {marcados}
 🏢 {shopping}
 🕐 Visita às *{hora}*{ate}
 🎫 #{protocolo} · {assunto}
 👤 {cliente}
 🏬 {loja}
 📍 {local}
-📞 {telefone}', ARRAY['marcados','shopping','hora','ate','protocolo','assunto','cliente','loja','local','telefone']::text[])
+📞 {telefone}', ARRAY['janela','marcados','shopping','hora','ate','protocolo','assunto','cliente','loja','local','telefone']::text[])
   ON CONFLICT (chave) DO UPDATE SET grupo = EXCLUDED.grupo, ordem = EXCLUDED.ordem, titulo = EXCLUDED.titulo, wf = EXCLUDED.wf, exemplo = EXCLUDED.exemplo, texto_padrao = EXCLUDED.texto_padrao, variaveis = EXCLUDED.variaveis;
-INSERT INTO ixc.mensagens (chave, grupo, ordem, titulo, wf, exemplo, texto_padrao, variaveis) VALUES ('lembrete.10min', 'Lembretes de visita', 502, '10 minutos antes da visita', '02', NULL, '⏰ Não esqueça: visita na *{loja_nome}* ({onde}) daqui {minutos} minutos, às {hora}.
-{marcados}', ARRAY['loja_nome','onde','minutos','hora','marcados']::text[])
+INSERT INTO ixc.mensagens (chave, grupo, ordem, titulo, wf, exemplo, texto_padrao, variaveis) VALUES ('lembrete.10min', 'Lembretes de visita', 502, '10 minutos antes da visita', '02', NULL, '⏰ Não esqueça: visita {visita}{onde} daqui {minutos}, às {hora}.
+{marcados}', ARRAY['visita','onde','minutos','hora','marcados']::text[])
   ON CONFLICT (chave) DO UPDATE SET grupo = EXCLUDED.grupo, ordem = EXCLUDED.ordem, titulo = EXCLUDED.titulo, wf = EXCLUDED.wf, exemplo = EXCLUDED.exemplo, texto_padrao = EXCLUDED.texto_padrao, variaveis = EXCLUDED.variaveis;
 INSERT INTO ixc.mensagens (chave, grupo, ordem, titulo, wf, exemplo, texto_padrao, variaveis) VALUES ('alerta.planilha', 'Alertas internos (grupo de automação)', 601, 'Planilha ESCALAS falhou 3 leituras seguidas', '04', NULL, '⚠️ Leitura da planilha ESCALAS falhou 3x seguidas (quem está no shopping pode ficar desatualizado): {erro}', ARRAY['erro']::text[])
   ON CONFLICT (chave) DO UPDATE SET grupo = EXCLUDED.grupo, ordem = EXCLUDED.ordem, titulo = EXCLUDED.titulo, wf = EXCLUDED.wf, exemplo = EXCLUDED.exemplo, texto_padrao = EXCLUDED.texto_padrao, variaveis = EXCLUDED.variaveis;

@@ -10,10 +10,10 @@ def norm(s):
     s = unicodedata.normalize('NFD', s.lower()); s = ''.join(c for c in s if unicodedata.category(c) != 'Mn')
     return re.sub(r'\s+', ' ', re.sub(r'[^a-z0-9 ]', ' ', s)).strip()
 L = []
-L.append("""-- Painel do Bot 0.1.0 — tabelas de MENSAGENS e PERGUNTAS do bot (schema ixc, Postgres do whatsapp-ixc).
+L.append("""-- Painel do Bot 0.2.1 — tabelas de MENSAGENS e PERGUNTAS do bot (schema ixc, Postgres do whatsapp-ixc).
 -- Rodar como o dono do banco (usuário ixc). Idempotente: pode rodar de novo; NÃO sobrescreve textos já editados.
 --   docker exec -i n8n-compose-postgres-ixc-1 psql -U ixc -d ixc -v ON_ERROR_STOP=1 < 01-mensagens-perguntas.sql
--- Nesta versão os workflows ainda NÃO leem estas tabelas (whatsapp-ixc 0.3.0 passa a ler): criar não muda nada no bot.
+-- O whatsapp-ixc 0.3.0 lê estas tabelas (texto editado + perguntas). Rodar ANTES de importar os workflows 0.3.0.
 -- Gerado por sql/gerar-sql.py a partir dos textos atuais dos workflows 01/02/03/04.
 
 BEGIN;

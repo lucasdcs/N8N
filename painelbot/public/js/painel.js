@@ -186,7 +186,7 @@
     inicio: '10:00', fim: '18:00', hora: '10:24', nome: 'Técnico A', quando: 'amanhã', setores: 'Financeiro', alteracao: 'número do Técnico A → (41) 99999-0001',
     busca: 'xpto', marcados: '@5541999990001', tempo: '2h', plantao: 'Técnico B', protocolo: '202611240001', assunto: 'Ativação', cliente: 'Cliente Exemplo Ltda',
     loja: 'Loja 101', resumo: 'Cliente sem sinal desde ontem.', ate: ' (até 11:00)', local: 'Piso L2', loja_nome: 'Loja Exemplo', onde: 'Shopping Exemplo, Loja 101',
-    minutos: '10', erro: 'a planilha não devolveu CSV (acesso mudou?)', grupo: '1203630000000000@g.us'
+    minutos: '10 minutos', visita: 'na *Loja Exemplo*', na_empresa: ' na BASE', janela: 'em 1 hora', erro: 'a planilha não devolveu CSV (acesso mudou?)', grupo: '1203630000000000@g.us'
   };
   var msgFiltro = 'todas', msgSel = null;
 

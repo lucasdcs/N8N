@@ -8,6 +8,8 @@ que não tem acesso aos tokens do IXC e só grava nas tabelas do painel (mensage
 
 ## O que tem
 
+**0.2.1** — catálogo de textos padrão igual ao do whatsapp-ixc 0.3.0 (ajuda dos comandos, lembretes, técnico não encontrado, linha "sem técnico").
+
 **0.2.0** — edição em **Mensagens** (salvar com conferência das `{variáveis}`, restaurar o padrão, histórico) e nas **perguntas** de cada setor
 (nova, editar, ligar/desligar, excluir as criadas no painel, religar padrões). Os textos e perguntas passam a valer no WhatsApp com o whatsapp-ixc 0.3.0.
 
