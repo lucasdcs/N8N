@@ -1,6 +1,21 @@
 // Workflow: WhatsApp - Lembretes de visita IXC (WAHA)
 // No: Montar Lembrete
 
+// 0.3.0 (Painel do Bot): textos editaveis em ixc.mensagens; sem texto editado usa o padrao embutido na chamada.
+const MSG_ = (() => { try { let c = $('Carregar Config').first().json.cfg; if (typeof c === 'string') c = JSON.parse(c); return (c && c.mensagens) || {}; } catch (e) { return {}; } })();
+function M(chave, padrao, v) {
+  const t = typeof MSG_[chave] === 'string' && MSG_[chave].trim() ? MSG_[chave] : padrao;
+  if (!v) return t;
+  const vazio = k => v[k] === null || v[k] === undefined || String(v[k]) === '';
+  return t.split('\n').map(l => {
+    const ks = [...l.matchAll(/\{([a-z_]+)\}/g)].map(m => m[1]).filter(k => k in v);
+    const vz = ks.filter(vazio);
+    // linha so com variaveis vazias (e emoji/pontuacao): some
+    if (ks.length && vz.length === ks.length && !/[\p{L}\p{N}]/u.test(l.replace(/\{[a-z_]+\}/g, ''))) return null;
+    const s = l.replace(/\{([a-z_]+)\}/g, (x, k) => (k in v ? (vazio(k) ? '' : String(v[k])) : x));
+    return vz.length ? s.replace(/[\s—·:-]+$/u, '') : s;
+  }).filter(l => l !== null).join('\n');
+}
 function unwrap(x) {
   if (x && typeof x === 'object' && typeof x.data === 'string') {
     try { return JSON.parse(x.data); } catch (e) { return x; }
@@ -91,9 +106,10 @@ for (let i = 0; i < items.length; i++) {
     const quemVisita = nomeLoja || nomeCliente;
     const onde = [d.shopping, numLoja].filter(Boolean).join(', ');
     const n = d.faltam || 10;
-    let curto = '⏰ Não esqueça: visita' + (quemVisita ? ' na *' + quemVisita + '*' : ' do chamado #' + c.protocolo) + (onde ? ' (' + onde + ')' : '')
-      + ' daqui ' + n + (n === 1 ? ' minuto' : ' minutos') + ', às ' + hora + '.';
-    if (quem) curto += '\n' + quem + (d.sem_tecnico ? ' · sem técnico atribuído' : '');
+    // 0.3.0: mensagem lembrete.10min do Painel do Bot
+    const curto = M('lembrete.10min', '⏰ Não esqueça: visita {visita}{onde} daqui {minutos}, às {hora}.\n{marcados}', {
+      visita: quemVisita ? 'na *' + quemVisita + '*' : 'do chamado #' + c.protocolo, onde: onde ? ' (' + onde + ')' : '',
+      minutos: n + (n === 1 ? ' minuto' : ' minutos'), hora, marcados: quem ? quem + (d.sem_tecnico ? ' · sem técnico atribuído' : '') : '' });
     out.push({ pairedItem: { item: i }, json: { empresa: d.empresa, tipo: d.tipo, id_chamado: c.id, protocolo: c.protocolo, evento: c.data_agenda,
       texto: curto, grupo_jid: d.grupo_jid, mentioned: marcar, planta: null, privado: !!d.privado } });
     continue;
@@ -103,17 +119,13 @@ for (let i = 0; i < items.length; i++) {
   const planta = (PLANTA_ATIVA && /\d/.test(numLoja) && idCond !== '0')
     ? { empresa: d.empresa, id_condominio: idCond, loja: numLoja.replace(/^Loja\s+/i, ''), nome: nomeLoja || nomeCliente }
     : null;
-  let texto = '⏰ *Lembrete de visita — ' + d.janela + '*' + (quem ? ' — ' + quem : '');
-  if (d.sem_tecnico) texto += '\n🏢 ' + (d.shopping || 'Local não identificado') + ' · sem técnico atribuído';
-  else if (d.shopping) texto += '\n🏢 ' + d.shopping;
-  texto += '\n🕐 Visita às *' + hora + '*' + (fim && fim !== hora ? ' (até ' + fim + ')' : '');
-  texto += '\n🎫 #' + c.protocolo + (assunto ? ' · ' + assunto : '');
-  if (nomeCliente) texto += '\n👤 ' + nomeCliente;
+  // 0.3.0: mensagem lembrete.1h do Painel do Bot (linha com variavel vazia some)
   const outroNome = nomeLoja && nomeLoja.toLowerCase() !== nomeCliente.toLowerCase();
-  if (numLoja) texto += '\n🏬 ' + numLoja + (outroNome ? ' · ' + nomeLoja : '');
-  else if (outroNome) texto += '\n🏬 Loja: ' + nomeLoja;
-  if (local) texto += '\n📍 ' + local;
-  if (fone) texto += '\n📞 ' + fone;
+  const texto = M('lembrete.1h', '⏰ *Lembrete de visita — {janela}* — {marcados}\n🏢 {shopping}\n🕐 Visita às *{hora}*{ate}\n🎫 #{protocolo} · {assunto}\n👤 {cliente}\n🏬 {loja}\n📍 {local}\n📞 {telefone}', {
+    janela: d.janela, marcados: quem || '',
+    shopping: d.sem_tecnico ? M('aviso.sem_tecnico_linha', '{shopping} · sem técnico atribuído', { shopping: d.shopping || 'Local não identificado' }) : (d.shopping || ''),
+    hora, ate: fim && fim !== hora ? ' (até ' + fim + ')' : '', protocolo: c.protocolo, assunto: assunto || '', cliente: nomeCliente,
+    loja: numLoja ? numLoja + (outroNome ? ' · ' + nomeLoja : '') : (outroNome ? 'Loja: ' + nomeLoja : ''), local, telefone: fone });
   out.push({ pairedItem: { item: i }, json: { empresa: d.empresa, tipo: d.tipo, id_chamado: c.id, protocolo: c.protocolo, evento: c.data_agenda,
     texto, grupo_jid: d.grupo_jid, mentioned: marcar, planta, privado: !!d.privado } });
 }
@@ -124,6 +136,6 @@ const ENVIO = String(PARAM.envio || 'NENHUM').trim().toUpperCase();
 const TESTE = String(PARAM.envio_teste_para || '').replace(/\D/g, '');
 if (ENVIO === 'NENHUM') return [];
 if (ENVIO !== 'REAL' && !TESTE) throw new Error('parametro envio=' + ENVIO + ' exige envio_teste_para');
-if (ENVIO !== 'REAL') for (const o of out) { o.json.chat_envio = TESTE + '@c.us'; o.json.texto = '🧪 SIMULAÇÃO → ' + o.json.grupo_jid + '\n' + o.json.texto; o.json.simulado = true; }
+if (ENVIO !== 'REAL') for (const o of out) { o.json.chat_envio = TESTE + '@c.us'; o.json.texto = M('envio.simulacao', '🧪 SIMULAÇÃO → {grupo}', { grupo: o.json.grupo_jid }) + '\n' + o.json.texto; o.json.simulado = true; }
 return out;
 

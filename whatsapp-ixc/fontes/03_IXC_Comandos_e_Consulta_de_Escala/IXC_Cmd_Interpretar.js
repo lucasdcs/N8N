@@ -1,6 +1,21 @@
 // Workflow: WhatsApp - Comandos ixc e consulta de escala (WAHA)
 // No: IXC Cmd: Interpretar
 
+// 0.3.0 (Painel do Bot): textos editaveis em ixc.mensagens; sem texto editado usa o padrao embutido na chamada.
+const MSG_ = (() => { try { let c = $('IXC Cmd: Carregar').first().json.cfg; if (typeof c === 'string') c = JSON.parse(c); return (c && c.mensagens) || {}; } catch (e) { return {}; } })();
+function M(chave, padrao, v) {
+  const t = typeof MSG_[chave] === 'string' && MSG_[chave].trim() ? MSG_[chave] : padrao;
+  if (!v) return t;
+  const vazio = k => v[k] === null || v[k] === undefined || String(v[k]) === '';
+  return t.split('\n').map(l => {
+    const ks = [...l.matchAll(/\{([a-z_]+)\}/g)].map(m => m[1]).filter(k => k in v);
+    const vz = ks.filter(vazio);
+    // linha so com variaveis vazias (e emoji/pontuacao): some
+    if (ks.length && vz.length === ks.length && !/[\p{L}\p{N}]/u.test(l.replace(/\{[a-z_]+\}/g, ''))) return null;
+    const s = l.replace(/\{([a-z_]+)\}/g, (x, k) => (k in v ? (vazio(k) ? '' : String(v[k])) : x));
+    return vz.length ? s.replace(/[\s—·:-]+$/u, '') : s;
+  }).filter(l => l !== null).join('\n');
+}
 // Interpreta o comando "ixc ..." de forma deterministica (sem IA) contra a config do banco (schema ixc).
 // Saida: { resposta } para consulta/erro, ou { acao, resumo } para registrar pendente, ou { aplicar/cancelar: true }.
 let cfg = $('IXC Cmd: Carregar').first().json.cfg;
@@ -13,23 +28,7 @@ const EMP = Object.fromEntries((cfg.empresas || []).map(e => [e.id, e.nome]));
 const TEC = cfg.tecnicos || [], LOC = cfg.locais || [], P = cfg.param || {};
 const out = o => [{ json: Object.assign({ resposta: null, acao: null, resumo: null, aplicar: false, cancelar: false, fone_validar: null }, o) }];
 
-const AJUDA = [
-  '🛠️ *Comandos IXC* (só valem depois de *ixc ok*)',
-  '',
-  '*ixc lista* [empresa ou shopping] — quem é marcado em cada shopping',
-  '*ixc tecnicos* [empresa] — técnicos e números',
-  '*ixc quem* <shopping ou técnico> — quem atende, horário, hoje e amanhã (*ixc quem hoje* = todos)',
-  '',
-  '*ixc shopping* <shopping> *tecnico* <técnico> — troca o técnico do shopping',
-  '*ixc numero* <técnico> <telefone> — troca o número do técnico',
-  '*ixc incluir* <técnico ou telefone> *em* <shopping> — marca também essa pessoa quando o chamado ficar sem técnico',
-  '*ixc remover* <técnico ou telefone> *de* <shopping>',
-  '*ixc novo tecnico* <empresa> <id no IXC> <nome> <telefone>',
-  '',
-  '*ixc ok* — aplica a alteração pendente · *ixc cancelar* — descarta',
-  '',
-  'Ex.: _ixc shopping Tijucas tecnico Joao_ · _ixc numero Fulano 41 99999-0000_',
-].join('\n');
+const AJUDA = M('cmd.ajuda', '🛠️ *Comandos IXC* (só valem depois de *ixc ok*)\n\n*ixc lista* [empresa ou shopping] — quem é marcado em cada shopping\n*ixc tecnicos* [empresa] — técnicos e números\n*ixc quem* <shopping ou técnico> — quem atende, horário, hoje e amanhã (*ixc quem hoje* = todos)\n\n*ixc shopping* <shopping> *tecnico* <técnico> — troca o técnico do shopping\n*ixc numero* <técnico> <telefone> — troca o número do técnico\n*ixc incluir* <técnico ou telefone> *em* <shopping> — marca também essa pessoa quando o chamado ficar sem técnico\n*ixc remover* <técnico ou telefone> *de* <shopping>\n*ixc novo tecnico* <empresa> <id no IXC> <nome> <telefone>\n\n*ixc ok* — aplica a alteração pendente · *ixc cancelar* — descarta\n\nEx.: _ixc shopping Tijucas tecnico Joao_ · _ixc numero Fulano 41 99999-0000_');
 
 function fmtFone(x) {
   const d = String(x || '').replace(/\D/g, '');
@@ -59,7 +58,7 @@ function acharLocal(q, emp) {
   if (!hits.length) hits = cand.filter(l => norm(l.nome).includes(s));
   if (!hits.length) hits = cand.filter(l => s.split(' ').every(p => norm(l.nome).includes(p)));
   if (hits.length === 1) return { loc: hits[0] };
-  if (!hits.length) return { erro: 'Não achei o shopping "' + q + '". Veja os nomes com *ixc lista*.' };
+  if (!hits.length) return { erro: M('cmd.nao_achei_shopping', 'Não achei o shopping "{busca}". Veja os nomes com *ixc lista*.', { busca: q }) };
   return { erro: 'Mais de um shopping bate com "' + q + '":\n' + hits.map(l => '• ' + l.empresa + ' ' + l.nome).join('\n') + '\nEscreva com a empresa na frente, ex.: _' + hits[0].empresa + ' ' + hits[0].nome + '_' };
 }
 // Acha 1 tecnico pelo nome (opcionalmente dentro de uma empresa)
@@ -72,7 +71,7 @@ function acharTec(q, emp) {
   let hits = cand.filter(t => norm(t.nome) === s);
   if (!hits.length) hits = cand.filter(t => s.split(' ').every(p => norm(t.nome).split(' ').some(w => w.startsWith(p))));
   if (hits.length === 1) return { tec: hits[0] };
-  if (!hits.length) return { erro: 'Não achei o técnico "' + q + '"' + (emp ? ' na ' + emp : '') + '. Veja com *ixc tecnicos*' + (emp ? ' ' + emp : '') + ' (técnico novo: *ixc novo tecnico*).' };
+  if (!hits.length) return { erro: M('cmd.nao_achei_tecnico', 'Não achei o técnico "{busca}"{na_empresa}. Veja com *ixc tecnicos*{empresa} (técnico novo: *ixc novo tecnico*).', { busca: q, na_empresa: emp ? ' na ' + emp : '', empresa: emp ? ' ' + emp : '' }) };
   return { erro: 'Mais de um técnico bate com "' + q + '":\n' + hits.map(t => '• ' + t.empresa + ' ' + t.nome).join('\n') + '\nEscreva o nome completo ou com a empresa na frente.' };
 }
 function lerData(s) {
@@ -115,23 +114,27 @@ function foneDe(nome, loc, b) {
   const t = TEC.find(t => t.empresa === loc.empresa && norm(t.nome).split(' ')[0] === n.split(' ')[0]);
   return t && t.fone ? fmtFone(t.fone) : '';
 }
+function pessoaTxt(x) {  // 0.3.0: "Nome (dd) nnnn-nnnn" -> mensagem escala.shopping.pessoa
+  const m = String(x).trim().match(/^(.*?)\s*(\(\d{2}\)\s*[\d-]+)?$/);
+  return M('escala.shopping.pessoa', '👤 {tecnico} — {telefone}', { tecnico: m ? m[1] : String(x).trim(), telefone: m && m[2] ? m[2] : '' });
+}
 function quemNoDia(loc, iso) {
   const b = EB[loc.empresa + ':' + loc.id_condominio] || {};
   if (b.tipo === '12x36' || b.tipo === 'escala') {
     const ns = ED.filter(d => d.empresa === loc.empresa && d.id_condominio === loc.id_condominio && String(d.data).slice(0, 10) === iso).map(d => d.tecnico);
     if (ns.length) return ns.map(n => n + ' ' + foneDe(n, loc, b)).join(' / ').trim();
-    return b.tecnicos ? b.tecnicos.replace(/;/g, ' /') : '_(escala do dia não encontrada na planilha)_';  // sem escala do dia -> equipe da escala base
+    return b.tecnicos ? b.tecnicos.replace(/;/g, ' /') : M('escala.sem_escala_dia', '_(escala do dia não encontrada na planilha)_');  // sem escala do dia -> equipe da escala base
   }
   const tp = TEC.find(t => t.empresa === loc.empresa && t.id_func === loc.tec_padrao);
   if (tp) return tp.nome + (tp.fone ? ' ' + fmtFone(tp.fone) : '');
-  return b.tecnicos ? b.tecnicos.replace(/;/g, ' /') : 'sem técnico cadastrado';
+  return b.tecnicos ? b.tecnicos.replace(/;/g, ' /') : M('escala.sem_tecnico', 'sem técnico cadastrado');
 }
 function statusAgora(h) {
   if (!h) return '';
   const [ini, fim] = h.split('-');
-  if (horaAgora < ini) return ' · ⏳ começa às ' + ini;
-  if (horaAgora <= fim) return ' · 🟢 em atendimento (até ' + fim + ')';
-  return ' · 🔴 encerrou às ' + fim;
+  if (horaAgora < ini) return M('escala.status.comeca', ' · ⏳ começa às {inicio}', { inicio: ini });
+  if (horaAgora <= fim) return M('escala.status.atendendo', ' · 🟢 em atendimento (até {fim})', { fim });
+  return M('escala.status.encerrou', ' · 🔴 encerrou às {fim}', { fim });
 }
 function semana(b) {
   const ordem = ['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'], grupos = [];
@@ -144,10 +147,10 @@ function semana(b) {
 function linhaDia(loc, iso, agora) {
   const b = EB[loc.empresa + ':' + loc.id_condominio] || {};
   const h = b[diaSem(iso)];
-  const rot = (agora ? 'Hoje' : 'Amanhã') + ' (' + DIAS_TXT[diaSem(iso)] + ' ' + ddmm(iso) + ')';
-  if (!h) return rot + ': não atende';
-  const pessoas = quemNoDia(loc, iso).split(' / ').map(x => '👤 ' + x.trim().replace(/ (\(\d{2}\))/, ' — $1')).join('\n');
-  return rot + ' — ' + hfmt(h) + (agora ? statusAgora(h) : '') + '\n' + pessoas;
+  const rv = { rotulo: agora ? 'Hoje' : 'Amanhã', dia: DIAS_TXT[diaSem(iso)], data: ddmm(iso) };
+  if (!h) return M('escala.shopping.nao_atende', '*{rotulo} ({dia} {data})*: não atende', rv);
+  const pessoas = quemNoDia(loc, iso).split(' / ').map(x => pessoaTxt(x)).join('\n');
+  return M('escala.shopping.dia', '*{rotulo} ({dia} {data})* — {horario}{status}', Object.assign(rv, { horario: hfmt(h), status: agora ? statusAgora(h) : '' })) + '\n' + pessoas;
 }
 // proximo dia (a partir de depois de amanha) em que o shopping atende - pra sempre mostrar o tecnico
 function proximoDia(loc, de) {
@@ -156,24 +159,24 @@ function proximoDia(loc, de) {
   return null;
 }
 function pessoasDe(loc, iso) {
-  return quemNoDia(loc, iso).split(' / ').map(x => '👤 ' + x.trim().replace(/ (\(\d{2}\))/, ' — $1')).join('\n');
+  return quemNoDia(loc, iso).split(' / ').map(x => pessoaTxt(x)).join('\n');
 }
 function detalheLocal(loc) {
   const b = EB[loc.empresa + ':' + loc.id_condominio] || {};
-  const linhas = ['🏬 *' + loc.nome + '* (' + (EMP[loc.empresa] || loc.empresa) + ')' + (b.tipo === '12x36' ? ' · 12x36' : ''),
+  const linhas = [M('escala.shopping.titulo', '🏬 *{shopping}* ({empresa}){regime}', { shopping: loc.nome, empresa: EMP[loc.empresa] || loc.empresa, regime: b.tipo === '12x36' ? ' · 12x36' : '' }),
     linhaDia(loc, hojeIso, true), linhaDia(loc, addDia(hojeIso, 1), false)];
   if (!b[diaSem(hojeIso)] && !b[diaSem(addDia(hojeIso, 1))]) {
     const px = proximoDia(loc, 2);
-    if (px) linhas.push('Próximo atendimento (' + DIAS_TXT[diaSem(px)] + ' ' + ddmm(px) + ') — ' + hfmt(b[diaSem(px)]) + '\n' + pessoasDe(loc, px));
+    if (px) linhas.push('\n', M('escala.shopping.proximo', '*Próximo atendimento ({dia} {data})* — {horario}', { dia: DIAS_TXT[diaSem(px)], data: ddmm(px), horario: hfmt(b[diaSem(px)]) }) + '\n' + pessoasDe(loc, px));
   }
-  return linhas.concat(['Horário: ' + semana(b)]).concat(b.obs ? ['_' + b.obs + '_'] : []).join('\n');
+  return linhas.concat([M('escala.shopping.horario', 'Horário: {semana}', { semana: semana(b) })]).concat(b.obs ? ['_' + b.obs + '_'] : []).join('\n');
 }
 function quem(q) {
   q = String(q || '').replace(/[?!.]+\s*$/, '').replace(/^\s*(e|é|esta|está|ta|tá|atende|trabalha|fica|ficou)?\s*(hoje\s+)?(no|na|em|o|a|do|da)?\s+/i, ' ').trim();
   if (/\s(hoje|amanh[aã]|agora)$/i.test(q)) q = q.replace(/\s+(hoje|amanh[aã]|agora)$/i, '').trim();
   const s = norm(q);
   if (!s || s === 'hoje' || s === 'agora') {
-    const linhas = ['👷 *Quem atende hoje* (' + DIAS_TXT[diaSem(hojeIso)] + ' ' + ddmm(hojeIso) + ', ' + horaAgora + ')'];
+    const linhas = [M('escala.quem_hoje.titulo', '👷 *Quem atende hoje* ({dia} {data}, {hora})', { dia: DIAS_TXT[diaSem(hojeIso)], data: ddmm(hojeIso), hora: horaAgora })];
     let e0 = null;
     for (const l of LOC.slice().sort((a, b) => (a.empresa + a.nome).localeCompare(b.empresa + b.nome))) {
       if (l.empresa !== e0) { e0 = l.empresa; linhas.push('', '*' + (EMP[e0] || e0) + '*'); }
@@ -193,9 +196,9 @@ function quem(q) {
     return nomes.some(n => norm(n).split(/[;\s()]+/).some(w => w && w === primeiro) && s.split(' ').every(p => norm(n).includes(p)));
   });
   if (locs.length) return locs.map(detalheLocal).join('\n\n');
-  return r.erro.startsWith('Mais de um') ? r.erro : 'Não achei shopping nem técnico "' + q + '". Tente *ixc quem hoje* ou *ixc lista*.';
+  return r.erro.startsWith('Mais de um') ? r.erro : M('cmd.nao_achei_nada', 'Não achei shopping nem técnico "{busca}". Tente *ixc quem hoje* ou *ixc lista*.', { busca: q });
 }
-if (w0 === 'quem' || w0 === 'escala' || w0 === 'horario' || w0 === 'horarios') return out({ resposta: '🤖 *Resposta automática do bot de escalas*\n\n' + quem(resto) });
+if (w0 === 'quem' || w0 === 'escala' || w0 === 'horario' || w0 === 'horarios') return out({ resposta: M('escala.cabecalho', '🤖 *Resposta automática do bot de escalas*') + '\n\n' + quem(resto) });
 
 if (!A || w0 === 'ajuda' || w0 === 'help' || w0 === '?') return out({ resposta: AJUDA });
 if (A === 'ok' || A === 'confirmar' || A === 'confirmo' || A === 'sim') return out({ aplicar: true });
@@ -209,7 +212,7 @@ if (w0 === 'lista' || w0 === 'listar' || w0 === 'shoppings') {
     locs = emp ? LOC.filter(l => l.empresa === emp) : LOC.filter(l => norm(l.nome).includes(q));
   }
   if (!locs.length) return out({ resposta: 'Nada encontrado pra "' + resto + '".' });
-  const linhas = ['📋 *Marcação por shopping*', '_técnico → chamado atribuído a ele marca ele; sem técnico → marca a lista_'];
+  const linhas = [M('cmd.lista.titulo', '📋 *Marcação por shopping*\n_técnico → chamado atribuído a ele marca ele; sem técnico → marca a lista_')];
   let emp = null;
   for (const l of locs.slice().sort((a, b) => (a.empresa + a.nome).localeCompare(b.empresa + b.nome))) {
     if (l.empresa !== emp) { emp = l.empresa; linhas.push('', '*' + (EMP[emp] || emp) + '*'); }
@@ -224,7 +227,7 @@ if (w0 === 'tecnicos' || w0 === 'tecnico' && !resto) {
   const emp = Object.keys(EMP).find(e => norm(e) === q);
   const ts = TEC.filter(t => !q || t.empresa === emp || norm(t.nome).includes(q));
   if (!ts.length) return out({ resposta: 'Nenhum técnico encontrado pra "' + resto + '".' });
-  const linhas = ['👷 *Técnicos*'];
+  const linhas = [M('cmd.tecnicos.titulo', '👷 *Técnicos*')];
   let e0 = null;
   for (const t of ts.slice().sort((a, b) => (a.empresa + a.nome).localeCompare(b.empresa + b.nome))) {
     if (t.empresa !== e0) { e0 = t.empresa; linhas.push('', '*' + (EMP[e0] || e0) + '*'); }
@@ -238,7 +241,7 @@ if (w0 === 'feriados' || w0 === 'feriado' || (w0 === 'remover' && norm(resto).st
 if (w0 === 'feriados') {
   const fs = (cfg.feriados || []).slice(0, 25);
   if (!fs.length) return out({ resposta: 'Nenhum feriado cadastrado daqui pra frente.' });
-  return out({ resposta: '📅 *Próximos feriados (sem reaviso)*\n' + fs.map(x => {
+  return out({ resposta: M('cmd.feriados.titulo', '📅 *Próximos feriados (sem reaviso)*') + '\n' + fs.map(x => {
     const l = x.id_condominio ? LOC.find(l => l.id_condominio === x.id_condominio && (!x.empresa || l.empresa === x.empresa)) : null;
     return '• ' + brData(x.data) + ' — ' + x.descricao + (l ? ' _(só ' + locTxt(l) + ')_' : x.empresa ? ' _(só ' + x.empresa + ')_' : '');
   }).join('\n') });
@@ -334,5 +337,5 @@ if (A.startsWith('novo tecnico') || A.startsWith('novo técnico')) {
   });
 }
 
-return out({ resposta: 'Não entendi o comando. Mande *ixc ajuda* pra ver a lista.' });
+return out({ resposta: M('cmd.nao_entendi', 'Não entendi o comando. Mande *ixc ajuda* pra ver a lista.') });
 

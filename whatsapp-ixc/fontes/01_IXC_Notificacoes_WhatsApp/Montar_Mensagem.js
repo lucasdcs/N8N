@@ -1,6 +1,21 @@
 // Workflow: WhatsApp - Notificacoes de chamados IXC (WAHA)
 // No: Montar Mensagem
 
+// 0.3.0 (Painel do Bot): textos editaveis em ixc.mensagens; sem texto editado usa o padrao embutido na chamada.
+const MSG_ = (() => { try { let c = $('Carregar Config').first().json.cfg; if (typeof c === 'string') c = JSON.parse(c); return (c && c.mensagens) || {}; } catch (e) { return {}; } })();
+function M(chave, padrao, v) {
+  const t = typeof MSG_[chave] === 'string' && MSG_[chave].trim() ? MSG_[chave] : padrao;
+  if (!v) return t;
+  const vazio = k => v[k] === null || v[k] === undefined || String(v[k]) === '';
+  return t.split('\n').map(l => {
+    const ks = [...l.matchAll(/\{([a-z_]+)\}/g)].map(m => m[1]).filter(k => k in v);
+    const vz = ks.filter(vazio);
+    // linha so com variaveis vazias (e emoji/pontuacao): some
+    if (ks.length && vz.length === ks.length && !/[\p{L}\p{N}]/u.test(l.replace(/\{[a-z_]+\}/g, ''))) return null;
+    const s = l.replace(/\{([a-z_]+)\}/g, (x, k) => (k in v ? (vazio(k) ? '' : String(v[k])) : x));
+    return vz.length ? s.replace(/[\s—·:-]+$/u, '') : s;
+  }).filter(l => l !== null).join('\n');
+}
 function unwrap(x) {
   if (x && typeof x === 'object' && typeof x.data === 'string') {
     try { return JSON.parse(x.data); } catch (e) { return x; }
@@ -95,22 +110,24 @@ for (let i = 0; i < items.length; i++) {
   const assunto = (a.registros && a.registros[0] && a.registros[0].assunto) || 'nao informado';
   const marcar = d.marcar || [];
   const quem = marcar.length ? marcar.map(f => '@' + f).join(' ') : (d.nome ? '*' + d.nome + '*' : '');
-  let texto = d.evento_emoji + ' ' + d.evento_label + (quem ? ' — ' + quem : '');
-  if (d.folga) texto += '\n⚠️ ' + d.folga;
-  texto += '\n🎫 #' + d.chamado.protocolo + ' · ' + assunto;
-  if (d.sem_tecnico) texto += '\n🏢 ' + (d.shopping || 'Local não identificado') + ' · sem técnico atribuído';
-  else if (d.shopping) texto += '\n🏢 ' + d.shopping;
+  // 0.3.0: cabecalho, folga e linhas do chamado pelas mensagens do Painel do Bot (aviso.*); linha vazia some
+  const AV = { 'aviso.novo': '🆕 Novo chamado — {marcados}', 'aviso.transferido': '📨 Chamado transferido — {marcados}', 'aviso.assumido': '👤 Chamado assumido — {marcados}',
+    'aviso.sem_tecnico': '⚠️ Chamado sem técnico há 10+ min — {marcados}', 'aviso.segue_sem_tecnico': '⚠️ Chamado segue sem técnico há {tempo} — {marcados}',
+    'aviso.escalado': '🚨 Chamado segue sem técnico há {tempo} (escalado) — {marcados}' };
+  let texto = AV[d.evento_chave] ? M(d.evento_chave, AV[d.evento_chave], { marcados: quem, tempo: d.tempo || '' })
+    : d.evento_emoji + ' ' + d.evento_label + (quem ? ' — ' + quem : '');   // pedido de infra: fixo
+  if (d.folga) texto += '\n' + (d.folga_v ? M('aviso.folga', '⚠️ {tecnico} está de folga hoje — plantão no {shopping}: {plantao}', d.folga_v) : '⚠️ ' + d.folga);
   const cli = d.cliente || {};
   const nomeCliente = (cli.razao || '').trim(), nomeLoja = (cli.fantasia || '').trim();
   const fone = [cli.whatsapp, cli.telefone_celular, cli.fone, cli.telefone_comercial]
     .map(f => (f || '').trim()).find(f => f.replace(/\D/g, '').length >= 8) || '';
-  if (nomeCliente) texto += '\n👤 ' + nomeCliente;
   const numLoja = numeroLoja(d.chamado, cli), outroNome = nomeLoja && nomeLoja.toLowerCase() !== nomeCliente.toLowerCase();
-  if (numLoja) texto += '\n🏬 ' + numLoja + (outroNome ? ' · ' + nomeLoja : '');
-  else if (outroNome) texto += '\n🏬 Loja: ' + nomeLoja;
-  if (fone) texto += '\n📞 ' + fone;
   const resumo = resumir(d.mensagem, 150);
-  if (resumo) texto += '\n💬 ' + resumo;
+  texto += '\n' + M('aviso.corpo', '🎫 #{protocolo} · {assunto}\n🏢 {shopping}\n👤 {cliente}\n🏬 {loja}\n📞 {telefone}\n💬 {resumo}', {
+    protocolo: d.chamado.protocolo, assunto,
+    shopping: d.sem_tecnico ? M('aviso.sem_tecnico_linha', '{shopping} · sem técnico atribuído', { shopping: d.shopping || 'Local não identificado' }) : (d.shopping || ''),
+    cliente: nomeCliente, loja: numLoja ? numLoja + (outroNome ? ' · ' + nomeLoja : '') : (outroNome ? 'Loja: ' + nomeLoja : ''),
+    telefone: fone, resumo: resumo || '' });
   let planta = null;
   if (C0.param.planta_ativo !== 'nao' && (d.primeira || String(d.evento) === '4') && RX_PLANTA.test(assunto) && /\d/.test(numLoja)) {
     const loc = localDe(C0, d.empresa, d.chamado, cli), kp = d.empresa + ':' + d.id_chamado;

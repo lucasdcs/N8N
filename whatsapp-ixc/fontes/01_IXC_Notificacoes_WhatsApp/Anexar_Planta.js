@@ -1,6 +1,21 @@
 // Workflow: WhatsApp - Notificacoes de chamados IXC (WAHA)
 // No: Anexar Planta
 
+// 0.3.0 (Painel do Bot): textos editaveis em ixc.mensagens; sem texto editado usa o padrao embutido na chamada.
+const MSG_ = (() => { try { let c = $('Carregar Config').first().json.cfg; if (typeof c === 'string') c = JSON.parse(c); return (c && c.mensagens) || {}; } catch (e) { return {}; } })();
+function M(chave, padrao, v) {
+  const t = typeof MSG_[chave] === 'string' && MSG_[chave].trim() ? MSG_[chave] : padrao;
+  if (!v) return t;
+  const vazio = k => v[k] === null || v[k] === undefined || String(v[k]) === '';
+  return t.split('\n').map(l => {
+    const ks = [...l.matchAll(/\{([a-z_]+)\}/g)].map(m => m[1]).filter(k => k in v);
+    const vz = ks.filter(vazio);
+    // linha so com variaveis vazias (e emoji/pontuacao): some
+    if (ks.length && vz.length === ks.length && !/[\p{L}\p{N}]/u.test(l.replace(/\{[a-z_]+\}/g, ''))) return null;
+    const s = l.replace(/\{([a-z_]+)\}/g, (x, k) => (k in v ? (vazio(k) ? '' : String(v[k])) : x));
+    return vz.length ? s.replace(/[\s—·:-]+$/u, '') : s;
+  }).filter(l => l !== null).join('\n');
+}
 function unwrap(x) {
   if (x && typeof x === 'object' && typeof x.data === 'string') {
     try { return JSON.parse(x.data); } catch (e) { return x; }
@@ -71,7 +86,7 @@ return $input.all().map((it, i) => {
   const com = !!(m.planta && p.ok && p.imagem);
   const simular = ENVIO !== 'REAL';
   const chatId = simular ? TESTE + '@c.us' : m.grupo_jid;
-  const texto = simular ? '🧪 SIMULAÇÃO → ' + m.grupo_jid + '\n' + m.texto : m.texto;
+  const texto = simular ? M('envio.simulacao', '🧪 SIMULAÇÃO → {grupo}', { grupo: m.grupo_jid }) + '\n' + m.texto : m.texto;
   const corpo = com
     ? { session: sessao, chatId, file: { mimetype: 'image/png', filename: 'planta-loja.png', data: p.imagem }, caption: texto }
     : { session: sessao, chatId, text: texto, linkPreview: false };

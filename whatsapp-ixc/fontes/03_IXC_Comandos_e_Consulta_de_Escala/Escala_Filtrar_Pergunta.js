@@ -37,6 +37,23 @@ if (n.length <= 200) for (const [s, re] of Object.entries(SET)) {
    || new RegExp('\\b(contato|numero|telefone|whats|whatsapp|ramal)\\s+(do|da|de)\\s+' + R + '\\b').test(n))
     setores.push(s);
 }
+// 0.3.0 (Painel do Bot, decisao de 23/11 "opcao a"): as frases de ixc.perguntas SOMAM ao reconhecimento acima.
+// Frase ligada do setor aciona; frase desligada (e nenhuma ligada) cala o setor mesmo que a regex tenha achado.
+// grupos = 'recados': so vale no grupo de Recados. Mensagem com mais de 200 caracteres nao aciona (igual a regex).
+if (n.length <= 200) {
+  let PQ = [];
+  try { PQ = JSON.parse(String($('Carregar Parametros').first().json.perguntas || '[]')); } catch (e) { PQ = []; }
+  if (!Array.isArray(PQ)) PQ = [];
+  const recados = String($('Carregar Parametros').first().json.setores_grupo || '');
+  const nn = ' ' + n.replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
+  const tem = p => nn.includes(' ' + String(p.frase_norm || '') + ' ');
+  for (const s of ['n2', 'financeiro', 'comercial', 'compras', 'rh']) {
+    const lig = PQ.filter(p => p.alvo === s && p.ativo && (p.grupos !== 'recados' || key.remoteJid === recados)).some(tem);
+    const desl = PQ.filter(p => p.alvo === s && !p.ativo).some(tem);
+    if (lig && !setores.includes(s)) setores.push(s);
+    else if (!lig && desl && setores.includes(s)) setores.splice(setores.indexOf(s), 1);
+  }
+}
 if (setores.length) return [{ json: { grupo: key.remoteJid, texto, id: key.id, participant: key.participant || null, fromMe: !!key.fromMe, setores } }];
 if (!ehPergunta(n)) return [];
 return [{ json: { grupo: key.remoteJid, texto, id: key.id, participant: key.participant || null, fromMe: !!key.fromMe } }];

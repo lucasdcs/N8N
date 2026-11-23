@@ -96,6 +96,6 @@ try {
 } catch (e) {
   st.falhas = (st.falhas || 0) + 1;
   return [{ json: { sql: 'SELECT 1', resumo: 'FALHA ' + st.falhas + ': ' + e.message,
-    alerta: st.falhas === 3 ? '⚠️ Leitura da planilha ESCALAS falhou 3x seguidas (quem está no shopping pode ficar desatualizado): ' + e.message : null } }];
+    alerta: st.falhas === 3 ? String((($('Carregar Trocas').first() || {}).json || {}).msg_alerta_planilha || '⚠️ Leitura da planilha ESCALAS falhou 3x seguidas (quem está no shopping pode ficar desatualizado): {erro}').split('{erro}').join(e.message) : null } }];   // 0.3.0: alerta.planilha
 }
 

@@ -132,7 +132,7 @@ for (const e of porChamado.values()) {
   const loc = localDe(C, emp, chamado, cliente);
   const tecChamado = String(chamado.id_tecnico || '0') !== '0' ? String(chamado.id_tecnico) : null;
   const tecEvento = String(msg.id_tecnico || '0') !== '0' ? String(msg.id_tecnico) : null;
-  let rota, emoji, label, semTec = false, folga = null;
+  let rota, emoji, label, semTec = false, folga = null, chave = null, tempo = null, folgaV = null;  // 0.3.0: chave/tempo/folgaV = mensagens do painel
   if (ev === 'INFRA') {
     if (tecChamado && tecChamado === String(E.dono_id)) continue; // ja esta com o responsável pela infra: o aviso normal cobre
     emoji = '🏗️'; label = 'Pedido de infra' + (msg.autor && msg.autor !== '0' ? ' — ' + nomePessoa(C, emp, msg.autor) : '');
@@ -146,15 +146,15 @@ for (const e of porChamado.values()) {
     if (msg.realerta) {
       const h = Math.floor((msg.idade_min || 0) / 60);
       const t = h >= 24 ? Math.floor(h / 24) + 'd ' + (h % 24) + 'h' : h + 'h';
-      emoji = msg.escalar ? '🚨' : '⚠️'; label = 'Chamado segue sem técnico há ' + t + (msg.escalar ? ' (escalado)' : '');
-    } else { emoji = '⚠️'; label = 'Chamado sem técnico há 10+ min'; }
+      emoji = msg.escalar ? '🚨' : '⚠️'; label = 'Chamado segue sem técnico há ' + t + (msg.escalar ? ' (escalado)' : ''); chave = msg.escalar ? 'aviso.escalado' : 'aviso.segue_sem_tecnico'; tempo = t;
+    } else { emoji = '⚠️'; label = 'Chamado sem técnico há 10+ min'; chave = 'aviso.sem_tecnico'; }
   } else {
     const pid = tecEvento || tecChamado;
     if (!pid) continue; // aberto sem ninguem: espera o aviso SEMTEC
     const idade = chamado.data_abertura ? (agoraMs - paraData(chamado.data_abertura)) / 60000 : 9999;
-    if (e.novo || (ev === '4' && idade < 15)) { emoji = '🆕'; label = 'Novo chamado'; }
-    else if (ev === '4') { emoji = '📨'; label = 'Chamado transferido'; }
-    else { emoji = '👤'; label = 'Chamado assumido'; }
+    if (e.novo || (ev === '4' && idade < 15)) { emoji = '🆕'; label = 'Novo chamado'; chave = 'aviso.novo'; }
+    else if (ev === '4') { emoji = '📨'; label = 'Chamado transferido'; chave = 'aviso.transferido'; }
+    else { emoji = '👤'; label = 'Chamado assumido'; chave = 'aviso.assumido'; }
     // Auditoria do __NOME__ Del Corsi nao notifica (regra de 02/10/2026); se ele transferir pra outra pessoa, avisa normal
     const txtCh = [e.textoAbertura, msg.mensagem, chamado.mensagem].filter(Boolean).join(' ');
     if (/del\s+corsi/i.test(nomePessoa(C, emp, pid)) && /auditoria/i.test(txtCh)) {
@@ -171,12 +171,13 @@ for (const e of porChamado.values()) {
         rota.marcar = [...rota.marcar];
         for (const t of pl.tecs) if (t.fone && !rota.marcar.includes(t.fone)) rota.marcar.push(t.fone);
         folga = tAtrib.nome + ' está de folga hoje — plantão no ' + loc.nome + ': ' + pl.nomes.join(' e ');
+        folgaV = { tecnico: tAtrib.nome, shopping: loc.nome, plantao: pl.nomes.join(' e ') };
       }
     }
   }
   out.push({ pairedItem: { item: e.i }, json: Object.assign(base, {
     ignorado: false, chamado, cliente, mensagem: (e.novo && e.textoAbertura) || msg.mensagem || '', grupo_jid: rota.grupo, marcar: rota.marcar,
-    nome: rota.nome || null, shopping: rota.shopping, sem_tecnico: semTec, evento_emoji: emoji, evento_label: label, folga,
+    nome: rota.nome || null, shopping: rota.shopping, sem_tecnico: semTec, evento_emoji: emoji, evento_label: label, folga, evento_chave: chave, tempo, folga_v: folgaV,
     primeira: !!(e.novo || (ev === 'SEMTEC' && !msg.realerta)), // 1a notificacao do chamado (planta da loja, regra de 29/09/2026)
   }) });
 }
