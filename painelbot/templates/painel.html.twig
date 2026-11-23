@@ -14,6 +14,7 @@
 
 <div class="pbot" id="pbot"
      data-api="{{ nav.url_dados }}"
+     data-acao="{{ nav.url_acao }}"
      data-direitos="{{ nav.direitos|json_encode }}"
      data-tema="{{ nav.tema }}" data-tema-ativo="{{ nav.tema == 'escuro' ? 'escuro' : 'claro' }}" data-url-tema="{{ nav.url_tema }}">
 
@@ -115,7 +116,7 @@
   </section>
   {% endif %}
 
-  <div class="pbot-rodape">painelbot {{ nav.versao }} · banco do bot {{ nav.conexao.host }}:{{ nav.conexao.porta }}/{{ nav.conexao.banco }} · edição nas próximas versões</div>
+  <div class="pbot-rodape">painelbot {{ nav.versao }} · banco do bot {{ nav.conexao.host }}:{{ nav.conexao.porta }}/{{ nav.conexao.banco }} · mensagens e perguntas editáveis (valem no WhatsApp a partir do whatsapp-ixc 0.3.0)</div>
 </div>
 
 <script src="{{ nav.url_assets }}/js/pbot-tema.js?v={{ nav.assets }}"></script>

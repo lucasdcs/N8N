@@ -176,3 +176,47 @@ html.pbot-escuro .page-body .pbot[data-tema-ativo="escuro"] { padding: 4px 2px; 
 .pbot[data-tema-ativo="escuro"] .pbot-ed-vars code { color: #67e8f9; }
 .pbot[data-tema-ativo="escuro"] .pbot-realce { background: rgba(255, 196, 0, .16); box-shadow: inset 2px 0 0 #fbbf24; }
 .pbot[data-tema-ativo="escuro"] .pbot-wa-bolha .pbot-var { color: #7dd3fc; }
+
+/* ---------------------------------------------------------------- 0.2.0: edição */
+.pbot-bt { display: inline-flex; gap: 5px; align-items: center; border: 1px solid var(--pbot-borda); background: var(--pbot-sup); color: var(--pbot-texto); border-radius: 7px; padding: 5px 11px; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.pbot-bt:hover:not(:disabled) { background: var(--pbot-sup-2); }
+.pbot-bt:disabled { opacity: .5; cursor: default; }
+.pbot-bt.pri { background: var(--pbot-acento); border-color: var(--pbot-acento); color: #fff; }
+.pbot-bt.pri:hover:not(:disabled) { filter: brightness(1.08); background: var(--pbot-acento); }
+.pbot-bt.ico { border: 0; background: transparent; padding: 4px 6px; color: var(--pbot-texto-2); }
+.pbot-bt.ico .ti { font-size: 17px; }
+.pbot-bt.perigo { color: #d9480f; }
+.pbot-bt.perigo.confirmar { background: #d9480f; color: #fff; border-radius: 6px; }
+.pbot-sw { width: 34px; height: 19px; border-radius: 10px; border: 0; background: var(--pbot-borda); position: relative; cursor: pointer; vertical-align: middle; padding: 0; }
+.pbot-sw::after { content: ""; position: absolute; left: 2px; top: 2px; width: 15px; height: 15px; border-radius: 50%; background: #fff; transition: left .15s; }
+.pbot-sw.on { background: var(--pbot-acento); }
+.pbot-sw.on::after { left: 17px; }
+.pbot-sw:disabled { opacity: .5; }
+.pbot-pq-h { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pbot-pq-botoes { display: flex; gap: 6px; }
+.pbot-pq-ac { text-align: right; white-space: nowrap; width: 1%; }
+.pbot-pq-tab .pbot-tag { margin-left: 6px; background: var(--pbot-acento-fundo); color: var(--pbot-acento); }
+.pbot-pq-novo { padding: 10px 12px; border-bottom: 1px solid var(--pbot-borda); background: var(--pbot-sup); }
+.pbot-pq-novo[hidden] { display: none; }
+.pbot-pq-form { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.pbot-pq-form .form-control { flex: 1 1 220px; }
+.pbot-pq-grupos { width: auto; flex: 0 0 auto; }
+.pbot-pq-chk { font-size: 12px; margin-top: 6px; min-height: 16px; }
+.pbot-pq-chk.ok { color: var(--pbot-ok); } .pbot-pq-chk.aviso { color: var(--pbot-aviso); } .pbot-pq-chk.erro { color: var(--pbot-erro); }
+.pbot-retorno { font-size: 12.5px; font-weight: 600; }
+.pbot-retorno:not(:empty) { padding: 6px 12px; }
+.pbot-retorno.ok { color: var(--pbot-ok); } .pbot-retorno.erro { color: var(--pbot-erro); }
+.pbot-ed-bts { display: flex; gap: 8px; margin: 10px 0 4px; flex-wrap: wrap; }
+.pbot-ed-chk { font-size: 12px; min-height: 16px; margin-bottom: 4px; }
+.pbot-ed-chk.aviso { color: var(--pbot-aviso); } .pbot-ed-chk.erro { color: var(--pbot-erro); }
+.pbot-var-bt { border: 0; background: var(--pbot-acento-fundo); color: var(--pbot-acento); border-radius: 4px; padding: 2px 6px; margin: 0 4px 4px 0; font: 12px var(--pbot-mono); cursor: pointer; }
+.pbot-var-bt:hover { filter: brightness(.95); }
+.pbot-ed-texto:not([readonly]) { border-color: var(--pbot-acento); background: var(--pbot-sup); }
+.pbot-hist { margin-top: 10px; border: 1px solid var(--pbot-borda); border-radius: 8px; max-height: 260px; overflow-y: auto; }
+.pbot-hist-it { padding: 8px 10px; border-bottom: 1px solid var(--pbot-borda); }
+.pbot-hist-it:last-child { border-bottom: 0; }
+.pbot-hist-q { font-size: 11.5px; color: var(--pbot-texto-3); margin-bottom: 3px; }
+.pbot-hist-it code { white-space: pre-wrap; font-size: 12px; color: var(--pbot-texto); background: none; padding: 0; }
+.pbot[data-tema-ativo="escuro"] .form-select { background-color: #122A30; border-color: var(--pbot-borda); color: var(--pbot-texto); }
+.pbot[data-tema-ativo="escuro"] .pbot-var-bt { color: #67e8f9; }
+.pbot[data-tema-ativo="escuro"] .pbot-bt.perigo:not(.confirmar) { color: #fb923c; }

@@ -1,6 +1,7 @@
--- Painel do Bot 0.1.0 — usuário do Postgres do bot (schema ixc) usado pelo GLPI.
--- Só leitura nesta versão, e SEM acesso à coluna ixc.empresas.auth (tokens do IXC).
--- Rodar como o dono do banco (usuário ixc), DEPOIS do 01-mensagens-perguntas.sql, trocando a senha:
+-- Painel do Bot 0.2.0 — usuário do Postgres do bot (schema ixc) usado pelo GLPI.
+-- Lê o schema (SEM a coluna ixc.empresas.auth, tokens do IXC) e grava SÓ nas tabelas do painel:
+-- texto das mensagens (+ histórico) e perguntas. Não altera escala, técnicos, parâmetros nem eventos.
+-- Rodar como o dono do banco (usuário ixc), DEPOIS do 01-mensagens-perguntas.sql, trocando a senha (pode ser a mesma):
 --   docker exec -i n8n-compose-postgres-ixc-1 psql -U ixc -d ixc -v ON_ERROR_STOP=1 -v senha="'SENHA_FORTE'" < 02-usuario-painel.sql
 -- Pode rodar de novo: recria as permissões e troca a senha. (Mesmo usuário da P15-1 descartada, se já existir.)
 
@@ -21,7 +22,16 @@ GRANT SELECT ON ixc.parametros, ixc.locais, ixc.tecnicos, ixc.escala_base, ixc.e
 GRANT SELECT (id, nome, base_url, last_evento_id, dono_id, ignorar_assuntos, semtec_sem_local, ativo, atualizado, assuntos_financeiros)
   ON ixc.empresas TO painel_glpi;
 
--- conferência: le_mensagens = t, altera_mensagens = f, le_tokens = f
+-- 0.2.0: edição pelo painel
+GRANT UPDATE (texto, atualizado, atualizado_por) ON ixc.mensagens TO painel_glpi;
+GRANT INSERT ON ixc.mensagens_hist TO painel_glpi;
+GRANT INSERT, DELETE ON ixc.perguntas TO painel_glpi;
+GRANT UPDATE (frase, frase_norm, grupos, ativo, atualizado, atualizado_por) ON ixc.perguntas TO painel_glpi;
+GRANT USAGE ON SEQUENCE ixc.mensagens_hist_id_seq, ixc.perguntas_id_seq TO painel_glpi;
+
+-- conferência: t | t | f | f | f
 SELECT has_table_privilege('painel_glpi', 'ixc.mensagens', 'SELECT') AS le_mensagens,
-       has_table_privilege('painel_glpi', 'ixc.mensagens', 'UPDATE') AS altera_mensagens,
+       has_column_privilege('painel_glpi', 'ixc.mensagens', 'texto', 'UPDATE') AS edita_texto,
+       has_column_privilege('painel_glpi', 'ixc.mensagens', 'texto_padrao', 'UPDATE') AS muda_padrao,
+       has_table_privilege('painel_glpi', 'ixc.locais', 'UPDATE') AS muda_escala,
        has_column_privilege('painel_glpi', 'ixc.empresas', 'auth', 'SELECT') AS le_tokens;

@@ -15,6 +15,7 @@ TemplateRenderer::getInstance()->display('@painelbot/painel.html.twig', [
     'nav' => [
         'url_assets'  => $dir,
         'url_dados'   => "$dir/front/dados.php",
+        'url_acao'    => "$dir/front/acao.php",
         'url_tema'    => "$dir/front/tema.php",
         'url_config'  => '/front/config.form.php?forcetab=' . urlencode(\GlpiPlugin\Painelbot\Config::class . '$1'),
         'versao'      => PLUGIN_PAINELBOT_VERSION,

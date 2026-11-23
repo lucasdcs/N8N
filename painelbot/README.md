@@ -3,10 +3,15 @@
 Gerencia o bot de WhatsApp da automação [`whatsapp-ixc`](../whatsapp-ixc/README.md) (n8n + WAHA) de dentro do GLPI.
 Autor SCDell, GPLv3+. Requisitos: GLPI 11.0.x, PHP 8.2+ com `pdo_pgsql` (`apt install php-pgsql`).
 
-Os dados **não** ficam no MariaDB do GLPI: o plugin lê (e, a partir da 0.2.0, grava) o Postgres do bot (schema `ixc`),
-com o usuário `painel_glpi`, que não tem acesso aos tokens do IXC.
+Os dados **não** ficam no MariaDB do GLPI: o plugin lê e grava o Postgres do bot (schema `ixc`) com o usuário `painel_glpi`,
+que não tem acesso aos tokens do IXC e só grava nas tabelas do painel (mensagens, histórico e perguntas).
 
-## O que tem (0.1.0 — só consulta)
+## O que tem
+
+**0.2.0** — edição em **Mensagens** (salvar com conferência das `{variáveis}`, restaurar o padrão, histórico) e nas **perguntas** de cada setor
+(nova, editar, ligar/desligar, excluir as criadas no painel, religar padrões). Os textos e perguntas passam a valer no WhatsApp com o whatsapp-ixc 0.3.0.
+
+**0.1.0** — consulta:
 
 | Seção | Conteúdo | Área do perfil |
 |---|---|---|
@@ -28,7 +33,7 @@ Na instalação só os perfis com Configuração > Atualizar (Super-Admin) receb
 ## Banco do bot (`sql/`)
 
 1. `01-mensagens-perguntas.sql` — cria `ixc.mensagens`, `ixc.mensagens_hist` e `ixc.perguntas` com os textos e perguntas atuais (idempotente; não sobrescreve texto editado).
-2. `02-usuario-painel.sql` — cria/atualiza o usuário `painel_glpi` (só leitura na 0.1.0, sem `empresas.auth`). Rodar com `-v senha="'...'"`.
+2. `02-usuario-painel.sql` — cria/atualiza o usuário `painel_glpi` (leitura sem `empresas.auth`; desde a 0.2.0 grava só em `mensagens.texto`, `mensagens_hist` e `perguntas`). Rodar com `-v senha="'...'"` (rodar de novo a cada versão que mude permissões).
 
 `catalogo-mensagens.json` é a fonte do 01; regere com `python3 sql/gerar-sql.py sql/catalogo-mensagens.json sql/01-mensagens-perguntas.sql`.
 

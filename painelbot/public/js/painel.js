@@ -1,6 +1,7 @@
-/* Painel do Bot 0.1.0 — leitura do banco do bot (schema ixc): visão geral, shoppings e escala, técnicos,
+/* Painel do Bot 0.2.0 — leitura do banco do bot (schema ixc): visão geral, shoppings e escala, técnicos,
  * contatos de setor, mensagens (+ perguntas), parâmetros e últimos envios.
  * Só existem no HTML as seções que o perfil vê; o JSON também só traz essas.
+ * 0.2.0: edição de mensagens (salvar, restaurar padrão, histórico) e perguntas (criar, editar, ligar/desligar, excluir).
  * Todo texto vindo do banco entra via textContent; a pré-visualização do WhatsApp escapa o texto antes de formatar.
  */
 (function iniciar() {
@@ -254,13 +255,39 @@
       if (m.personalizada) t.appendChild(el('span', 'pbot-tag pers', 'personalizada'));
       it.appendChild(t);
       it.appendChild(el('div', 'pbot-msg-s', textoAtual(m).split('\n')[0]));
-      it.addEventListener('click', function () { msgSel = m.chave; msgLista(); });
+      it.addEventListener('click', function () { if (m.chave !== msgSel && !descartar()) return; msgSel = m.chave; msgLista(); });
       itens.appendChild(it);
     });
     if (!msgSel || !lista.some(function (m) { return m.chave === msgSel; })) msgSel = lista.length ? lista[0].chave : null;
     Array.prototype.forEach.call(itens.querySelectorAll('.pbot-msg-item'), function (b) { b.classList.toggle('sel', b.getAttribute('data-chave') === msgSel); });
-    msgEditor();
+    if (!sujo || editorDe !== msgSel) msgEditor();   // buscar/filtrar não apaga o que está sendo digitado
   }
+
+  // ---------------------------------------------------------------- 0.2.0: gravação
+  var API_ACAO = raiz.getAttribute('data-acao');
+  var D = (function () { try { return JSON.parse(raiz.getAttribute('data-direitos') || '{}') || {}; } catch (e) { return {}; } })();
+  function pode(area, o) { return !!(D[area] && D[area][o]); }
+  function csrf() { var m = document.querySelector('meta[property="glpi:csrf_token"]'); return m ? m.getAttribute('content') : ''; }
+  function post(acao, corpo) {
+    return fetch(API_ACAO, { method: 'POST', credentials: 'same-origin', body: JSON.stringify(Object.assign({ acao: acao }, corpo || {})),
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-Glpi-Csrf-Token': csrf() } })
+      .then(function (r) { return r.json().catch(function () { return { ok: false, erro: 'Resposta inválida do servidor (HTTP ' + r.status + ').' }; }); })
+      .catch(function (e) { return { ok: false, erro: 'Falha de rede: ' + e.message }; });
+  }
+  function aviso(alvo, ok, txt) {
+    if (!alvo) return;
+    alvo.textContent = txt || ''; alvo.className = 'pbot-retorno' + (txt ? (ok ? ' ok' : ' erro') : '');
+  }
+  function trocarMensagem(nova) {
+    var l = msgs();
+    for (var i = 0; i < l.length; i++) if (l[i].chave === nova.chave) { l[i] = nova; return; }
+  }
+  function trocarPergunta(p, excluir) {
+    var l = pergs(); if (!l) return;
+    for (var i = 0; i < l.length; i++) if (l[i].id === (excluir ? p : p.id)) { if (excluir) l.splice(i, 1); else l[i] = p; return; }
+    if (!excluir) l.push(p);
+  }
+  var sujo = false, editorDe = null;
 
   function testarFrase(txt, lista) {
     var n = ' ' + normFrase(txt) + ' ';
@@ -270,6 +297,89 @@
       if (p.ativo && n.indexOf(' ' + normFrase(p.frase) + ' ') >= 0) return p;
     }
     return null;
+  }
+  /** Conferência antes de gravar (o servidor confere de novo). @return {erro, aviso} */
+  function conferirFrase(frase, alvo, id) {
+    var n = normFrase(frase), l = pergs() || [];
+    if (!n) return { erro: 'Escreva a pergunta.' };
+    if (String(frase).trim().length > 80) return { erro: 'Máximo 80 caracteres.' };
+    if (n.split(' ').length < 2) return { erro: 'Use pelo menos 2 palavras.' };
+    for (var i = 0; i < l.length; i++) {
+      if (l[i].id === id) continue;
+      if (normFrase(l[i].frase) === n) return { erro: l[i].alvo === alvo ? 'Já existe: "' + l[i].frase + '".' : 'Essa frase já aciona ' + SETOR_TXT[l[i].alvo] + '.' };
+    }
+    for (var j = 0; j < l.length; j++) {
+      var o = normFrase(l[j].frase);
+      if (l[j].id !== id && l[j].ativo && (n.indexOf(o) >= 0 || o.indexOf(n) >= 0)) return { aviso: 'Parecida com "' + l[j].frase + '" (' + SETOR_TXT[l[j].alvo] + ').' };
+    }
+    return {};
+  }
+
+  function botao(cls, icone, txt, titulo) {
+    var b = el('button', 'pbot-bt ' + (cls || '')); b.type = 'button';
+    if (icone) b.appendChild(el('i', 'ti ' + icone));
+    if (txt) b.appendChild(document.createTextNode(txt));
+    if (titulo) { b.title = titulo; b.setAttribute('aria-label', titulo); }
+    return b;
+  }
+
+  function linhaPergunta(p, alvo, ret, redesenhar) {
+    var tr = el('tr');
+    var tdF = el('td'), tdO = el('td', null, p.padrao ? 'padrão do bot' : 'adicionada ' + p.criado_em + (p.criado_por ? ' por ' + p.criado_por : '')),
+      tdS = el('td'), tdA = el('td', 'pbot-pq-ac');
+    tdF.appendChild(el('span', p.ativo ? 'pbot-pq-f' : 'pbot-pq-f inat', p.frase));
+    if (p.grupos === 'recados') tdF.appendChild(el('span', 'pbot-tag', 'só Recados'));
+    if (pode('perguntas', 'editar')) {
+      var sw = el('button', 'pbot-sw' + (p.ativo ? ' on' : '')); sw.type = 'button';
+      sw.setAttribute('role', 'switch'); sw.setAttribute('aria-checked', p.ativo ? 'true' : 'false');
+      sw.title = p.ativo ? 'Ligada — clique para desligar' : 'Desligada — clique para ligar';
+      sw.setAttribute('aria-label', sw.title);
+      sw.addEventListener('click', function () {
+        sw.disabled = true;
+        post('pergunta_ligar', { id: p.id, ativo: !p.ativo }).then(function (j) {
+          if (!j.ok) { aviso(ret, false, j.erro); sw.disabled = false; return; }
+          trocarPergunta(j.pergunta); aviso(ret, true, '"' + p.frase + '" ' + (j.pergunta.ativo ? 'ligada.' : 'desligada.')); redesenhar();
+        });
+      });
+      tdS.appendChild(sw);
+    } else tdS.appendChild(p.ativo ? pill('ligada', '#16a34a') : pill('desligada', '#64748b'));
+    if (!p.padrao && pode('perguntas', 'editar')) {
+      var ed = botao('ico', 'ti-pencil', null, 'Editar a pergunta');
+      ed.addEventListener('click', function () {
+        tdF.textContent = '';
+        var inp = el('input', 'form-control form-control-sm'); inp.value = p.frase; inp.maxLength = 80;
+        var sel = el('select', 'form-select form-select-sm pbot-pq-grupos');
+        [['todos', 'Todos os grupos'], ['recados', 'Só no Recados']].forEach(function (o) { var op = el('option', null, o[1]); op.value = o[0]; if (p.grupos === o[0]) op.selected = true; sel.appendChild(op); });
+        var ok = botao('pri', 'ti-check', 'Salvar'), no = botao('', null, 'Cancelar');
+        var lin = el('div', 'pbot-pq-form'); lin.appendChild(inp); lin.appendChild(sel); lin.appendChild(ok); lin.appendChild(no);
+        tdF.appendChild(lin); inp.focus();
+        no.addEventListener('click', redesenhar);
+        ok.addEventListener('click', function () {
+          var c = conferirFrase(inp.value, alvo, p.id);
+          if (c.erro) { aviso(ret, false, c.erro); return; }
+          ok.disabled = true;
+          post('pergunta_editar', { id: p.id, frase: inp.value, grupos: sel.value }).then(function (j) {
+            if (!j.ok) { aviso(ret, false, j.erro); ok.disabled = false; return; }
+            trocarPergunta(j.pergunta); aviso(ret, true, 'Pergunta alterada.'); redesenhar();
+          });
+        });
+      });
+      tdA.appendChild(ed);
+    }
+    if (!p.padrao && pode('perguntas', 'excluir')) {
+      var ex = botao('ico perigo', 'ti-trash', null, 'Excluir a pergunta');
+      ex.addEventListener('click', function () {
+        if (!ex.classList.contains('confirmar')) { ex.classList.add('confirmar'); ex.appendChild(document.createTextNode(' Confirmar?')); return; }
+        ex.disabled = true;
+        post('pergunta_excluir', { id: p.id }).then(function (j) {
+          if (!j.ok) { aviso(ret, false, j.erro); ex.disabled = false; return; }
+          trocarPergunta(p.id, true); aviso(ret, true, 'Pergunta "' + p.frase + '" excluída.'); redesenhar();
+        });
+      });
+      tdA.appendChild(ex);
+    }
+    [tdF, tdO, tdS, tdA].forEach(function (td) { tr.appendChild(td); });
+    return tr;
   }
 
   function blocoPerguntas(m) {
@@ -281,17 +391,76 @@
     cab.appendChild(tt);
     caixa.appendChild(cab);
     if (alvo) {
+      alvo = alvo[1];
       tt.appendChild(el('b', null, 'Perguntas que acionam esta resposta'));
-      tt.appendChild(el('div', 'pbot-sub', SETOR_TXT[alvo[1]] + (alvo[1] === 'n2' ? ' · responde em qualquer grupo' : ' · responde no grupo Recados (nos outros grupos o bot indica o Recados)') + ' · acento, maiúscula e "?" não importam'));
+      tt.appendChild(el('div', 'pbot-sub', SETOR_TXT[alvo] + (alvo === 'n2' ? ' · responde em qualquer grupo' : ' · responde no grupo Recados (nos outros grupos o bot indica o Recados)') + ' · acento, maiúscula e "?" não importam'));
       if (ps === null) { caixa.appendChild(el('div', 'pbot-pq-nota', 'Seu perfil não tem "Perguntas > Visualizar".')); return caixa; }
       if (dados.perguntas && dados.perguntas.instalado === false) { caixa.appendChild(el('div', 'pbot-pq-nota', 'Tabela de perguntas ainda não criada (rode o 01-mensagens-perguntas.sql).')); return caixa; }
-      var doAlvo = ps.filter(function (p) { return p.alvo === alvo[1]; });
-      var t = el('table', 'pbot-pq-tab');
-      tabela(t, ['Pergunta', 'Origem', 'Situação'], doAlvo.map(function (p) {
-        var f = el('span', p.ativo ? 'pbot-pq-f' : 'pbot-pq-f inat', p.frase);
-        return [f, p.padrao ? 'padrão do bot' : 'adicionada ' + p.criado_em + (p.criado_por ? ' por ' + p.criado_por : ''), p.ativo ? pill('ligada', '#16a34a') : pill('desligada', '#64748b')];
-      }), 'Nenhuma pergunta cadastrada.');
-      caixa.appendChild(t);
+      var ret = el('div', 'pbot-retorno');
+      var corpo = el('div');
+      var redesenhar = function () {
+        corpo.textContent = '';
+        var doAlvo = ps.filter(function (p) { return p.alvo === alvo; });
+        var t = el('table', 'pbot-pq-tab');
+        tabela(t, ['Pergunta', 'Origem', 'Situação', ''], [], 'Nenhuma pergunta cadastrada.');
+        var tb = t.querySelector('tbody');
+        if (doAlvo.length) { tb.textContent = ''; doAlvo.forEach(function (p) { tb.appendChild(linhaPergunta(p, alvo, ret, redesenhar)); }); }
+        corpo.appendChild(t);
+        // botões do cabeçalho
+        var acoes = cab.querySelector('.pbot-pq-botoes'); if (acoes) acoes.remove();
+        acoes = el('div', 'pbot-pq-botoes');
+        var desligadas = doAlvo.filter(function (p) { return p.padrao && !p.ativo; }).length;
+        if (pode('perguntas', 'editar') && desligadas) {
+          var rp = botao('', 'ti-restore', 'Religar padrões (' + desligadas + ')', 'Liga de novo as perguntas padrão do bot que foram desligadas');
+          rp.addEventListener('click', function () {
+            rp.disabled = true;
+            post('perguntas_restaurar', { alvo: alvo }).then(function (j) {
+              if (!j.ok) { aviso(ret, false, j.erro); rp.disabled = false; return; }
+              ps.forEach(function (p) { if (p.alvo === alvo && p.padrao) p.ativo = true; });
+              aviso(ret, true, j.religadas + ' pergunta(s) padrão religada(s).'); redesenhar();
+            });
+          });
+          acoes.appendChild(rp);
+        }
+        if (pode('perguntas', 'editar')) {
+          var nv = botao('pri', 'ti-plus', 'Nova pergunta');
+          nv.addEventListener('click', function () { form.hidden = false; nv.disabled = true; fInp.focus(); });
+          acoes.appendChild(nv);
+        }
+        cab.appendChild(acoes);
+      };
+      // formulário de nova pergunta (só para quem tem Perguntas > Editar)
+      var form = el('div', 'pbot-pq-novo'); form.hidden = true;
+      form.appendChild(el('label', 'pbot-rot', 'O que a pessoa escreve no grupo'));
+      var fInp = el('input', 'form-control'); fInp.maxLength = 80; fInp.placeholder = 'ex.: tem ' + SETOR_TXT[alvo].toLowerCase().replace('suporte ', '') + ' hoje';
+      var fSel = el('select', 'form-select pbot-pq-grupos');
+      [['todos', 'Todos os grupos do bot'], ['recados', 'Só no grupo Recados']].forEach(function (o) { var op = el('option', null, o[1]); op.value = o[0]; fSel.appendChild(op); });
+      var fChk = el('div', 'pbot-pq-chk');
+      var fOk = botao('pri', 'ti-device-floppy', 'Salvar pergunta'), fNo = botao('', null, 'Cancelar');
+      var lin = el('div', 'pbot-pq-form'); lin.appendChild(fInp); lin.appendChild(fSel); lin.appendChild(fOk); lin.appendChild(fNo);
+      form.appendChild(lin); form.appendChild(fChk);
+      form.appendChild(el('div', 'pbot-pq-nota', 'Vale em qualquer parte da mensagem, com as palavras inteiras e nessa ordem. Mensagens com mais de 200 caracteres não acionam o bot.'));
+      fInp.addEventListener('input', function () {
+        var c = conferirFrase(fInp.value, alvo, 0);
+        fChk.textContent = fInp.value.trim() ? (c.erro || c.aviso || 'ok — "' + fInp.value.trim() + '" vai acionar ' + SETOR_TXT[alvo]) : '';
+        fChk.className = 'pbot-pq-chk ' + (c.erro ? 'erro' : c.aviso ? 'aviso' : 'ok');
+      });
+      fNo.addEventListener('click', function () { form.hidden = true; fInp.value = ''; fChk.textContent = ''; redesenhar(); });
+      fOk.addEventListener('click', function () {
+        var c = conferirFrase(fInp.value, alvo, 0);
+        if (c.erro) { aviso(ret, false, c.erro); return; }
+        fOk.disabled = true;
+        post('pergunta_criar', { alvo: alvo, frase: fInp.value, grupos: fSel.value }).then(function (j) {
+          fOk.disabled = false;
+          if (!j.ok) { aviso(ret, false, j.erro); return; }
+          trocarPergunta(j.pergunta); aviso(ret, true, 'Pergunta "' + j.pergunta.frase + '" criada.');
+          form.hidden = true; fInp.value = ''; fChk.textContent = ''; redesenhar();
+        });
+      });
+      if (pode('perguntas', 'editar')) caixa.appendChild(form);
+      caixa.appendChild(ret);
+      caixa.appendChild(corpo);
+      redesenhar();
       var teste = el('div', 'pbot-pq-teste');
       teste.appendChild(el('i', 'ti ti-flask'));
       var inp = el('input', 'form-control'); inp.type = 'text'; inp.maxLength = 300; inp.placeholder = 'Teste uma mensagem: ex. "bom dia, algum n2 disponível?"';
@@ -304,7 +473,7 @@
       });
       teste.appendChild(inp); teste.appendChild(res);
       caixa.appendChild(teste);
-      caixa.appendChild(el('div', 'pbot-pq-nota', 'Adicionar, editar, ligar/desligar e excluir perguntas chega na 0.2.0.'));
+      caixa.appendChild(el('div', 'pbot-pq-nota', 'As mudanças valem no WhatsApp quando o bot estiver na versão que lê estas perguntas (whatsapp-ixc 0.3.0). Até lá o bot segue as perguntas embutidas.'));
     } else if (/^setor\./.test(m.chave)) {
       tt.appendChild(el('b', null, 'Aparece nas respostas de setor'));
       tt.appendChild(el('div', 'pbot-sub', 'Trecho usado em todas as respostas de setor. As perguntas ficam no título de cada setor:'));
@@ -313,7 +482,7 @@
         var n = ps ? ps.filter(function (p) { return p.alvo === s && p.ativo; }).length : null;
         var b = el('button', 'pbot-chip', SETOR_TXT[s] + (n !== null ? ' · ' + n + ' perguntas' : ''));
         b.type = 'button';
-        b.addEventListener('click', function () { msgSel = 'setor.titulo.' + s; msgFiltro = 'todas'; msgLista(); });
+        b.addEventListener('click', function () { if (!descartar()) return; msgSel = 'setor.titulo.' + s; msgFiltro = 'todas'; msgLista(); });
         ch.appendChild(b);
       });
       caixa.appendChild(ch);
@@ -332,7 +501,7 @@
     return caixa;
   }
 
-  function preVisualizacao(m) {
+  function preVisualizacao(m, texto) {
     var wa = el('div', 'pbot-wa');
     var cab = porChave('escala.cabecalho');
     var perg = m.exemplo || (/^setor\./.test(m.chave) ? 'algum n2 disponível?' : '');
@@ -345,7 +514,7 @@
     if (deGrupo && perg) html += '<div class="pbot-wa-cit">Fulano: ' + esc(perg) + '</div>';
     if (/^(escala|setor)\./.test(m.chave) && m.chave !== 'escala.cabecalho' && cab) html += whats(textoAtual(cab)) + '\n\n';
     var alvo = /^setor\.titulo\.(.+)$/.exec(m.chave);
-    html += whats(textoAtual(m), true);
+    html += whats(texto, true);
     if (alvo) {   // completa a resposta de setor com 2 contatos de exemplo
       var ct = porChave('setor.contato'), sa = porChave('setor.status.atendendo'), sv = porChave('setor.status.volta_hoje');
       if (ct && sa && sv) {
@@ -358,39 +527,130 @@
     return wa;
   }
 
+  function descartar() {
+    if (!sujo) return true;
+    if (window.confirm('Descartar a alteração que não foi salva?')) { sujo = false; return true; }
+    return false;
+  }
+
   function msgEditor() {
     var ed = $('pbot-msg-ed'); if (!ed) return;
     ed.textContent = '';
+    sujo = false;
+    editorDe = msgSel;
     var m = porChave(msgSel);
     if (!m) { ed.appendChild(el('div', 'pbot-vazio', 'Escolha uma mensagem na lista.')); return; }
+    var editar = pode('mensagens', 'editar');
     ed.appendChild(el('h3', 'pbot-ed-t', m.titulo));
     var meta = el('div', 'pbot-ed-meta');
     var mi = function (ic, t) { var s = el('span'); s.appendChild(el('i', 'ti ' + ic)); s.appendChild(document.createTextNode(' ' + t)); meta.appendChild(s); };
     mi('ti-git-branch', 'workflow ' + m.wf);
     mi('ti-key', m.chave);
-    mi('ti-clock-edit', m.personalizada ? 'alterada ' + m.atualizado + (m.atualizado_por ? ' por ' + m.atualizado_por : '') : 'texto padrão do bot');
+    mi('ti-clock-edit', m.atualizado ? 'alterada ' + m.atualizado + (m.atualizado_por ? ' por ' + m.atualizado_por : '') + (m.personalizada ? '' : ' (voltou ao padrão)') : 'texto padrão do bot');
     ed.appendChild(meta);
     ed.appendChild(blocoPerguntas(m));
 
     var cols = el('div', 'pbot-ed-cols');
     var esq = el('div');
     esq.appendChild(el('label', 'pbot-rot', 'Texto da mensagem'));
-    var ta = el('textarea', 'pbot-ed-texto'); ta.readOnly = true; ta.value = textoAtual(m); ta.rows = Math.min(14, Math.max(3, textoAtual(m).split('\n').length + 1));
+    var ta = el('textarea', 'pbot-ed-texto'); ta.readOnly = !editar; ta.value = textoAtual(m); ta.rows = Math.min(14, Math.max(3, textoAtual(m).split('\n').length + 1));
+    ta.maxLength = 3000;
     esq.appendChild(ta);
     var vars = el('div', 'pbot-ed-vars');
-    if (m.variaveis.length) { vars.appendChild(document.createTextNode('Variáveis: ')); m.variaveis.forEach(function (v) { vars.appendChild(el('code', null, '{' + v + '}')); }); }
-    else vars.appendChild(document.createTextNode('Sem variáveis neste trecho.'));
+    if (m.variaveis.length) {
+      vars.appendChild(document.createTextNode(editar ? 'Variáveis (clique para inserir): ' : 'Variáveis: '));
+      m.variaveis.forEach(function (v) {
+        var c = el(editar ? 'button' : 'code', editar ? 'pbot-var-bt' : null, '{' + v + '}');
+        if (editar) {
+          c.type = 'button';
+          c.addEventListener('click', function () {
+            var a = ta.selectionStart || ta.value.length, b = ta.selectionEnd || a;
+            ta.value = ta.value.slice(0, a) + '{' + v + '}' + ta.value.slice(b);
+            ta.focus(); ta.selectionStart = ta.selectionEnd = a + v.length + 2;
+            ta.dispatchEvent(new Event('input'));
+          });
+        }
+        vars.appendChild(c);
+      });
+    } else vars.appendChild(document.createTextNode('Sem variáveis neste trecho.'));
     esq.appendChild(vars);
+    var chk = el('div', 'pbot-ed-chk');
+    esq.appendChild(chk);
     esq.appendChild(el('div', 'pbot-ed-fmt', 'WhatsApp: *negrito* · _itálico_ · ~riscado~ · emojis · quebra de linha = Enter'));
+    var ret = el('div', 'pbot-retorno'); ret.id = 'pbot-ret-texto';
+    if (editar) {
+      var bts = el('div', 'pbot-ed-bts');
+      var bSalvar = botao('pri', 'ti-device-floppy', 'Salvar'); bSalvar.disabled = true;
+      var bRest = botao('', 'ti-arrow-back-up', 'Restaurar padrão'); bRest.disabled = !m.personalizada;
+      var bHist = botao('', 'ti-history', 'Histórico');
+      bts.appendChild(bSalvar); bts.appendChild(bRest); bts.appendChild(bHist);
+      esq.appendChild(bts);
+      bSalvar.addEventListener('click', function () {
+        bSalvar.disabled = true;
+        post('mensagem_salvar', { chave: m.chave, texto: ta.value }).then(function (j) {
+          if (!j.ok) { aviso(ret, false, j.erro); bSalvar.disabled = false; return; }
+          trocarMensagem(j.mensagem); sujo = false; msgLista();
+          aviso($('pbot-ret-texto'), true, j.mensagem.personalizada ? 'Mensagem salva.' : 'Igual ao padrão: a mensagem segue o texto do bot.');
+        });
+      });
+      bRest.addEventListener('click', function () {
+        bRest.disabled = true;
+        post('mensagem_restaurar', { chave: m.chave }).then(function (j) {
+          if (!j.ok) { aviso(ret, false, j.erro); bRest.disabled = false; return; }
+          trocarMensagem(j.mensagem); sujo = false; msgLista();
+          aviso($('pbot-ret-texto'), true, 'Voltou ao texto padrão do bot.');
+        });
+      });
+      bHist.addEventListener('click', function () { mostrarHistorico(m, esq, bHist); });
+    } else if (pode('mensagens', 'ver')) {
+      var bH = botao('', 'ti-history', 'Histórico'); esq.appendChild(el('div', 'pbot-ed-bts')).appendChild(bH);
+      bH.addEventListener('click', function () { mostrarHistorico(m, esq, bH); });
+    }
+    esq.appendChild(ret);
     if (m.personalizada) {
       var orig = el('div', 'pbot-ed-orig'); orig.appendChild(document.createTextNode('Texto padrão do bot: ')); orig.appendChild(el('code', null, m.texto_padrao)); esq.appendChild(orig);
     }
-    esq.appendChild(el('div', 'pbot-pq-nota', 'Edição (Salvar, Restaurar padrão, Histórico) chega na 0.2.0, junto com a versão do bot que lê estes textos.'));
+    esq.appendChild(el('div', 'pbot-pq-nota', 'O texto salvo vale no WhatsApp quando o bot estiver na versão que lê estes textos (whatsapp-ixc 0.3.0).'));
     var dir = el('div');
     dir.appendChild(el('label', 'pbot-rot', 'Pré-visualização (valores de exemplo)'));
-    dir.appendChild(preVisualizacao(m));
+    var pv = preVisualizacao(m, textoAtual(m));
+    dir.appendChild(pv);
     cols.appendChild(esq); cols.appendChild(dir);
     ed.appendChild(cols);
+
+    ta.addEventListener('input', function () {
+      var atual = textoAtual(m);
+      sujo = ta.value !== atual;
+      if (bSalvar) bSalvar.disabled = !sujo;
+      var novo = preVisualizacao(m, ta.value); pv.replaceWith(novo); pv = novo;
+      var usadas = (ta.value.match(/\{([a-z_]+)\}/g) || []).map(function (x) { return x.slice(1, -1); });
+      var estranhas = usadas.filter(function (v) { return m.variaveis.indexOf(v) < 0; });
+      var sumiram = (m.texto_padrao.match(/\{([a-z_]+)\}/g) || []).map(function (x) { return x.slice(1, -1); }).filter(function (v) { return usadas.indexOf(v) < 0; });
+      var msgs2 = [];
+      if (!ta.value.trim()) msgs2.push('O texto não pode ficar vazio.');
+      if (estranhas.length) msgs2.push('Variável desconhecida: {' + estranhas.join('}, {') + '} — não vai salvar.');
+      if (sumiram.length) msgs2.push('Sem {' + sumiram.join('}, {') + '}: essa informação deixa de aparecer' + (sumiram.indexOf('telefone') >= 0 || sumiram.indexOf('marcados') >= 0 ? ' (e a pessoa não é marcada com @)' : '') + '.');
+      chk.textContent = msgs2.join(' ');
+      chk.className = 'pbot-ed-chk' + (msgs2.length ? (estranhas.length || !ta.value.trim() ? ' erro' : ' aviso') : '');
+    });
+  }
+
+  function mostrarHistorico(m, onde, bt) {
+    var velho = onde.querySelector('.pbot-hist'); if (velho) { velho.remove(); return; }
+    bt.disabled = true;
+    post('mensagem_historico', { chave: m.chave }).then(function (j) {
+      bt.disabled = false;
+      var h = el('div', 'pbot-hist');
+      if (!j.ok) { h.appendChild(el('div', 'pbot-retorno erro', j.erro)); onde.appendChild(h); return; }
+      if (!arr(j.historico).length) h.appendChild(el('div', 'pbot-pq-nota', 'Nenhuma alteração registrada.'));
+      arr(j.historico).forEach(function (x) {
+        var it = el('div', 'pbot-hist-it');
+        it.appendChild(el('div', 'pbot-hist-q', x.quando + (x.quem ? ' · ' + x.quem : '')));
+        it.appendChild(el('code', null, x.depois));
+        h.appendChild(it);
+      });
+      onde.insertBefore(h, $('pbot-ret-texto'));
+    });
   }
 
   function render() { geral(); shoppings(); tecnicos(); contatos(); msgLista(); parametros(); eventos(); }
@@ -419,6 +679,6 @@
       })
       .catch(function (e) { er.hidden = false; er.textContent = 'Falha de rede: ' + e.message; st.textContent = 'sem dados'; });
   }
-  window.pbot = { dados: function () { return dados; }, recarregar: carregar, testarFrase: testarFrase };
+  window.pbot = { dados: function () { return dados; }, recarregar: carregar, testarFrase: testarFrase, conferirFrase: conferirFrase };
   carregar();
 })();
