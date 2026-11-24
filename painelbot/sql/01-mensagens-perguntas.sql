@@ -1,7 +1,7 @@
--- Painel do Bot 0.2.1 — tabelas de MENSAGENS e PERGUNTAS do bot (schema ixc, Postgres do whatsapp-ixc).
+-- Painel do Bot 0.3.0 — tabelas de MENSAGENS, PERGUNTAS e APELIDOS do bot (schema ixc, Postgres do whatsapp-ixc).
 -- Rodar como o dono do banco (usuário ixc). Idempotente: pode rodar de novo; NÃO sobrescreve textos já editados.
 --   docker exec -i n8n-compose-postgres-ixc-1 psql -U ixc -d ixc -v ON_ERROR_STOP=1 < 01-mensagens-perguntas.sql
--- O whatsapp-ixc 0.3.0 lê estas tabelas (texto editado + perguntas). Rodar ANTES de importar os workflows 0.3.0.
+-- O whatsapp-ixc 0.3.0/0.4.0 lê estas tabelas (texto editado, perguntas, apelidos). Rodar ANTES de importar os workflows.
 -- Gerado por sql/gerar-sql.py a partir dos textos atuais dos workflows 01/02/03/04.
 
 BEGIN;
@@ -43,6 +43,20 @@ CREATE TABLE IF NOT EXISTS ixc.perguntas (
   atualizado     timestamptz,
   atualizado_por text,
   UNIQUE (alvo, frase_norm)
+);
+-- 0.3.0: pergunta padrao "excluida" no painel = some da lista e fica desligada (o bot para de responder a ela)
+ALTER TABLE ixc.perguntas ADD COLUMN IF NOT EXISTS excluida boolean NOT NULL DEFAULT false;
+
+-- 0.3.0: apelidos de shopping (como as pessoas chamam no grupo: "quem esta no <apelido>?"); antes fixos no WF 03
+CREATE TABLE IF NOT EXISTS ixc.apelidos (
+  id             serial PRIMARY KEY,
+  apelido        text NOT NULL,                    -- como foi digitado
+  apelido_norm   text NOT NULL UNIQUE,             -- sem acento/maiuscula/pontuacao (o que o bot compara)
+  alvos          text[] NOT NULL,                  -- shoppings 'EMPRESA:ID_CONDOMINIO' (mais de um = apelido de cidade/rede)
+  generico       boolean NOT NULL DEFAULT false,   -- so vale se nenhum shopping especifico foi citado (ex.: curitiba)
+  padrao         boolean NOT NULL DEFAULT false,   -- veio do WF 03
+  criado_por     text,
+  criado_em      timestamptz NOT NULL DEFAULT now()
 );
 
 -- ---------------------------------------------------------------- mensagens (textos atuais = padrão)
@@ -278,8 +292,103 @@ INSERT INTO ixc.perguntas (alvo, frase, frase_norm, padrao, criado_por) VALUES (
 INSERT INTO ixc.perguntas (alvo, frase, frase_norm, padrao, criado_por) VALUES ('rh', 'contato de recursos humanos', 'contato de recursos humanos', true, 'bot (padrão)') ON CONFLICT (alvo, frase_norm) DO NOTHING;
 INSERT INTO ixc.perguntas (alvo, frase, frase_norm, padrao, criado_por) VALUES ('rh', 'recursos humanos disponível', 'recursos humanos disponivel', true, 'bot (padrão)') ON CONFLICT (alvo, frase_norm) DO NOTHING;
 
+-- ---------------------------------------------------------------- apelidos padrão (hoje fixos no WF 03)
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('palladium curitiba', 'palladium curitiba', ARRAY['4B:199']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('palladium cwb', 'palladium cwb', ARRAY['4B:199']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('palladium ctba', 'palladium ctba', ARRAY['4B:199']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('paladiun curitiba', 'paladiun curitiba', ARRAY['4B:199']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('paladium curitiba', 'paladium curitiba', ARRAY['4B:199']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('palladium', 'palladium', ARRAY['4B:199']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('paladiun', 'paladiun', ARRAY['4B:199']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('paladium', 'paladium', ARRAY['4B:199']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('curitiba', 'curitiba', ARRAY['4B:199','4B:200','CACTA:263','BUZZ:269']::text[], true, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('catuai palladium', 'catuai palladium', ARRAY['4B:201']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('catuai foz', 'catuai foz', ARRAY['4B:201']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('palladium foz', 'palladium foz', ARRAY['4B:201']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('foz do iguacu', 'foz do iguacu', ARRAY['4B:201']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('foz', 'foz', ARRAY['4B:201']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('palladium umuarama', 'palladium umuarama', ARRAY['4B:202']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('umuarama', 'umuarama', ARRAY['4B:202']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('cidade dos lagos', 'cidade dos lagos', ARRAY['4B:275']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('guarapuava', 'guarapuava', ARRAY['4B:275']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('outlet city center', 'outlet city center', ARRAY['4B:244']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('city center campo largo', 'city center campo largo', ARRAY['4B:244']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('city center', 'city center', ARRAY['4B:244']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('citty center', 'citty center', ARRAY['4B:244']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('city centre', 'city centre', ARRAY['4B:244']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('cit center', 'cit center', ARRAY['4B:244']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('sity center', 'sity center', ARRAY['4B:244']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('citycenter', 'citycenter', ARRAY['4B:244']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('outlet campo largo', 'outlet campo largo', ARRAY['4B:244']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('campo largo', 'campo largo', ARRAY['4B:244']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('pato branco', 'pato branco', ARRAY['4B:276']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('petropolis', 'petropolis', ARRAY['4B:243']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('ventura', 'ventura', ARRAY['4B:200']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('plaza campos gerais', 'plaza campos gerais', ARRAY['BUZZ:280']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('campos gerais', 'campos gerais', ARRAY['BUZZ:280']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('ponta grossa', 'ponta grossa', ARRAY['BUZZ:280']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('estacao', 'estacao', ARRAY['BUZZ:269']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('gravatai', 'gravatai', ARRAY['BUZZ:271']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('canoas shopping', 'canoas shopping', ARRAY['BUZZ:281']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('canoas', 'canoas', ARRAY['BUZZ:281']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('catuai cascavel', 'catuai cascavel', ARRAY['CACTA:260']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('cascavel', 'cascavel', ARRAY['CACTA:260']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('jockey plaza', 'jockey plaza', ARRAY['CACTA:263']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('jockey plazza', 'jockey plazza', ARRAY['CACTA:263']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('jockey', 'jockey', ARRAY['CACTA:263']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('park city sumare', 'park city sumare', ARRAY['CACTA:253']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('parck city sumare', 'parck city sumare', ARRAY['CACTA:253']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('park city', 'park city', ARRAY['CACTA:253']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('parck city', 'parck city', ARRAY['CACTA:253']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('parque city', 'parque city', ARRAY['CACTA:253']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('park citi', 'park citi', ARRAY['CACTA:253']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('parkcity', 'parkcity', ARRAY['CACTA:253']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('park sumare', 'park sumare', ARRAY['CACTA:253']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('shopping sumare', 'shopping sumare', ARRAY['CACTA:253']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('sumare', 'sumare', ARRAY['CACTA:253']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('patteo urupema', 'patteo urupema', ARRAY['CACTA:247']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('patteo', 'patteo', ARRAY['CACTA:247']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('pateo', 'pateo', ARRAY['CACTA:247']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('patio urupema', 'patio urupema', ARRAY['CACTA:247']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('urupema', 'urupema', ARRAY['CACTA:247']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('mogi das cruzes', 'mogi das cruzes', ARRAY['CACTA:247']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('park shopping', 'park shopping', ARRAY['CACTA:253','CACTA:248']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('parkshopping', 'parkshopping', ARRAY['CACTA:253','CACTA:248']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('parck shopping', 'parck shopping', ARRAY['CACTA:253','CACTA:248']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('park', 'park', ARRAY['CACTA:253','CACTA:248']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('parck', 'parck', ARRAY['CACTA:253','CACTA:248']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('parkshopping mogi mirim', 'parkshopping mogi mirim', ARRAY['CACTA:248']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('park shopping mogi mirim', 'park shopping mogi mirim', ARRAY['CACTA:248']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('parkshopping mogi', 'parkshopping mogi', ARRAY['CACTA:248']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('park shopping mogi', 'park shopping mogi', ARRAY['CACTA:248']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('parck shopping mogi', 'parck shopping mogi', ARRAY['CACTA:248']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('parque shopping mogi', 'parque shopping mogi', ARRAY['CACTA:248']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('park mogi', 'park mogi', ARRAY['CACTA:248']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('parck mogi', 'parck mogi', ARRAY['CACTA:248']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('shopping mogi mirim', 'shopping mogi mirim', ARRAY['CACTA:248']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('mogi mirim', 'mogi mirim', ARRAY['CACTA:248']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('mogi mirin', 'mogi mirin', ARRAY['CACTA:248']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('pontal', 'pontal', ARRAY['CACTA:206']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('ifashion', 'ifashion', ARRAY['PONTO:144']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('i fashion', 'i fashion', ARRAY['PONTO:144']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('fashion outlet', 'fashion outlet', ARRAY['PONTO:144']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('ifosc', 'ifosc', ARRAY['PONTO:144']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('tijucas', 'tijucas', ARRAY['PONTO:144']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('itajai', 'itajai', ARRAY['PONTO:104']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('porto belo', 'porto belo', ARRAY['PONTO:134']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('portobelo', 'portobelo', ARRAY['PONTO:134']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('passo fundo', 'passo fundo', ARRAY['PONTO:159']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('pulse', 'pulse', ARRAY['PONTO:273']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('patio chapeco', 'patio chapeco', ARRAY['PONTO:84']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('patio', 'patio', ARRAY['PONTO:84']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('chapeco', 'chapeco', ARRAY['PONTO:84','PONTO:273']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('riviera', 'riviera', ARRAY['PONTO:110']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('sinop', 'sinop', ARRAY['PONTO:216']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES ('catuai', 'catuai', ARRAY['4B:201','CACTA:260']::text[], false, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;
+
 COMMIT;
 
 -- conferência
 SELECT grupo, count(*) AS mensagens, count(*) FILTER (WHERE texto IS NOT NULL) AS editadas FROM ixc.mensagens GROUP BY grupo ORDER BY min(ordem);
 SELECT alvo, count(*) AS perguntas, count(*) FILTER (WHERE NOT padrao) AS criadas_no_painel FROM ixc.perguntas GROUP BY alvo ORDER BY alvo;
+SELECT count(*) AS apelidos, count(*) FILTER (WHERE NOT padrao) AS criados_no_painel FROM ixc.apelidos;

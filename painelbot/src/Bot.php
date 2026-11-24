@@ -143,10 +143,14 @@ final class Bot
         }
         if ($tem('shoppings')) {
             $out['shoppings'] = $this->shoppings();
+            $out['apelidos'] = $this->apelidos();
         }
         if ($tem('tecnicos', 'contatos')) {
             $out['tecnicos'] = $this->tecnicos();
             $out['contatos'] = $this->contatos();
+        }
+        if ($tem('shoppings', 'tecnicos', 'contatos')) {
+            $out['apoio'] = $this->apoio();   // 0.3.0: listas dos formulários (bases, grupos, pessoas)
         }
         if ($tem('parametros')) {
             $out['parametros'] = $this->parametros();   // lista completa (substitui a dos cartões)
@@ -197,16 +201,22 @@ final class Bot
         if (!$this->tabelasNovas()['perguntas']) {
             return ['instalado' => false, 'itens' => []];
         }
+        // 0.3.0: "excluida" (padrão apagada no painel) fica fora da lista; to_jsonb aceita banco sem a coluna ainda
         $rows = $this->q("SELECT id, alvo, frase, grupos, ativo, padrao, coalesce(criado_por, '') AS criado_por,
                                  to_char(criado_em, 'DD/MM/YYYY') AS criado_em
-                            FROM ixc.perguntas ORDER BY alvo, padrao DESC, id");
+                            FROM ixc.perguntas p WHERE NOT coalesce((to_jsonb(p)->>'excluida')::boolean, false)
+                           ORDER BY alvo, padrao DESC, id");
+        $exc = [];
+        foreach ($this->q("SELECT alvo, count(*) AS n FROM ixc.perguntas p WHERE coalesce((to_jsonb(p)->>'excluida')::boolean, false) GROUP BY alvo") as $x) {
+            $exc[(string) $x['alvo']] = (int) $x['n'];
+        }
         foreach ($rows as &$r) {
             $r['id'] = (int) $r['id'];
             $r['ativo'] = (bool) $r['ativo'];
             $r['padrao'] = (bool) $r['padrao'];
         }
         unset($r);
-        return ['instalado' => true, 'itens' => $rows];
+        return ['instalado' => true, 'itens' => $rows, 'excluidas' => $exc];
     }
 
     /** @return list<array{chave:string,valor:string,descricao:string,principal:bool}> */
@@ -260,6 +270,7 @@ final class Bot
                                  b.seg, b.ter, b.qua, b.qui, b.sex, b.sab, b.dom,
                                  coalesce(t.nome, '') AS tec_nome, coalesce(t.fone, '') AS tec_fone,
                                  array_to_string(l.marcar_sem_tec, ',') AS marcar_sem_tec,
+                                 array_to_string(l.marcar_escalar, ',') AS marcar_escalar, (b.empresa IS NOT NULL) AS tem_escala,
                                  (SELECT string_agg(d.tecnico, ' / ' ORDER BY d.tecnico) FROM ixc.escala_dia d
                                    WHERE d.empresa = l.empresa AND d.id_condominio = l.id_condominio AND d.data = current_date) AS dia_hoje,
                                  (SELECT string_agg(d.tecnico, ' / ' ORDER BY d.tecnico) FROM ixc.escala_dia d
@@ -286,6 +297,9 @@ final class Bot
                 'tec_fone'      => (string) $r['tec_fone'],
                 'horarios'      => $horarios,
                 'marcar_sem_tec' => (string) $r['marcar_sem_tec'],
+                'marcar_escalar' => (string) $r['marcar_escalar'],
+                'grupo'         => (string) $r['grupo'],
+                'tem_escala'    => (bool) $r['tem_escala'],
                 'dia_hoje'      => (string) ($r['dia_hoje'] ?? ''),
                 'dia_amanha'    => (string) ($r['dia_amanha'] ?? ''),
                 'quem'          => self::quem((string) $r['tipo'], (string) ($r['dia_hoje'] ?? ''), (string) $r['tec_nome'], (string) $r['equipe']),
@@ -316,16 +330,18 @@ final class Bot
     /** Técnicos de campo (ixc.tecnicos) com os shoppings em que são o técnico padrão. @return list<array<string,mixed>> */
     public function tecnicos(): array
     {
-        return $this->q("SELECT t.empresa, t.id_func, t.nome, coalesce(t.fone, '') AS fone,
+        return $this->q("SELECT t.empresa, t.id_func, t.nome, coalesce(t.fone, '') AS fone, coalesce(t.grupo, '') AS grupo,
                                 coalesce((SELECT string_agg(l.nome, ', ' ORDER BY l.nome) FROM ixc.locais l
-                                          WHERE l.empresa = t.empresa AND l.tec_padrao = t.id_func), '') AS shoppings
+                                          WHERE l.empresa = t.empresa AND l.tec_padrao = t.id_func), '') AS shoppings,
+                                coalesce((SELECT string_agg(l.nome, ', ' ORDER BY l.nome) FROM ixc.locais l
+                                          WHERE t.fone <> '' AND (t.fone = ANY (l.marcar_sem_tec) OR t.fone = ANY (l.marcar_escalar))), '') AS marcado_em
                            FROM ixc.tecnicos t ORDER BY t.empresa, t.nome");
     }
 
     /** Contatos que o bot informa por setor ("algum N2?", "alguém do financeiro?"). @return list<array<string,mixed>> */
     public function contatos(): array
     {
-        $rows = $this->q("SELECT setor, ordem, nome, coalesce(fone, '') AS fone, seg, ter, qua, qui, sex, sab, dom,
+        $rows = $this->q("SELECT id, setor, ordem, nome, coalesce(fone, '') AS fone, seg, ter, qua, qui, sex, sab, dom,
                                  coalesce(obs, '') AS obs, ativo, coalesce(escala, '') AS escala
                             FROM ixc.contatos_setor ORDER BY setor, ativo DESC, ordem");
         foreach ($rows as &$r) {
@@ -336,8 +352,59 @@ final class Bot
             }
             $r['horarios'] = $h;
             $r['ativo'] = (bool) $r['ativo'];
+            $r['id'] = (int) $r['id'];
         }
         unset($r);
         return $rows;
+    }
+
+    /** 0.3.0 — apelidos de shopping (ixc.apelidos). @return array{instalado:bool, itens:list<array<string,mixed>>} */
+    public function apelidos(): array
+    {
+        if ($this->q("SELECT to_regclass('ixc.apelidos') IS NULL AS f")[0]['f']) {
+            return ['instalado' => false, 'itens' => []];
+        }
+        $rows = $this->q("SELECT id, apelido, array_to_json(alvos)::text AS alvos, generico, padrao FROM ixc.apelidos ORDER BY apelido");
+        foreach ($rows as &$r) {
+            $r['id'] = (int) $r['id'];
+            $r['alvos'] = json_decode((string) $r['alvos'], true) ?: [];
+            $r['generico'] = (bool) $r['generico'];
+            $r['padrao'] = (bool) $r['padrao'];
+        }
+        unset($r);
+        return ['instalado' => true, 'itens' => $rows];
+    }
+
+    /**
+     * 0.3.0 — listas dos formulários: bases, grupos de WhatsApp já usados (com quem usa) e pessoas que podem ser marcadas.
+     * @return array<string,mixed>
+     */
+    public function apoio(): array
+    {
+        $grupos = [];
+        foreach ($this->q("SELECT grupo, string_agg(nome, ', ' ORDER BY nome) AS quem FROM (
+                                SELECT grupo, nome FROM ixc.locais UNION ALL SELECT grupo, 'técnico ' || nome FROM ixc.tecnicos WHERE coalesce(grupo, '') <> ''
+                             ) g GROUP BY grupo ORDER BY grupo") as $g) {
+            $grupos[] = ['jid' => (string) $g['grupo'], 'quem' => mb_substr((string) $g['quem'], 0, 140)];
+        }
+        $p = [];
+        foreach ($this->q("SELECT chave, valor FROM ixc.parametros WHERE chave IN ('supervisor_fone', 'supervisor_nome', 'coordenador_fone', 'coordenador_nome', 'grupo_automacao', 'setores_grupo')") as $x) {
+            $p[(string) $x['chave']] = (string) $x['valor'];
+        }
+        $pessoas = [];
+        foreach (['supervisor', 'coordenador'] as $c) {
+            if (($p[$c . '_fone'] ?? '') !== '') {
+                $pessoas[] = ['fone' => $p[$c . '_fone'], 'nome' => ($p[$c . '_nome'] ?? ucfirst($c)) . ' (' . $c . ')', 'empresa' => ''];
+            }
+        }
+        foreach ($this->q("SELECT empresa, nome, fone FROM ixc.tecnicos WHERE coalesce(fone, '') <> '' ORDER BY empresa, nome") as $t) {
+            $pessoas[] = ['fone' => (string) $t['fone'], 'nome' => (string) $t['nome'], 'empresa' => (string) $t['empresa']];
+        }
+        return [
+            'empresas' => $this->q('SELECT id, nome FROM ixc.empresas ORDER BY id'),
+            'grupos'   => $grupos,
+            'pessoas'  => $pessoas,
+            'setores'  => ['n2', 'financeiro', 'comercial', 'compras', 'rh'],
+        ];
     }
 }

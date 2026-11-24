@@ -1,6 +1,6 @@
 # Gera sql/01-mensagens-perguntas.sql a partir de sql/catalogo-mensagens.json (textos atuais do whatsapp-ixc)
 # uso: python3 sql/gerar-sql.py sql/catalogo-mensagens.json sql/01-mensagens-perguntas.sql
-import json, unicodedata, re, sys
+import json, unicodedata, re, sys, os
 cat = json.load(open(sys.argv[1]))
 ORD_G = ['Bot de escalas (perguntas no grupo)', 'Setores (algum N2? / financeiro? …)', 'Comandos ixc (alterações pelo grupo)',
          'Avisos de chamado (grupo do shopping)', 'Lembretes de visita', 'Alertas internos (grupo de automação)']
@@ -10,10 +10,10 @@ def norm(s):
     s = unicodedata.normalize('NFD', s.lower()); s = ''.join(c for c in s if unicodedata.category(c) != 'Mn')
     return re.sub(r'\s+', ' ', re.sub(r'[^a-z0-9 ]', ' ', s)).strip()
 L = []
-L.append("""-- Painel do Bot 0.2.1 — tabelas de MENSAGENS e PERGUNTAS do bot (schema ixc, Postgres do whatsapp-ixc).
+L.append("""-- Painel do Bot 0.3.0 — tabelas de MENSAGENS, PERGUNTAS e APELIDOS do bot (schema ixc, Postgres do whatsapp-ixc).
 -- Rodar como o dono do banco (usuário ixc). Idempotente: pode rodar de novo; NÃO sobrescreve textos já editados.
 --   docker exec -i n8n-compose-postgres-ixc-1 psql -U ixc -d ixc -v ON_ERROR_STOP=1 < 01-mensagens-perguntas.sql
--- O whatsapp-ixc 0.3.0 lê estas tabelas (texto editado + perguntas). Rodar ANTES de importar os workflows 0.3.0.
+-- O whatsapp-ixc 0.3.0/0.4.0 lê estas tabelas (texto editado, perguntas, apelidos). Rodar ANTES de importar os workflows.
 -- Gerado por sql/gerar-sql.py a partir dos textos atuais dos workflows 01/02/03/04.
 
 BEGIN;
@@ -56,6 +56,20 @@ CREATE TABLE IF NOT EXISTS ixc.perguntas (
   atualizado_por text,
   UNIQUE (alvo, frase_norm)
 );
+-- 0.3.0: pergunta padrao "excluida" no painel = some da lista e fica desligada (o bot para de responder a ela)
+ALTER TABLE ixc.perguntas ADD COLUMN IF NOT EXISTS excluida boolean NOT NULL DEFAULT false;
+
+-- 0.3.0: apelidos de shopping (como as pessoas chamam no grupo: "quem esta no <apelido>?"); antes fixos no WF 03
+CREATE TABLE IF NOT EXISTS ixc.apelidos (
+  id             serial PRIMARY KEY,
+  apelido        text NOT NULL,                    -- como foi digitado
+  apelido_norm   text NOT NULL UNIQUE,             -- sem acento/maiuscula/pontuacao (o que o bot compara)
+  alvos          text[] NOT NULL,                  -- shoppings 'EMPRESA:ID_CONDOMINIO' (mais de um = apelido de cidade/rede)
+  generico       boolean NOT NULL DEFAULT false,   -- so vale se nenhum shopping especifico foi citado (ex.: curitiba)
+  padrao         boolean NOT NULL DEFAULT false,   -- veio do WF 03
+  criado_por     text,
+  criado_em      timestamptz NOT NULL DEFAULT now()
+);
 """)
 L.append("-- ---------------------------------------------------------------- mensagens (textos atuais = padrão)")
 cont = {}
@@ -82,12 +96,17 @@ for alvo, palavras in SET.items():
             if (alvo, n) in vistos: continue
             vistos.add((alvo, n))
             L.append("INSERT INTO ixc.perguntas (alvo, frase, frase_norm, padrao, criado_por) VALUES (%s, %s, %s, true, 'bot (padrão)') ON CONFLICT (alvo, frase_norm) DO NOTHING;" % (lit(alvo), lit(frase), lit(n)))
+L.append("\n-- ---------------------------------------------------------------- apelidos padrão (hoje fixos no WF 03)")
+for a in json.load(open(os.path.join(os.path.dirname(os.path.abspath(sys.argv[1])), 'apelidos-padrao.json'))):
+    L.append("INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES (%s, %s, %s, %s, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;"
+             % (lit(a['apelido']), lit(norm(a['apelido'])), arr(a['alvos']), 'true' if a['generico'] else 'false'))
 L.append("""
 COMMIT;
 
 -- conferência
 SELECT grupo, count(*) AS mensagens, count(*) FILTER (WHERE texto IS NOT NULL) AS editadas FROM ixc.mensagens GROUP BY grupo ORDER BY min(ordem);
 SELECT alvo, count(*) AS perguntas, count(*) FILTER (WHERE NOT padrao) AS criadas_no_painel FROM ixc.perguntas GROUP BY alvo ORDER BY alvo;
+SELECT count(*) AS apelidos, count(*) FILTER (WHERE NOT padrao) AS criados_no_painel FROM ixc.apelidos;
 """)
 open(sys.argv[2], 'w').write('\n'.join(L))
 print(len(cat), 'mensagens', len(vistos), 'perguntas')

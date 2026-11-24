@@ -1,6 +1,7 @@
-/* Painel do Bot 0.2.0 — leitura do banco do bot (schema ixc): visão geral, shoppings e escala, técnicos,
+/* Painel do Bot 0.3.0 — leitura do banco do bot (schema ixc): visão geral, shoppings e escala, técnicos,
  * contatos de setor, mensagens (+ perguntas), parâmetros e últimos envios.
  * Só existem no HTML as seções que o perfil vê; o JSON também só traz essas.
+ * 0.3.0: cadastros (shoppings com escala e apelidos, técnicos, contatos de setor) com novo/editar/excluir.
  * 0.2.0: edição de mensagens (salvar, restaurar padrão, histórico) e perguntas (criar, editar, ligar/desligar, excluir).
  * Todo texto vindo do banco entra via textContent; a pré-visualização do WhatsApp escapa o texto antes de formatar.
  */
@@ -132,27 +133,44 @@
       return !q || norm([s.empresa, s.nome, s.quem.texto, s.equipe, s.tec_nome].join(' ')).indexOf(q) >= 0;
     });
     $('pbot-legenda-loc').textContent = lista.length + ' de ' + arr(dados.shoppings).length + ' shoppings · hoje é ' + DIAS_TXT[dados.dia_hoje] + ' ' + (dados.hora || '');
-    tabela($('pbot-shoppings'), ['Base', 'Shopping', 'Tipo', 'Responde hoje', 'Amanhã', 'Hoje atende', 'Horários', 'Observação'],
+    var eS = pode('escala', 'editar'), xS = pode('escala', 'excluir');
+    barra('pbot-shoppings', 'Novo shopping', eS ? function () { formShopping(null); } : null);
+    tabela($('pbot-shoppings'), ['Base', 'Shopping', 'Tipo', 'Responde hoje', 'Amanhã', 'Hoje atende', 'Horários', 'Observação'].concat(eS || xS ? [''] : []),
       lista.map(function (s) {
         var quem = bloco(el('b', null, s.quem.texto), el('small', 'pbot-sub', s.quem.fonte + (s.tec_fone ? ' · ' + fone(s.tec_fone) : '')));
         var tipo = pill(s.tipo, s.tipo === '12x36' ? '#9333ea' : s.tipo === 'escala' ? '#0891b2' : '#64748b');
         var amanha = s.tipo === 'fixo' ? '' : (s.dia_amanha || '—');
         var hHoje = s.horarios[dados.dia_hoje];
         var atende = hHoje ? pill(hHoje.replace(/-/g, '–'), '#16a34a') : pill('não atende', '#64748b');
-        return [s.empresa, s.nome, tipo, quem, amanha, atende, horariosTxt(s.horarios), s.obs];
+        var linha = [s.empresa, s.nome, tipo, quem, amanha, atende, horariosTxt(s.horarios), s.obs];
+        if (eS || xS) linha.push(acoesLinha(eS, xS, function () { formShopping(s); }, function (x) {
+          excluirEm('shopping_excluir', { empresa: s.empresa, id_condominio: s.id_condominio }, 'Shopping "' + s.nome + '" excluído.', x); }, s.nome));
+        return linha;
       }), 'Nenhum shopping cadastrado no bot.');
   }
   function tecnicos() {
     if (!$('pbot-tecnicos')) return;
     var q = norm($('pbot-busca-tec').value);
     var lista = arr(dados.tecnicos).filter(function (t) { return !q || norm([t.empresa, t.nome, t.shoppings, t.id_func].join(' ')).indexOf(q) >= 0; });
-    tabela($('pbot-tecnicos'), ['Base', 'Id no IXC', 'Nome', 'WhatsApp', 'Técnico padrão em'],
-      lista.map(function (t) { return [t.empresa, t.id_func, t.nome, fone(t.fone), t.shoppings || '—']; }), 'Nenhum técnico.');
+    var eT = pode('cadastros', 'editar'), xT = pode('cadastros', 'excluir');
+    barra('pbot-tecnicos', 'Novo técnico', eT ? function () { formTecnico(null); } : null);
+    tabela($('pbot-tecnicos'), ['Base', 'Id no IXC', 'Nome', 'WhatsApp', 'Técnico padrão em', 'Marcado sem técnico em'].concat(eT || xT ? [''] : []),
+      lista.map(function (t) {
+        var l = [t.empresa, t.id_func, t.nome, fone(t.fone), t.shoppings || '—', t.marcado_em || '—'];
+        if (eT || xT) l.push(acoesLinha(eT, xT, function () { formTecnico(t); }, function (x) {
+          excluirEm('tecnico_excluir', { empresa: t.empresa, id_func: t.id_func }, 'Técnico "' + t.nome + '" excluído.', x); }, t.nome));
+        return l;
+      }), 'Nenhum técnico.');
   }
   function contatos() {
-    tabela($('pbot-contatos'), ['Setor', 'Ordem', 'Nome', 'WhatsApp', 'Horários', 'Escala 12x36', 'Ativo', 'Observação'],
+    var eC = pode('cadastros', 'editar'), xC = pode('cadastros', 'excluir');
+    barra('pbot-contatos', 'Novo contato', eC ? function () { formContato(null); } : null);
+    tabela($('pbot-contatos'), ['Setor', 'Ordem', 'Nome', 'WhatsApp', 'Horários', 'Escala 12x36', 'Ativo', 'Observação'].concat(eC || xC ? [''] : []),
       arr(dados.contatos).map(function (c) {
-        return [String(c.setor).toUpperCase(), c.ordem, c.nome, fone(c.fone), c.escala ? '—' : horariosTxt(c.horarios), c.escala || '', c.ativo ? pill('sim', '#16a34a') : pill('não', '#64748b'), c.obs];
+        var l = [String(c.setor).toUpperCase(), c.ordem, c.nome, fone(c.fone), c.escala ? '—' : horariosTxt(c.horarios), c.escala || '', c.ativo ? pill('sim', '#16a34a') : pill('não', '#64748b'), c.obs];
+        if (eC || xC) l.push(acoesLinha(eC, xC, function () { formContato(c); }, function (x) {
+          excluirEm('contato_excluir', { id: c.id }, 'Contato "' + c.nome + '" excluído.', x); }, c.nome));
+        return l;
       }), 'Nenhum contato de setor.');
   }
   function parametros() {
@@ -366,14 +384,16 @@
       });
       tdA.appendChild(ed);
     }
-    if (!p.padrao && pode('perguntas', 'excluir')) {
-      var ex = botao('ico perigo', 'ti-trash', null, 'Excluir a pergunta');
+    if (pode('perguntas', 'excluir')) {
+      var ex = botao('ico perigo', 'ti-trash', null, p.padrao ? 'Excluir (pergunta padrão: some da lista e o bot para de responder; volta em "Restaurar padrões")' : 'Excluir a pergunta');
       ex.addEventListener('click', function () {
         if (!ex.classList.contains('confirmar')) { ex.classList.add('confirmar'); ex.appendChild(document.createTextNode(' Confirmar?')); return; }
         ex.disabled = true;
         post('pergunta_excluir', { id: p.id }).then(function (j) {
           if (!j.ok) { aviso(ret, false, j.erro); ex.disabled = false; return; }
-          trocarPergunta(p.id, true); aviso(ret, true, 'Pergunta "' + p.frase + '" excluída.'); redesenhar();
+          trocarPergunta(p.id, true);
+          if (p.padrao && dados.perguntas) { dados.perguntas.excluidas = dados.perguntas.excluidas || {}; dados.perguntas.excluidas[p.alvo] = (dados.perguntas.excluidas[p.alvo] || 0) + 1; }
+          aviso(ret, true, 'Pergunta "' + p.frase + '" excluída.' + (p.padrao ? ' (padrão: volta em "Restaurar padrões")' : '')); redesenhar();
         });
       });
       tdA.appendChild(ex);
@@ -409,15 +429,17 @@
         // botões do cabeçalho
         var acoes = cab.querySelector('.pbot-pq-botoes'); if (acoes) acoes.remove();
         acoes = el('div', 'pbot-pq-botoes');
-        var desligadas = doAlvo.filter(function (p) { return p.padrao && !p.ativo; }).length;
+        var desligadas = doAlvo.filter(function (p) { return p.padrao && !p.ativo; }).length + (((dados.perguntas || {}).excluidas || {})[alvo] || 0);
         if (pode('perguntas', 'editar') && desligadas) {
-          var rp = botao('', 'ti-restore', 'Religar padrões (' + desligadas + ')', 'Liga de novo as perguntas padrão do bot que foram desligadas');
+          var rp = botao('', 'ti-restore', 'Restaurar padrões (' + desligadas + ')', 'Liga de novo as perguntas padrão do bot desligadas e traz de volta as excluídas');
           rp.addEventListener('click', function () {
             rp.disabled = true;
             post('perguntas_restaurar', { alvo: alvo }).then(function (j) {
               if (!j.ok) { aviso(ret, false, j.erro); rp.disabled = false; return; }
               ps.forEach(function (p) { if (p.alvo === alvo && p.padrao) p.ativo = true; });
-              aviso(ret, true, j.religadas + ' pergunta(s) padrão religada(s).'); redesenhar();
+              var tinha = ((dados.perguntas || {}).excluidas || {})[alvo];
+              aviso(ret, true, j.religadas + ' pergunta(s) padrão restaurada(s).');
+              if (tinha) carregar(); else redesenhar();   // as excluídas não estão na tela: recarrega
             });
           });
           acoes.appendChild(rp);
@@ -653,6 +675,209 @@
     });
   }
 
+  // ---------------------------------------------------------------- 0.3.0: cadastros (shoppings, técnicos, contatos)
+  var APOIO = function () { return dados.apoio || { empresas: [], grupos: [], pessoas: [], setores: [] }; };
+
+  /** Barra acima da tabela (botão "Novo …"). */
+  function barra(idTabela, rotulo, aoClicar) {
+    var t = $(idTabela); if (!t) return;
+    var wrap = t.parentNode, id = idTabela + '-barra', b = $(id);
+    if (!b) { b = el('div', 'pbot-barra'); b.id = id; wrap.parentNode.insertBefore(b, wrap); }
+    b.textContent = '';
+    if (!aoClicar) return;
+    var bt = botao('pri', 'ti-plus', rotulo); bt.addEventListener('click', aoClicar); b.appendChild(bt);
+  }
+  /** Lápis + lixeira (2 cliques) de uma linha. */
+  function acoesLinha(podeEditar, podeExcluir, aoEditar, aoExcluir, rotulo) {
+    var d = el('div', 'pbot-acoes-linha');
+    if (podeEditar) { var e = botao('ico', 'ti-pencil', null, 'Editar ' + rotulo); e.addEventListener('click', aoEditar); d.appendChild(e); }
+    if (podeExcluir) {
+      var x = botao('ico perigo', 'ti-trash', null, 'Excluir ' + rotulo);
+      x.addEventListener('click', function () {
+        if (!x.classList.contains('confirmar')) { x.classList.add('confirmar'); x.appendChild(document.createTextNode(' Confirmar?')); return; }
+        x.disabled = true; aoExcluir(x);
+      });
+      d.appendChild(x);
+    }
+    return d;
+  }
+  function avisoTopo(ok, txt) {
+    var a = $('pbot-retorno-topo');
+    if (!a) { a = el('div', 'pbot-retorno'); a.id = 'pbot-retorno-topo'; var er = $('pbot-erro'); er.parentNode.insertBefore(a, er); }
+    aviso(a, ok, txt);
+    if (ok) setTimeout(function () { if (a.textContent === txt) aviso(a, true, ''); }, 6000);
+  }
+  function excluirEm(acao, corpo, msgOk, x) {
+    post(acao, corpo).then(function (j) {
+      if (!j.ok) { avisoTopo(false, j.erro); x.disabled = false; x.classList.remove('confirmar'); x.lastChild.remove(); return; }
+      avisoTopo(true, msgOk + (j.aviso || '')); carregar();
+    });
+  }
+
+  /**
+   * Formulário em janela. campos: [{k, rot, tipo: text|num|select|lista|multi|horarios|textarea|check|grupo, opcoes, dica, fixo, largo}]
+   * aoSalvar(valores) -> Promise<{ok, erro}>.
+   */
+  function formulario(titulo, campos, valores, aoSalvar) {
+    var fundo = el('div', 'pbot-modal-fundo'), m = el('div', 'pbot-modal'), ent = {};
+    m.setAttribute('role', 'dialog'); m.setAttribute('aria-label', titulo);
+    var cab = el('div', 'pbot-modal-cab'); cab.appendChild(el('h4', null, titulo));
+    var fx = botao('ico', 'ti-x', null, 'Fechar'); cab.appendChild(fx); m.appendChild(cab);
+    var grade = el('div', 'pbot-form');
+    campos.forEach(function (c) {
+      var bx = el('div', 'pbot-campo' + (c.largo ? ' largo' : '')); bx.setAttribute('data-k', c.k);
+      bx.appendChild(el('label', 'pbot-rot', c.rot));
+      var v = valores[c.k], inp;
+      if (c.tipo === 'select') {
+        inp = el('select', 'form-select');
+        (typeof c.opcoes === 'function' ? c.opcoes(valores) : c.opcoes).forEach(function (o) { var op = el('option', null, o[1]); op.value = o[0]; if (String(v) === String(o[0])) op.selected = true; inp.appendChild(op); });
+      } else if (c.tipo === 'multi') {
+        inp = el('div', 'pbot-multi');
+        var sel = (v || []).map(String);
+        c.opcoes().forEach(function (o) {
+          var lb = el('label', 'pbot-multi-it'), ck = el('input'); ck.type = 'checkbox'; ck.value = o[0]; ck.checked = sel.indexOf(String(o[0])) >= 0;
+          lb.appendChild(ck); lb.appendChild(document.createTextNode(' ' + o[1])); inp.appendChild(lb);
+        });
+        sel.filter(function (f) { return !c.opcoes().some(function (o) { return String(o[0]) === f; }); }).forEach(function (f) {
+          var lb = el('label', 'pbot-multi-it'), ck = el('input'); ck.type = 'checkbox'; ck.value = f; ck.checked = true;
+          lb.appendChild(ck); lb.appendChild(document.createTextNode(' ' + fone(f) + ' (fora do cadastro)')); inp.appendChild(lb);
+        });
+      } else if (c.tipo === 'horarios') {
+        inp = el('div', 'pbot-horarios');
+        DIAS.forEach(function (d) {
+          var cel = el('div'); cel.appendChild(el('span', 'pbot-sub', DIAS_TXT[d]));
+          var i = el('input', 'form-control form-control-sm'); i.value = ((v || {})[d] || ''); i.placeholder = c.varios ? '08:00-18:00' : '10:00-22:00'; i.setAttribute('data-dia', d);
+          cel.appendChild(i); inp.appendChild(cel);
+        });
+        var cp = botao('', 'ti-copy', 'Copiar Seg para Ter–Sex'); cp.addEventListener('click', function () {
+          var s = inp.querySelector('[data-dia="seg"]').value; ['ter', 'qua', 'qui', 'sex'].forEach(function (d) { inp.querySelector('[data-dia="' + d + '"]').value = s; });
+        });
+        inp.appendChild(cp);
+      } else if (c.tipo === 'textarea') {
+        inp = el('textarea', 'form-control'); inp.rows = 2; inp.value = v || '';
+      } else if (c.tipo === 'check') {
+        inp = el('label', 'pbot-multi-it'); var ck2 = el('input'); ck2.type = 'checkbox'; ck2.checked = !!v; inp.appendChild(ck2); inp.appendChild(document.createTextNode(' ' + (c.texto || 'sim')));
+      } else {
+        inp = el('input', 'form-control'); inp.value = v === undefined || v === null ? '' : v;
+        if (c.tipo === 'num') inp.inputMode = 'numeric';
+        if (c.tipo === 'grupo') {
+          var dl = el('datalist'); dl.id = 'pbot-dl-' + c.k; APOIO().grupos.forEach(function (g) { var o = el('option'); o.value = g.jid; o.label = g.quem; dl.appendChild(o); });
+          inp.setAttribute('list', dl.id); bx.appendChild(dl);
+        }
+      }
+      if (c.fixo) { inp.disabled = true; Array.prototype.forEach.call(inp.querySelectorAll ? inp.querySelectorAll('input,select') : [], function (x) { x.disabled = true; }); }
+      bx.appendChild(inp); ent[c.k] = { c: c, inp: inp };
+      if (c.dica) bx.appendChild(el('div', 'pbot-dica', c.dica));
+      grade.appendChild(bx);
+    });
+    m.appendChild(grade);
+    var ret = el('div', 'pbot-retorno'); m.appendChild(ret);
+    var rod = el('div', 'pbot-modal-rod'), sv = botao('pri', 'ti-device-floppy', 'Salvar'), cn = botao('', null, 'Cancelar');
+    rod.appendChild(cn); rod.appendChild(sv); m.appendChild(rod);
+    fundo.appendChild(m); raiz.appendChild(fundo);
+    var fechar = function () { fundo.remove(); };
+    fx.addEventListener('click', fechar); cn.addEventListener('click', fechar);
+    function ler() {
+      var o = {};
+      Object.keys(ent).forEach(function (k) {
+        var c = ent[k].c, inp = ent[k].inp;
+        if (c.tipo === 'multi') o[k] = Array.prototype.filter.call(inp.querySelectorAll('input'), function (x) { return x.checked; }).map(function (x) { return x.value; });
+        else if (c.tipo === 'horarios') { o[k] = {}; Array.prototype.forEach.call(inp.querySelectorAll('input'), function (x) { o[k][x.getAttribute('data-dia')] = x.value.trim(); }); }
+        else if (c.tipo === 'check') o[k] = inp.querySelector('input').checked;
+        else if (c.tipo === 'lista') o[k] = inp.value.split(/[,;\n]/).map(function (x) { return x.trim(); }).filter(Boolean);
+        else o[k] = inp.value.trim();
+      });
+      return o;
+    }
+    // campos que dependem de outro (ex.: técnico padrão depende da base)
+    campos.forEach(function (c) {
+      if (!c.depende) return;
+      var de = ent[c.depende].inp;
+      de.addEventListener('change', function () {
+        var alvo = ent[c.k].inp, atual = alvo.value; alvo.textContent = '';
+        c.opcoes(ler()).forEach(function (o) { var op = el('option', null, o[1]); op.value = o[0]; if (o[0] === atual) op.selected = true; alvo.appendChild(op); });
+      });
+    });
+    sv.addEventListener('click', function () {
+      sv.disabled = true; aviso(ret, true, 'gravando…');
+      aoSalvar(ler()).then(function (j) {
+        if (!j.ok) { aviso(ret, false, j.erro); sv.disabled = false; return; }
+        fechar(); avisoTopo(true, j.msg || 'Gravado.'); carregar();
+      });
+    });
+    var primeiro = m.querySelector('input:not([disabled]),select:not([disabled])'); if (primeiro) primeiro.focus();
+    return { fundo: fundo, ler: ler };
+  }
+
+  function opEmpresas() { return [['', '— escolha —']].concat(APOIO().empresas.map(function (e) { return [e.id, e.id + ' · ' + e.nome]; })); }
+  function opTecnicosDa(v) {
+    return [['', '— nenhum (marca a lista abaixo) —']].concat(arr(dados.tecnicos).filter(function (t) { return t.empresa === v.empresa; }).map(function (t) { return [t.id_func, t.nome + ' (id ' + t.id_func + ')']; }));
+  }
+  function opPessoas() { return APOIO().pessoas.map(function (p) { return [p.fone, p.nome + (p.empresa ? ' · ' + p.empresa : '') + ' · ' + fone(p.fone)]; }); }
+  function apelidosDe(chave, sozinho) {
+    return arr(dados.apelidos && dados.apelidos.itens).filter(function (a) { return a.alvos.indexOf(chave) >= 0 && (sozinho ? a.alvos.length === 1 : a.alvos.length > 1); });
+  }
+
+  function formShopping(s) {
+    var novo = !s, chave = s ? s.empresa + ':' + s.id_condominio : '';
+    var compart = s ? apelidosDe(chave, false).map(function (a) { return a.apelido; }) : [];
+    var camposS = [
+      { k: 'empresa', rot: 'Base (IXC)', tipo: 'select', opcoes: opEmpresas, fixo: !novo },
+      { k: 'id_condominio', rot: 'ID do condomínio no IXC', tipo: 'num', fixo: !novo, dica: novo ? 'O mesmo id do condomínio do cliente no IXC (é por ele que o aviso de chamado acha o shopping).' : null },
+      { k: 'nome', rot: 'Nome do shopping', tipo: 'text' },
+      { k: 'grupo', rot: 'Grupo do WhatsApp (avisos de chamado)', tipo: 'grupo', largo: true, dica: 'Escolha um grupo já usado ou cole o id do grupo (…@g.us).' },
+      { k: 'tec_padrao', rot: 'Técnico padrão', tipo: 'select', opcoes: opTecnicosDa, depende: 'empresa', dica: 'Quem o bot responde nos shoppings fixos.' },
+      { k: 'tipo', rot: 'Tipo de escala', tipo: 'select', opcoes: [['fixo', 'fixo (técnico padrão)'], ['12x36', '12x36 (planilha ESCALAS)'], ['escala', 'escala (equipe)']] },
+      { k: 'horarios', rot: 'Horário de atendimento (vazio = não atende)', tipo: 'horarios', largo: true },
+      { k: 'equipe', rot: 'Equipe (12x36 / escala)', tipo: 'text', largo: true, dica: 'Usada quando a planilha não tem o dia. Ex.: Fulano (41) 99999-0000; Beltrano (41) 98888-0000' },
+      { k: 'marcar_sem_tec', rot: 'Marcar quando o chamado está sem técnico', tipo: 'multi', opcoes: opPessoas, largo: true },
+      { k: 'marcar_escalar', rot: 'Marcar também quando escala (reaviso escalado)', tipo: 'multi', opcoes: opPessoas, largo: true },
+      { k: 'apelidos', rot: 'Apelidos (como perguntam no grupo)', tipo: 'lista', largo: true,
+        dica: 'Separados por vírgula, ex.: palladium, palladium cwb. ' + (compart.length ? 'Também responde por (cidade/rede, não muda aqui): ' + compart.join(', ') + '.' : '') + ' Valem no WhatsApp a partir do whatsapp-ixc 0.4.0.' },
+      { k: 'obs', rot: 'Observação (aparece na resposta do bot)', tipo: 'text', largo: true },
+    ];
+    var v = novo ? { tipo: 'fixo', horarios: {}, marcar_sem_tec: [], marcar_escalar: [], apelidos: '' } : {
+      empresa: s.empresa, id_condominio: s.id_condominio, nome: s.nome, grupo: s.grupo, tec_padrao: s.tec_padrao, tipo: s.tipo, horarios: s.horarios,
+      equipe: s.equipe, obs: s.obs, marcar_sem_tec: s.marcar_sem_tec ? s.marcar_sem_tec.split(',') : [], marcar_escalar: s.marcar_escalar ? s.marcar_escalar.split(',') : [],
+      apelidos: apelidosDe(chave, true).map(function (a) { return a.apelido; }).join(', ') };
+    if (dados.apelidos && dados.apelidos.instalado === false) camposS = camposS.filter(function (c) { return c.k !== 'apelidos'; });
+    return formulario(novo ? 'Novo shopping' : 'Editar ' + s.nome, camposS, v, function (d) {
+      if (!novo) { d.empresa = s.empresa; d.id_condominio = s.id_condominio; }
+      return post('shopping_salvar', { novo: novo, dados: d }).then(function (j) { if (j.ok) j.msg = 'Shopping "' + d.nome + '" ' + (novo ? 'criado.' : 'salvo.'); return j; });
+    });
+  }
+  function formTecnico(t) {
+    var novo = !t;
+    return formulario(novo ? 'Novo técnico' : 'Editar ' + t.nome, [
+      { k: 'empresa', rot: 'Base (IXC)', tipo: 'select', opcoes: opEmpresas, fixo: !novo },
+      { k: 'id_func', rot: 'ID do colaborador no IXC', tipo: 'num', fixo: !novo, dica: novo ? 'O id do técnico no IXC da base: é por ele que o bot sabe quem foi atribuído no chamado.' : null },
+      { k: 'nome', rot: 'Nome', tipo: 'text' },
+      { k: 'fone', rot: 'WhatsApp', tipo: 'text', dica: 'DDD + número, ex.: 41 99999-0000. Trocar aqui troca também nas listas de marcação dos shoppings.' },
+      { k: 'grupo', rot: 'Grupo do técnico (opcional)', tipo: 'grupo', largo: true, dica: 'Usado quando o chamado não tem shopping.' },
+    ], novo ? {} : { empresa: t.empresa, id_func: t.id_func, nome: t.nome, fone: t.fone ? fone(t.fone) : '', grupo: t.grupo }, function (d) {
+      if (!novo) { d.empresa = t.empresa; d.id_func = t.id_func; }
+      return post('tecnico_salvar', { novo: novo, dados: d }).then(function (j) { if (j.ok) j.msg = 'Técnico "' + d.nome + '" ' + (novo ? 'criado.' : 'salvo.'); return j; });
+    });
+  }
+  function formContato(c) {
+    var novo = !c;
+    var op12 = [['', '— horário próprio (abaixo) —']].concat(arr(dados.shoppings).filter(function (s) { return s.tipo !== 'fixo'; }).map(function (s) { return [s.empresa + ':' + s.id_condominio, 'segue a 12x36 de ' + s.nome]; }));
+    return formulario(novo ? 'Novo contato de setor' : 'Editar ' + c.nome, [
+      { k: 'setor', rot: 'Setor', tipo: 'select', opcoes: APOIO().setores.map(function (s) { return [s, SETOR_TXT[s] || s]; }) },
+      { k: 'ordem', rot: 'Ordem na resposta', tipo: 'num' },
+      { k: 'nome', rot: 'Nome', tipo: 'text' },
+      { k: 'fone', rot: 'WhatsApp', tipo: 'text', dica: 'DDD + número. É marcado com @ na resposta.' },
+      { k: 'escala', rot: 'Escala', tipo: 'select', opcoes: op12, largo: true },
+      { k: 'horarios', rot: 'Horário (vazio = não atende; vários: 08:00-12:00,13:00-18:00)', tipo: 'horarios', varios: true, largo: true },
+      { k: 'obs', rot: 'Observação', tipo: 'text', largo: true },
+      { k: 'ativo', rot: 'Ativo', tipo: 'check', texto: 'aparece nas respostas do bot' },
+    ], novo ? { setor: 'n2', ordem: 0, ativo: true, horarios: {} } : { setor: c.setor, ordem: c.ordem, nome: c.nome, fone: c.fone ? fone(c.fone) : '', escala: c.escala, horarios: c.horarios, obs: c.obs, ativo: c.ativo },
+    function (d) {
+      d.id = novo ? 0 : c.id;
+      return post('contato_salvar', { dados: d }).then(function (j) { if (j.ok) j.msg = 'Contato "' + d.nome + '" ' + (novo ? 'criado.' : 'salvo.'); return j; });
+    });
+  }
+
   function render() { geral(); shoppings(); tecnicos(); contatos(); msgLista(); parametros(); eventos(); }
 
   // ---------------------------------------------------------------- abas e carga
@@ -670,7 +895,7 @@
   function carregar() {
     var st = $('pbot-status'), er = $('pbot-erro');
     st.textContent = 'carregando…';
-    fetch(API + '?acao=tudo', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+    return fetch(API + '?acao=tudo', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
       .then(function (r) { return r.json().catch(function () { return { ok: false, erro: 'Resposta inválida do servidor (HTTP ' + r.status + ').' }; }); })
       .then(function (j) {
         if (!j || !j.ok) { er.hidden = false; er.textContent = (j && j.erro) || 'Não foi possível ler o banco do bot.'; st.textContent = 'sem dados'; return; }

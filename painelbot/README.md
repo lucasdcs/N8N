@@ -8,6 +8,8 @@ que não tem acesso aos tokens do IXC e só grava nas tabelas do painel (mensage
 
 ## O que tem
 
+**0.3.0** — **cadastros editáveis**: Shoppings e escala (novo/editar/excluir: base, id do condomínio, nome, grupo do WhatsApp, técnico padrão, tipo, horários, equipe, quem marcar sem técnico e ao escalar, **apelidos**), Técnicos (novo/editar/excluir; trocar o número atualiza as marcações) e Contatos de setor (novo/editar/excluir). Pergunta padrão agora também se exclui (some da lista e o bot para de responder; volta em "Restaurar padrões"). Tabela nova `ixc.apelidos` (os apelidos valem no WhatsApp com o whatsapp-ixc 0.4.0).
+
 **0.2.1** — catálogo de textos padrão igual ao do whatsapp-ixc 0.3.0 (ajuda dos comandos, lembretes, técnico não encontrado, linha "sem técnico").
 
 **0.2.0** — edição em **Mensagens** (salvar com conferência das `{variáveis}`, restaurar o padrão, histórico) e nas **perguntas** de cada setor
@@ -35,7 +37,7 @@ Na instalação só os perfis com Configuração > Atualizar (Super-Admin) receb
 ## Banco do bot (`sql/`)
 
 1. `01-mensagens-perguntas.sql` — cria `ixc.mensagens`, `ixc.mensagens_hist` e `ixc.perguntas` com os textos e perguntas atuais (idempotente; não sobrescreve texto editado).
-2. `02-usuario-painel.sql` — cria/atualiza o usuário `painel_glpi` (leitura sem `empresas.auth`; desde a 0.2.0 grava só em `mensagens.texto`, `mensagens_hist` e `perguntas`). Rodar com `-v senha="'...'"` (rodar de novo a cada versão que mude permissões).
+2. `02-usuario-painel.sql` — cria/atualiza o usuário `painel_glpi` (leitura sem `empresas.auth`; grava em mensagens, perguntas, apelidos e, desde a 0.3.0, em `locais`, `escala_base`, `tecnicos` e `contatos_setor`; nunca em parâmetros, eventos, empresas). Rodar com `-v senha="'...'"` (rodar de novo a cada versão que mude permissões).
 
 `catalogo-mensagens.json` é a fonte do 01; regere com `python3 sql/gerar-sql.py sql/catalogo-mensagens.json sql/01-mensagens-perguntas.sql`.
 

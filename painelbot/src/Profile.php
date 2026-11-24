@@ -103,7 +103,7 @@ final class Profile extends GlpiProfile
         foreach ($l as $k => $v) {
             $h .= '<li><b>' . htmlspecialchars($k) . '</b>: ' . htmlspecialchars($v) . '</li>';
         }
-        return $h . '</ul>Na versão 0.2.0 Editar/Excluir valem em Mensagens e Perguntas; nas demais áreas passam a valer nas próximas versões. '
+        return $h . '</ul>Desde a 0.3.0 Editar/Excluir valem em Mensagens, Perguntas, Shoppings e escala e Técnicos e contatos; em Avisos e Parâmetros, nas próximas versões. '
             . 'A mudança vale a partir do próximo login (ou da próxima troca de perfil) de cada usuário.</div>';
     }
 }
