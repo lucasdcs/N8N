@@ -95,25 +95,22 @@ final class Editor
     /** @return array<string,mixed> linha da mensagem (como Bot::mensagens) */
     private function mensagem(string $chave): array
     {
-        $st = $this->pdo()->prepare("SELECT chave, grupo, ordem, titulo, wf, coalesce(exemplo, '') AS exemplo, texto_padrao, texto,
-                                            coalesce(array_to_json(variaveis)::text, '[]') AS variaveis,
-                                            to_char(atualizado, 'DD/MM/YYYY HH24:MI') AS atualizado, coalesce(atualizado_por, '') AS atualizado_por
-                                       FROM ixc.mensagens WHERE chave = ?");
+        $st = $this->pdo()->prepare(Bot::SQL_MENSAGEM . ' WHERE chave = ?');
         $st->execute([$chave]);
         $r = $st->fetch();
         if (!$r) {
-            throw new ErroDeUso('Mensagem não encontrada: ' . $chave);
+            throw new ErroDeUso('Mensagem não encontrada (pode ter sido excluída por outra pessoa). Recarregue a página.');
         }
-        $r['variaveis'] = json_decode((string) $r['variaveis'], true) ?: [];
-        $r['ordem'] = (int) $r['ordem'];
-        $r['personalizada'] = $r['texto'] !== null && $r['texto'] !== $r['texto_padrao'];
-        return $r;
+        return Bot::linhaMensagem($r);
     }
 
     /** Grava o texto (igual ao padrão = volta a seguir o padrão). @return array<string,mixed> */
     public function salvarMensagem(string $chave, string $texto): array
     {
         $m = $this->mensagem($chave);
+        if ($m['nova']) {
+            throw new ErroDeUso('Mensagem criada no painel: use "Editar".');
+        }
         [$t, $erro] = self::validarTexto($texto, $m['variaveis']);
         if ($erro !== null) {
             throw new ErroDeUso($erro);
@@ -125,7 +122,11 @@ final class Editor
     /** Volta ao texto embutido no bot. @return array<string,mixed> */
     public function restaurarMensagem(string $chave): array
     {
-        return $this->gravarTexto($this->mensagem($chave), null);
+        $m = $this->mensagem($chave);
+        if ($m['nova']) {
+            throw new ErroDeUso('Mensagem criada no painel não tem texto padrão do bot.');
+        }
+        return $this->gravarTexto($m, null);
     }
 
     /** @param array<string,mixed> $m @return array<string,mixed> */
@@ -160,6 +161,150 @@ final class Editor
         return $st->fetchAll();
     }
 
+    // ---------------------------------------------------------------- 0.4.0: ligar/desligar e mensagens novas
+
+    public const GRUPO_NOVAS = 'Mensagens novas (respostas no grupo)';
+    public const MAX_FRASES = 10;
+    public const MAX_TITULO = 80;
+
+    private function hist(string $chave, ?string $antes, ?string $depois): void
+    {
+        $this->pdo()->prepare('INSERT INTO ixc.mensagens_hist (chave, antes, depois, quem) VALUES (?, ?, ?, ?)')
+            ->execute([$chave, $antes, $depois, $this->quem]);
+    }
+
+    /**
+     * Desativada: o bot deixa o trecho vazio; se a mensagem inteira ficar vazia, não envia (whatsapp-ixc 0.5.0).
+     * Vale para qualquer mensagem (decisão de 24/11). @return array<string,mixed>
+     */
+    public function ligarMensagem(string $chave, bool $ativo): array
+    {
+        $m = $this->mensagem($chave);
+        if ($m['ativo'] === $ativo) {
+            return $m;
+        }
+        $txt = $m['texto'] ?? $m['texto_padrao'];
+        $this->emTransacao(function (PDO $pdo) use ($chave, $ativo, $txt) {
+            $pdo->prepare('UPDATE ixc.mensagens SET ativo = ?, atualizado = now(), atualizado_por = ? WHERE chave = ?')
+                ->execute([$ativo ? 'true' : 'false', $this->quem, $chave]);
+            $this->hist($chave, $ativo ? '(desativada)' : $txt, $ativo ? '(ativada) ' . $txt : '(desativada)');
+        });
+        return $this->mensagem($chave);
+    }
+
+    /**
+     * Confere os campos de uma mensagem nova. Frases: uma por linha (ou lista), 1 a 10, as mesmas regras das perguntas;
+     * a mesma frase não pode acionar outra mensagem nova nem uma pergunta de setor.
+     * @param list<string>|string $frases
+     * @return array{0:string,1:string,2:list<string>,3:list<string>,4:string}
+     */
+    public function validarNova(string $titulo, string $texto, array|string $frases, string $grupos, string $ignorar = ''): array
+    {
+        $tit = trim(preg_replace('/\s+/u', ' ', $titulo) ?? $titulo);
+        if (mb_strlen($tit) < 3) {
+            throw new ErroDeUso('Dê um nome para a mensagem (ex.: "Senha do wi-fi do Jockey").');
+        }
+        if (mb_strlen($tit) > self::MAX_TITULO) {
+            throw new ErroDeUso('Nome grande demais (máximo ' . self::MAX_TITULO . ' caracteres).');
+        }
+        if (trim($texto) === '') {
+            throw new ErroDeUso('Escreva o texto que o bot vai responder.');
+        }
+        [$t, $erro] = self::validarTexto($texto, []);
+        if ($erro !== null) {
+            throw new ErroDeUso(str_replace('Este trecho não aceita variáveis.', 'Mensagem nova não aceita variáveis: escreva o texto como vai sair.', $erro));
+        }
+        $lista = is_array($frases) ? $frases : preg_split('/\R/u', $frases);
+        $fs = [];
+        $ns = [];
+        foreach ($lista as $f) {
+            if (trim((string) $f) === '') {
+                continue;
+            }
+            [$ff, $n, $e] = self::validarFrase((string) $f);
+            if ($e !== null) {
+                throw new ErroDeUso('"' . trim((string) $f) . '": ' . $e);
+            }
+            if (in_array($n, $ns, true)) {
+                continue;   // repetida na mesma mensagem
+            }
+            $fs[] = $ff;
+            $ns[] = $n;
+        }
+        if (!$fs) {
+            throw new ErroDeUso('Escreva pelo menos uma frase que aciona a resposta (o que a pessoa escreve no grupo).');
+        }
+        if (count($fs) > self::MAX_FRASES) {
+            throw new ErroDeUso('No máximo ' . self::MAX_FRASES . ' frases por mensagem.');
+        }
+        // conflito com outra mensagem nova
+        $st = $this->pdo()->prepare("SELECT titulo, f FROM ixc.mensagens m, unnest(m.frases_norm) AS f
+                                       WHERE m.criada_painel AND m.chave <> ? AND f = ANY(?::text[]) LIMIT 1");
+        $st->execute([$ignorar, '{' . implode(',', array_map(fn($x) => '"' . $x . '"', $ns)) . '}']);
+        if ($r = $st->fetch()) {
+            throw new ErroDeUso('A frase "' . $fs[array_search($r['f'], $ns, true)] . '" já aciona a mensagem "' . $r['titulo'] . '".');
+        }
+        // conflito com pergunta de setor
+        $st = $this->pdo()->prepare('SELECT alvo, frase FROM ixc.perguntas WHERE frase_norm = ANY(?::text[]) LIMIT 1');
+        $st->execute(['{' . implode(',', array_map(fn($x) => '"' . $x . '"', $ns)) . '}']);
+        if ($r = $st->fetch()) {
+            throw new ErroDeUso('A frase "' . $r['frase'] . '" já aciona a resposta de ' . (self::ALVOS[$r['alvo']] ?? $r['alvo']) . ' (Perguntas). Use outra frase.');
+        }
+        return [$tit, (string) $t, $fs, $ns, in_array($grupos, self::GRUPOS, true) ? $grupos : 'todos'];
+    }
+
+    private static function pgArr(array $l): string
+    {
+        return '{' . implode(',', array_map(fn($x) => '"' . str_replace(['\\', '"'], ['\\\\', '\\"'], (string) $x) . '"', $l)) . '}';
+    }
+
+    /** @param list<string>|string $frases @return array<string,mixed> */
+    public function criarNova(string $titulo, string $texto, array|string $frases, string $grupos): array
+    {
+        [$tit, $t, $fs, $ns, $g] = $this->validarNova($titulo, $texto, $frases, $grupos);
+        $chave = (string) $this->emTransacao(function (PDO $pdo) use ($tit, $t, $fs, $ns, $g) {
+            $pdo->exec('LOCK TABLE ixc.mensagens IN SHARE ROW EXCLUSIVE MODE');   // número da chave sem corrida
+            $n = (int) $pdo->query("SELECT coalesce(max(substr(chave, 6)::int), 0) + 1 FROM ixc.mensagens WHERE chave ~ '^resp\\.[0-9]+$'")->fetchColumn();
+            $chave = 'resp.' . $n;
+            $pdo->prepare("INSERT INTO ixc.mensagens (chave, grupo, ordem, titulo, wf, exemplo, texto_padrao, texto, variaveis, ativo,
+                                                      criada_painel, frases, frases_norm, grupos, criado_por, criado_em, atualizado, atualizado_por)
+                           VALUES (?, ?, ?, ?, '03', ?, ?, NULL, '{}', true, true, ?::text[], ?::text[], ?, ?, now(), now(), ?)")
+                ->execute([$chave, self::GRUPO_NOVAS, -$n, $tit, $fs[0], $t, self::pgArr($fs), self::pgArr($ns), $g, $this->quem, $this->quem]);
+            $this->hist($chave, null, '(criada) ' . $t);
+            return $chave;
+        });
+        return $this->mensagem($chave);
+    }
+
+    /** @param list<string>|string $frases @return array<string,mixed> */
+    public function editarNova(string $chave, string $titulo, string $texto, array|string $frases, string $grupos): array
+    {
+        $m = $this->mensagem($chave);
+        if (!$m['nova']) {
+            throw new ErroDeUso('Só as mensagens criadas no painel mudam de nome e de frases.');
+        }
+        [$tit, $t, $fs, $ns, $g] = $this->validarNova($titulo, $texto, $frases, $grupos, $chave);
+        $this->emTransacao(function (PDO $pdo) use ($m, $chave, $tit, $t, $fs, $ns, $g) {
+            $pdo->prepare('UPDATE ixc.mensagens SET titulo = ?, exemplo = ?, texto_padrao = ?, frases = ?::text[], frases_norm = ?::text[], grupos = ?,
+                                                    atualizado = now(), atualizado_por = ? WHERE chave = ? AND criada_painel')
+                ->execute([$tit, $fs[0], $t, self::pgArr($fs), self::pgArr($ns), $g, $this->quem, $chave]);
+            if ($t !== $m['texto_padrao']) {
+                $this->hist($chave, $m['texto_padrao'], $t);
+            }
+        });
+        return $this->mensagem($chave);
+    }
+
+    /** Só as criadas no painel. As do bot: desativar (ou restaurar o texto). */
+    public function excluirNova(string $chave): void
+    {
+        $m = $this->mensagem($chave);
+        if (!$m['nova']) {
+            throw new ErroDeUso('Mensagem do bot não se exclui: use "Desativar".');
+        }
+        $this->pdo()->prepare('DELETE FROM ixc.mensagens WHERE chave = ? AND criada_painel')->execute([$chave]);
+    }
+
     // ---------------------------------------------------------------- perguntas
 
     /** @return array<string,mixed> */
@@ -188,6 +333,13 @@ final class Editor
             throw new ErroDeUso($r['alvo'] === $alvo
                 ? 'Essa pergunta já existe em ' . self::ALVOS[$alvo] . ' ("' . $r['frase'] . '").'
                 : 'Essa frase já aciona ' . (self::ALVOS[$r['alvo']] ?? $r['alvo']) . ' ("' . $r['frase'] . '"). Uma frase só pode acionar um setor.');
+        }
+        // 0.4.0: frase de mensagem nova (to_jsonb: banco sem as colunas novas = nenhuma)
+        $st = $this->pdo()->prepare("SELECT titulo FROM ixc.mensagens m WHERE (to_jsonb(m)->>'criada_painel') = 'true'
+                                        AND jsonb_exists(coalesce(to_jsonb(m)->'frases_norm', '[]'::jsonb), ?) LIMIT 1");
+        $st->execute([$norm]);
+        if ($t = $st->fetchColumn()) {
+            throw new ErroDeUso('Essa frase já aciona a mensagem nova "' . $t . '" (Mensagens).');
         }
     }
 

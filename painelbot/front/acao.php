@@ -18,6 +18,11 @@
  *   tecnico_excluir      {empresa, id_func}    Técnicos e contatos > Excluir
  *   contato_salvar       {dados}               Técnicos e contatos > Editar  (dados.id = 0 cria)
  *   contato_excluir      {id}                  Técnicos e contatos > Excluir
+ * 0.4.0 — mensagens:
+ *   mensagem_ligar       {chave, ativo}        Mensagens > Editar   (qualquer mensagem; desativada = trecho vazio no bot)
+ *   mensagem_nova        {titulo, texto, frases, grupos}         Mensagens > Editar   (resposta no grupo, chave resp.N)
+ *   mensagem_editar_nova {chave, titulo, texto, frases, grupos}  Mensagens > Editar   (só as criadas no painel)
+ *   mensagem_excluir     {chave}               Mensagens > Excluir  (só as criadas no painel)
  */
 
 use GlpiPlugin\Painelbot\Bot;
@@ -48,6 +53,10 @@ $exige = [
     'mensagem_salvar'     => [Direito::MENSAGENS, UPDATE],
     'mensagem_restaurar'  => [Direito::MENSAGENS, UPDATE],
     'mensagem_historico'  => [Direito::MENSAGENS, READ],
+    'mensagem_ligar'      => [Direito::MENSAGENS, UPDATE],
+    'mensagem_nova'       => [Direito::MENSAGENS, UPDATE],
+    'mensagem_editar_nova' => [Direito::MENSAGENS, UPDATE],
+    'mensagem_excluir'    => [Direito::MENSAGENS, DELETE],
     'pergunta_criar'      => [Direito::PERGUNTAS, UPDATE],
     'pergunta_editar'     => [Direito::PERGUNTAS, UPDATE],
     'pergunta_ligar'      => [Direito::PERGUNTAS, UPDATE],
@@ -76,10 +85,15 @@ session_write_close();
 try {
     $ed = new Editor(new Bot(), mb_substr($quem, 0, 100));
     $id = (int) ($corpo['id'] ?? 0);
+    $frases = is_array($corpo['frases'] ?? null) ? array_map('strval', array_values($corpo['frases'])) : (string) ($corpo['frases'] ?? '');
     $r = match ($acao) {
         'mensagem_salvar'     => ['mensagem' => $ed->salvarMensagem((string) ($corpo['chave'] ?? ''), (string) ($corpo['texto'] ?? ''))],
         'mensagem_restaurar'  => ['mensagem' => $ed->restaurarMensagem((string) ($corpo['chave'] ?? ''))],
         'mensagem_historico'  => ['historico' => $ed->historico((string) ($corpo['chave'] ?? ''))],
+        'mensagem_ligar'      => ['mensagem' => $ed->ligarMensagem((string) ($corpo['chave'] ?? ''), !empty($corpo['ativo']))],
+        'mensagem_nova'       => ['mensagem' => $ed->criarNova((string) ($corpo['titulo'] ?? ''), (string) ($corpo['texto'] ?? ''), $frases, (string) ($corpo['grupos'] ?? 'todos'))],
+        'mensagem_editar_nova' => ['mensagem' => $ed->editarNova((string) ($corpo['chave'] ?? ''), (string) ($corpo['titulo'] ?? ''), (string) ($corpo['texto'] ?? ''), $frases, (string) ($corpo['grupos'] ?? 'todos'))],
+        'mensagem_excluir'    => (function () use ($ed, $corpo) { $ed->excluirNova((string) ($corpo['chave'] ?? '')); return ['excluida' => (string) ($corpo['chave'] ?? '')]; })(),
         'pergunta_criar'      => ['pergunta' => $ed->criarPergunta((string) ($corpo['alvo'] ?? ''), (string) ($corpo['frase'] ?? ''), (string) ($corpo['grupos'] ?? 'todos'))],
         'pergunta_editar'     => ['pergunta' => $ed->editarPergunta($id, (string) ($corpo['frase'] ?? ''), (string) ($corpo['grupos'] ?? ''))],
         'pergunta_ligar'      => ['pergunta' => $ed->ligarPergunta($id, !empty($corpo['ativo']))],

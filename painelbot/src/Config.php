@@ -23,6 +23,7 @@ final class Config extends CommonDBTM
         'pg_banco'   => 'ixc',
         'pg_usuario' => 'painel_glpi',
         'pg_senha'   => '',   // cifrada (GLPIKey); nunca vai para a tela
+        'migracao'   => '',   // 0.4.0: última migração de direitos aplicada (ver Install::migrar)
     ];
 
     /** @return array<string,mixed> */

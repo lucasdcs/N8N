@@ -171,25 +171,46 @@ final class Bot
     }
 
     /**
+     * 0.4.0: colunas da mensagem para a tela. to_jsonb aceita banco sem as colunas novas (ativo, criada_painel, frases…):
+     * o painel 0.4.0 abre mesmo antes do sql/01 desta versão (só não grava).
+     */
+    public const SQL_MENSAGEM = "SELECT chave, grupo, ordem, titulo, wf, coalesce(exemplo, '') AS exemplo, texto_padrao, texto,
+                                        coalesce(array_to_json(variaveis)::text, '[]') AS variaveis,
+                                        to_char(atualizado, 'DD/MM/YYYY HH24:MI') AS atualizado, coalesce(atualizado_por, '') AS atualizado_por,
+                                        coalesce((to_jsonb(m)->>'ativo')::boolean, true) AS ativo,
+                                        coalesce((to_jsonb(m)->>'criada_painel')::boolean, false) AS nova,
+                                        coalesce(to_jsonb(m)->'frases', '[]'::jsonb)::text AS frases,
+                                        coalesce(to_jsonb(m)->>'grupos', 'todos') AS grupos,
+                                        coalesce(to_jsonb(m)->>'criado_por', '') AS criado_por,
+                                        coalesce(to_char((to_jsonb(m)->>'criado_em')::timestamptz, 'DD/MM/YYYY'), '') AS criado_em
+                                   FROM ixc.mensagens m";
+
+    /** @param array<string,mixed> $r @return array<string,mixed> */
+    public static function linhaMensagem(array $r): array
+    {
+        $r['variaveis'] = json_decode((string) $r['variaveis'], true) ?: [];
+        $r['frases'] = json_decode((string) $r['frases'], true) ?: [];
+        $r['ordem'] = (int) $r['ordem'];
+        $r['ativo'] = (bool) $r['ativo'];
+        $r['nova'] = (bool) $r['nova'];
+        // "personalizada" = texto do bot alterado no painel (as novas não têm padrão do bot)
+        $r['personalizada'] = !$r['nova'] && $r['texto'] !== null && $r['texto'] !== $r['texto_padrao'];
+        return $r;
+    }
+
+    /**
      * Catálogo de mensagens do bot (ixc.mensagens). texto = null quando segue o padrão.
-     * @return array{instalado:bool, itens:list<array<string,mixed>>}
+     * 0.4.0: + ativo, mensagens novas (nova=true, chave resp.N, texto em texto_padrao, frases que acionam).
+     * @return array{instalado:bool, itens:list<array<string,mixed>>, colunas040:bool}
      */
     public function mensagens(): array
     {
         if (!$this->tabelasNovas()['mensagens']) {
-            return ['instalado' => false, 'itens' => []];
+            return ['instalado' => false, 'itens' => [], 'colunas040' => false];
         }
-        $rows = $this->q("SELECT chave, grupo, ordem, titulo, wf, coalesce(exemplo, '') AS exemplo, texto_padrao, texto,
-                                 coalesce(array_to_json(variaveis)::text, '[]') AS variaveis,
-                                 to_char(atualizado, 'DD/MM/YYYY HH24:MI') AS atualizado, coalesce(atualizado_por, '') AS atualizado_por
-                            FROM ixc.mensagens ORDER BY ordem, chave");
-        foreach ($rows as &$r) {
-            $r['variaveis'] = json_decode((string) $r['variaveis'], true) ?: [];
-            $r['ordem'] = (int) $r['ordem'];
-            $r['personalizada'] = $r['texto'] !== null && $r['texto'] !== $r['texto_padrao'];
-        }
-        unset($r);
-        return ['instalado' => true, 'itens' => $rows];
+        $rows = array_map([self::class, 'linhaMensagem'], $this->q(self::SQL_MENSAGEM . ' ORDER BY ordem, chave'));
+        $c = $this->q("SELECT count(*) AS n FROM information_schema.columns WHERE table_schema = 'ixc' AND table_name = 'mensagens' AND column_name = 'criada_painel'");
+        return ['instalado' => true, 'itens' => $rows, 'colunas040' => ((int) ($c[0]['n'] ?? 0)) > 0];
     }
 
     /**

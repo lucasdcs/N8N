@@ -246,3 +246,15 @@ html.pbot-escuro .page-body .pbot[data-tema-ativo="escuro"] { padding: 4px 2px; 
 .pbot[data-tema-ativo="escuro"] .pbot-modal { background: #193840; }
 .pbot[data-tema-ativo="escuro"] .pbot-multi { background: #122A30; }
 .pbot-tabela td small { display: block; }
+
+/* 0.4.0: mensagens novas e ativar/desativar */
+.pbot-msg-topo { margin-bottom: 10px; }
+.pbot-msg-topo .pbot-bt { width: 100%; justify-content: center; }
+.pbot-tag.off { background: #e5e7eb; color: #4b5563; }
+.pbot-msg-item.off .pbot-msg-s { text-decoration: line-through; opacity: .7; }
+.pbot-ed-cab { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.pbot-ed-ativa { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--pbot-texto-2); white-space: nowrap; }
+.pbot-msg-off { margin-bottom: 12px; }
+.pbot-pv-off .pbot-wa { opacity: .45; filter: grayscale(1); }
+.pbot-nv-frases { font-family: inherit; }
+.pbot[data-tema-ativo="escuro"] .pbot-tag.off { background: #374151; color: #d1d5db; }

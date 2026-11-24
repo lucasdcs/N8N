@@ -1,6 +1,7 @@
-/* Painel do Bot 0.3.0 — leitura do banco do bot (schema ixc): visão geral, shoppings e escala, técnicos,
+/* Painel do Bot 0.4.0 — leitura do banco do bot (schema ixc): visão geral, shoppings e escala, técnicos,
  * contatos de setor, mensagens (+ perguntas), parâmetros e últimos envios.
  * Só existem no HTML as seções que o perfil vê; o JSON também só traz essas.
+ * 0.4.0: Mensagens — mensagens novas (resposta no grupo a frases escolhidas: criar/editar/excluir) e ativar/desativar qualquer mensagem.
  * 0.3.0: cadastros (shoppings com escala e apelidos, técnicos, contatos de setor) com novo/editar/excluir.
  * 0.2.0: edição de mensagens (salvar, restaurar padrão, histórico) e perguntas (criar, editar, ligar/desligar, excluir).
  * Todo texto vindo do banco entra via textContent; a pré-visualização do WhatsApp escapa o texto antes de formatar.
@@ -194,8 +195,10 @@
     'Comandos ixc (alterações pelo grupo)': 'Comandos ixc',
     'Avisos de chamado (grupo do shopping)': 'Avisos de chamado',
     'Lembretes de visita': 'Lembretes',
-    'Alertas internos (grupo de automação)': 'Alertas'
+    'Alertas internos (grupo de automação)': 'Alertas',
+    'Mensagens novas (respostas no grupo)': 'Novas'
   };
+  var NOVA = '__nova__';   // msgSel do formulário de mensagem nova
   var SETOR_TXT = { n2: 'Suporte N2', financeiro: 'Financeiro', comercial: 'Comercial', compras: 'Compras', rh: 'RH' };
   // valores de exemplo da pré-visualização (fictícios)
   var EXEMPLO = {
@@ -237,11 +240,22 @@
       return;
     }
     // filtros
-    var cont = { todas: todas.length, personalizadas: todas.filter(function (m) { return m.personalizada; }).length };
+    var cont = { todas: todas.length, personalizadas: todas.filter(function (m) { return m.personalizada; }).length, desativadas: todas.filter(function (m) { return m.ativo === false; }).length };
     var ordemG = [];
     todas.forEach(function (m) { if (ordemG.indexOf(m.grupo) < 0) ordemG.push(m.grupo); cont[m.grupo] = (cont[m.grupo] || 0) + 1; });
     filtros.textContent = '';
-    [['todas', 'Todas']].concat(ordemG.map(function (g) { return [g, GRUPO_CURTO[g] || g]; })).concat([['personalizadas', 'Personalizadas']]).forEach(function (f) {
+    // 0.4.0: botão "Nova mensagem" (Mensagens > Editar, banco com as colunas da 0.4.0)
+    var topo = $('pbot-msg-topo');
+    if (!topo) { topo = el('div', 'pbot-msg-topo'); topo.id = 'pbot-msg-topo'; filtros.parentNode.insertBefore(topo, filtros); }
+    topo.textContent = '';
+    if (pode('mensagens', 'editar') && dados.mensagens && dados.mensagens.colunas040) {
+      var bn = botao('pri', 'ti-plus', 'Nova mensagem', 'Resposta automática no grupo quando alguém escreve uma das frases que você escolher');
+      bn.addEventListener('click', function () { if (msgSel !== NOVA && !descartar()) return; msgSel = NOVA; msgLista(); });
+      topo.appendChild(bn);
+    } else if (pode('mensagens', 'editar') && dados.mensagens && dados.mensagens.colunas040 === false) {
+      topo.appendChild(el('div', 'pbot-pq-nota', 'Para criar e desativar mensagens, rode o painelbot/sql/01-mensagens-perguntas.sql desta versão no banco do bot.'));
+    }
+    [['todas', 'Todas']].concat(ordemG.map(function (g) { return [g, GRUPO_CURTO[g] || g]; })).concat([['personalizadas', 'Personalizadas']]).concat(cont.desativadas ? [['desativadas', 'Desativadas']] : []).forEach(function (f) {
       var b = el('button', 'pbot-chip' + (msgFiltro === f[0] ? ' ativo' : ''), f[1] + ' ' + (cont[f[0]] || 0));
       b.type = 'button';
       b.addEventListener('click', function () { msgFiltro = f[0]; msgLista(); });
@@ -251,11 +265,12 @@
     var q = norm($('pbot-busca-msg').value), ps = pergs() || [];
     var lista = todas.filter(function (m) {
       if (msgFiltro === 'personalizadas' && !m.personalizada) return false;
-      if (msgFiltro !== 'todas' && msgFiltro !== 'personalizadas' && m.grupo !== msgFiltro) return false;
+      if (msgFiltro === 'desativadas' && m.ativo !== false) return false;
+      if (msgFiltro !== 'todas' && msgFiltro !== 'personalizadas' && msgFiltro !== 'desativadas' && m.grupo !== msgFiltro) return false;
       if (!q) return true;
       var alvo = /^setor\.titulo\.(.+)$/.exec(m.chave);
       var frases = alvo ? ps.filter(function (p) { return p.alvo === alvo[1]; }).map(function (p) { return p.frase; }).join(' ') : '';
-      return norm([m.chave, m.titulo, textoAtual(m), m.exemplo, frases].join(' ')).indexOf(q) >= 0;
+      return norm([m.chave, m.titulo, textoAtual(m), m.exemplo, frases, arr(m.frases).join(' ')].join(' ')).indexOf(q) >= 0;
     });
     itens.textContent = '';
     if (!lista.length) { itens.appendChild(el('div', 'pbot-vazio', 'Nenhuma mensagem com esse filtro.')); }
@@ -271,12 +286,13 @@
       it.setAttribute('data-chave', m.chave);
       var t = el('div', 'pbot-msg-t', m.titulo);
       if (m.personalizada) t.appendChild(el('span', 'pbot-tag pers', 'personalizada'));
+      if (m.ativo === false) { t.appendChild(el('span', 'pbot-tag off', 'desativada')); it.classList.add('off'); }
       it.appendChild(t);
       it.appendChild(el('div', 'pbot-msg-s', textoAtual(m).split('\n')[0]));
       it.addEventListener('click', function () { if (m.chave !== msgSel && !descartar()) return; msgSel = m.chave; msgLista(); });
       itens.appendChild(it);
     });
-    if (!msgSel || !lista.some(function (m) { return m.chave === msgSel; })) msgSel = lista.length ? lista[0].chave : null;
+    if (msgSel !== NOVA && (!msgSel || !lista.some(function (m) { return m.chave === msgSel; }))) msgSel = lista.length ? lista[0].chave : null;
     Array.prototype.forEach.call(itens.querySelectorAll('.pbot-msg-item'), function (b) { b.classList.toggle('sel', b.getAttribute('data-chave') === msgSel); });
     if (!sujo || editorDe !== msgSel) msgEditor();   // buscar/filtrar não apaga o que está sendo digitado
   }
@@ -326,6 +342,8 @@
       if (l[i].id === id) continue;
       if (normFrase(l[i].frase) === n) return { erro: l[i].alvo === alvo ? 'Já existe: "' + l[i].frase + '".' : 'Essa frase já aciona ' + SETOR_TXT[l[i].alvo] + '.' };
     }
+    var nv = msgs().filter(function (m) { return m.nova && arr(m.frases).some(function (f) { return normFrase(f) === n; }); })[0];   // 0.4.0
+    if (nv) return { erro: 'Essa frase já aciona a mensagem nova "' + nv.titulo + '".' };
     for (var j = 0; j < l.length; j++) {
       var o = normFrase(l[j].frase);
       if (l[j].id !== id && l[j].ativo && (n.indexOf(o) >= 0 || o.indexOf(n) >= 0)) return { aviso: 'Parecida com "' + l[j].frase + '" (' + SETOR_TXT[l[j].alvo] + ').' };
@@ -495,7 +513,7 @@
       });
       teste.appendChild(inp); teste.appendChild(res);
       caixa.appendChild(teste);
-      caixa.appendChild(el('div', 'pbot-pq-nota', 'As mudanças valem no WhatsApp quando o bot estiver na versão que lê estas perguntas (whatsapp-ixc 0.3.0). Até lá o bot segue as perguntas embutidas.'));
+      caixa.appendChild(el('div', 'pbot-pq-nota', 'As mudanças valem na próxima mensagem do grupo. Frase usada por uma mensagem nova (Mensagens > Nova mensagem) tem prioridade sobre o setor.'));
     } else if (/^setor\./.test(m.chave)) {
       tt.appendChild(el('b', null, 'Aparece nas respostas de setor'));
       tt.appendChild(el('div', 'pbot-sub', 'Trecho usado em todas as respostas de setor. As perguntas ficam no título de cada setor:'));
@@ -510,7 +528,7 @@
       caixa.appendChild(ch);
     } else if (/^escala\./.test(m.chave)) {
       tt.appendChild(el('b', null, 'Aparece nas respostas de shopping'));
-      tt.appendChild(el('div', 'pbot-sub', 'Perguntas como "quem está no <shopping>?", "tem alguém no <shopping>?", "técnico do <shopping>". Os apelidos de cada shopping passam a ser editáveis na 0.3.0.'));
+      tt.appendChild(el('div', 'pbot-sub', 'Perguntas como "quem está no <shopping>?", "tem alguém no <shopping>?", "técnico do <shopping>". Os apelidos de cada shopping ficam em Shoppings e escala.'));
     } else if (/^cmd\./.test(m.chave)) {
       tt.appendChild(el('b', null, 'Resposta de comando'));
       tt.appendChild(el('div', 'pbot-sub', 'Comandos "ixc ..." no grupo de automação' + (m.exemplo ? ' · exemplo: ' + m.exemplo : '')));
@@ -560,16 +578,19 @@
     ed.textContent = '';
     sujo = false;
     editorDe = msgSel;
+    if (msgSel === NOVA) { editorNova(ed, null); return; }
     var m = porChave(msgSel);
     if (!m) { ed.appendChild(el('div', 'pbot-vazio', 'Escolha uma mensagem na lista.')); return; }
+    if (m.nova) { editorNova(ed, m); return; }
     var editar = pode('mensagens', 'editar');
-    ed.appendChild(el('h3', 'pbot-ed-t', m.titulo));
+    ed.appendChild(cabecalhoEditor(m));
     var meta = el('div', 'pbot-ed-meta');
     var mi = function (ic, t) { var s = el('span'); s.appendChild(el('i', 'ti ' + ic)); s.appendChild(document.createTextNode(' ' + t)); meta.appendChild(s); };
     mi('ti-git-branch', 'workflow ' + m.wf);
     mi('ti-key', m.chave);
     mi('ti-clock-edit', m.atualizado ? 'alterada ' + m.atualizado + (m.atualizado_por ? ' por ' + m.atualizado_por : '') + (m.personalizada ? '' : ' (voltou ao padrão)') : 'texto padrão do bot');
     ed.appendChild(meta);
+    if (m.ativo === false) ed.appendChild(notaDesativada());
     ed.appendChild(blocoPerguntas(m));
 
     var cols = el('div', 'pbot-ed-cols');
@@ -632,11 +653,12 @@
     if (m.personalizada) {
       var orig = el('div', 'pbot-ed-orig'); orig.appendChild(document.createTextNode('Texto padrão do bot: ')); orig.appendChild(el('code', null, m.texto_padrao)); esq.appendChild(orig);
     }
-    esq.appendChild(el('div', 'pbot-pq-nota', 'O texto salvo vale no WhatsApp quando o bot estiver na versão que lê estes textos (whatsapp-ixc 0.3.0).'));
+    esq.appendChild(el('div', 'pbot-pq-nota', 'O texto salvo vale na próxima mensagem do bot. Desativar (no topo) deixa este trecho vazio; mensagem inteira vazia não é enviada (whatsapp-ixc 0.5.0).'));
     var dir = el('div');
     dir.appendChild(el('label', 'pbot-rot', 'Pré-visualização (valores de exemplo)'));
     var pv = preVisualizacao(m, textoAtual(m));
     dir.appendChild(pv);
+    if (m.ativo === false) dir.classList.add('pbot-pv-off');
     cols.appendChild(esq); cols.appendChild(dir);
     ed.appendChild(cols);
 
@@ -673,6 +695,203 @@
       });
       onde.insertBefore(h, $('pbot-ret-texto'));
     });
+  }
+
+  // ---------------------------------------------------------------- 0.4.0: ativar/desativar e mensagens novas
+  function notaDesativada() {
+    var n = el('div', 'pbot-aviso pbot-msg-off');
+    n.appendChild(el('i', 'ti ti-message-off'));
+    n.appendChild(bloco(el('b', null, 'Desativada'), 'O bot não usa este texto: o trecho fica vazio. Se a mensagem inteira ficar vazia, ela não é enviada (whatsapp-ixc 0.5.0).'));
+    return n;
+  }
+  /** Título + chave Ativa/Desativada (Mensagens > Editar; banco com as colunas da 0.4.0). */
+  function cabecalhoEditor(m) {
+    var h = el('div', 'pbot-ed-cab');
+    h.appendChild(el('h3', 'pbot-ed-t', m.titulo));
+    if (!(dados.mensagens && dados.mensagens.colunas040)) return h;
+    var lado = el('div', 'pbot-ed-ativa');
+    if (pode('mensagens', 'editar')) {
+      var sw = el('button', 'pbot-sw' + (m.ativo !== false ? ' on' : '')); sw.type = 'button';
+      sw.setAttribute('role', 'switch'); sw.setAttribute('aria-checked', m.ativo !== false ? 'true' : 'false');
+      sw.title = m.ativo !== false ? 'Ativa — clique para desativar' : 'Desativada — clique para ativar';
+      sw.setAttribute('aria-label', sw.title);
+      var rot = el('span', null, m.ativo !== false ? 'Ativa' : 'Desativada');
+      sw.addEventListener('click', function () {
+        if (sujo && !descartar()) return;
+        sw.disabled = true;
+        post('mensagem_ligar', { chave: m.chave, ativo: m.ativo === false }).then(function (j) {
+          if (!j.ok) { sw.disabled = false; var r = $('pbot-ret-texto'); aviso(r, false, j.erro); return; }
+          trocarMensagem(j.mensagem); sujo = false; msgLista();
+          aviso($('pbot-ret-texto'), true, j.mensagem.ativo ? 'Mensagem ativada.' : 'Mensagem desativada.');
+        });
+      });
+      lado.appendChild(rot); lado.appendChild(sw);
+    } else lado.appendChild(m.ativo !== false ? pill('ativa', '#16a34a') : pill('desativada', '#64748b'));
+    h.appendChild(lado);
+    return h;
+  }
+  function msgsNovas() { return msgs().filter(function (m) { return m.nova; }); }
+  /** Mensagem do grupo como o bot compara (0.5.0): normal e sem hífen ("Wi-Fi" também vale como "wifi"). */
+  function bateFrase(txt, f) {
+    var n = normFrase(f); if (!n || normFrase(txt).length > 200) return false;
+    return (' ' + normFrase(txt) + ' ').indexOf(' ' + n + ' ') >= 0 || (' ' + normFrase(String(txt).replace(/-/g, '')) + ' ').indexOf(' ' + n + ' ') >= 0;
+  }
+  function linhasFrases(t) { return String(t || '').split(/\r?\n/).map(function (x) { return x.trim(); }).filter(Boolean); }
+  /** Conferência das frases de uma mensagem nova (o servidor confere de novo). @return {erro, aviso} */
+  function conferirNova(frases, chave) {
+    var l = linhasFrases(frases), vistos = {};
+    if (!l.length) return { erro: 'Escreva pelo menos uma frase.' };
+    if (l.length > 10) return { erro: 'No máximo 10 frases.' };
+    var ps = pergs() || [], avisos = [];
+    for (var i = 0; i < l.length; i++) {
+      var n = normFrase(l[i]);
+      if (!n) return { erro: '"' + l[i] + '": escreva a frase.' };
+      if (l[i].length > 80) return { erro: '"' + l[i] + '": máximo 80 caracteres.' };
+      if (n.split(' ').length < 2) return { erro: '"' + l[i] + '": use pelo menos 2 palavras.' };
+      if (vistos[n]) continue; vistos[n] = 1;
+      var outra = msgsNovas().filter(function (m) { return m.chave !== chave && arr(m.frases).some(function (f) { return normFrase(f) === n; }); })[0];
+      if (outra) return { erro: '"' + l[i] + '" já aciona a mensagem "' + outra.titulo + '".' };
+      var pq = ps.filter(function (p) { return normFrase(p.frase) === n; })[0];
+      if (pq) return { erro: '"' + l[i] + '" já aciona ' + SETOR_TXT[pq.alvo] + ' (Perguntas).' };
+      var par = ps.filter(function (p) { var o = normFrase(p.frase); return p.ativo && (n.indexOf(o) >= 0 || o.indexOf(n) >= 0); })[0];
+      if (par) avisos.push('"' + l[i] + '" parece com "' + par.frase + '" (' + SETOR_TXT[par.alvo] + '): esta mensagem tem prioridade.');
+      if (/-/.test(l[i])) avisos.push('Dica: escreva "' + l[i].replace(/-/g, '') + '" (sem hífen): assim vale para quem escreve com ou sem hífen.');
+    }
+    return avisos.length ? { aviso: avisos[0] } : {};
+  }
+  /** Qual mensagem nova ativa uma mensagem do grupo aciona (mesma regra do bot). */
+  function testarNova(txt, grupoRecados) {
+    return msgsNovas().filter(function (m) {
+      return m.ativo !== false && (m.grupos !== 'recados' || grupoRecados) && arr(m.frases).some(function (f) { return bateFrase(txt, f); });
+    })[0] || null;
+  }
+  function preVisualizacaoNova(frases, texto) {
+    var wa = el('div', 'pbot-wa');
+    var perg = linhasFrases(frases)[0] || 'frase que aciona';
+    var q = el('div', 'pbot-wa-q'); q.appendChild(el('small', null, 'Fulano (N1)')); q.appendChild(el('span', null, perg)); wa.appendChild(q);
+    var bolha = el('div', 'pbot-wa-bolha'), cab = porChave('escala.cabecalho');
+    var html = '<div class="pbot-wa-cit">Fulano: ' + esc(perg) + '</div>';
+    if (cab && cab.ativo !== false) html += whats(textoAtual(cab)) + '\n\n';
+    html += whats(texto || '…', true);
+    bolha.innerHTML = html.replace(/\n/g, '<br>') + '<div class="pbot-wa-hora">10:24</div>';   // texto escapado em esc()/whats()
+    wa.appendChild(bolha);
+    return wa;
+  }
+
+  /** Editor de mensagem nova (m = null: formulário de criação). */
+  function editorNova(ed, m) {
+    var editar = pode('mensagens', 'editar');
+    if (m) ed.appendChild(cabecalhoEditor(m)); else ed.appendChild(el('h3', 'pbot-ed-t', 'Nova mensagem'));
+    var meta = el('div', 'pbot-ed-meta');
+    var mi = function (ic, t) { var s2 = el('span'); s2.appendChild(el('i', 'ti ' + ic)); s2.appendChild(document.createTextNode(' ' + t)); meta.appendChild(s2); };
+    mi('ti-message-plus', 'resposta automática no grupo');
+    if (m) {
+      mi('ti-key', m.chave);
+      mi('ti-user', 'criada ' + m.criado_em + (m.criado_por ? ' por ' + m.criado_por : ''));
+      if (m.atualizado) mi('ti-clock-edit', 'alterada ' + m.atualizado + (m.atualizado_por ? ' por ' + m.atualizado_por : ''));
+    }
+    ed.appendChild(meta);
+    if (m && m.ativo === false) ed.appendChild(notaDesativada());
+
+    var cols = el('div', 'pbot-ed-cols');
+    var esq = el('div'), dir = el('div');
+    var campo = function (rot, elem, ajuda) { esq.appendChild(el('label', 'pbot-rot', rot)); esq.appendChild(elem); if (ajuda) esq.appendChild(el('div', 'pbot-pq-nota', ajuda)); return elem; };
+    var iNome = campo('Nome (só aparece no painel)', el('input', 'form-control'));
+    iNome.maxLength = 80; iNome.placeholder = 'ex.: Senha do wi-fi do Jockey'; iNome.value = m ? m.titulo : ''; iNome.readOnly = !editar;
+    var iFr = campo('Quando responder: o que a pessoa escreve no grupo (uma frase por linha, até 10)', el('textarea', 'pbot-ed-texto pbot-nv-frases'),
+      'Vale em qualquer parte da mensagem, com as palavras inteiras e nessa ordem; acento, maiúscula e "?" não importam. Mínimo 2 palavras. Mensagem com mais de 200 caracteres não aciona.');
+    iFr.rows = 3; iFr.placeholder = 'qual a senha do wifi do jockey\nsenha wifi jockey'; iFr.value = m ? arr(m.frases).join('\n') : ''; iFr.readOnly = !editar;
+    var iGr = el('select', 'form-select pbot-pq-grupos'); iGr.disabled = !editar;
+    [['todos', 'Em todos os grupos do bot'], ['recados', 'Só no grupo Recados']].forEach(function (o) { var op = el('option', null, o[1]); op.value = o[0]; if ((m ? m.grupos : 'todos') === o[0]) op.selected = true; iGr.appendChild(op); });
+    campo('Onde', iGr);
+    var iTx = campo('Texto da resposta', el('textarea', 'pbot-ed-texto'));
+    iTx.maxLength = 3000; iTx.rows = 6; iTx.value = m ? m.texto_padrao : ''; iTx.readOnly = !editar;
+    esq.appendChild(el('div', 'pbot-ed-fmt', 'WhatsApp: *negrito* · _itálico_ · ~riscado~ · emojis · quebra de linha = Enter · telefone (dd) nnnnn-nnnn vira @ · sem {variáveis}'));
+    var chk = el('div', 'pbot-ed-chk'); esq.appendChild(chk);
+    var ret = el('div', 'pbot-retorno'); ret.id = 'pbot-ret-texto';
+    var bSalvar = null;
+    if (editar) {
+      var bts = el('div', 'pbot-ed-bts');
+      bSalvar = botao('pri', 'ti-device-floppy', m ? 'Salvar' : 'Criar mensagem'); bSalvar.disabled = true;
+      bts.appendChild(bSalvar);
+      if (!m) {
+        var bCanc = botao('', null, 'Cancelar');
+        bCanc.addEventListener('click', function () { if (!descartar()) return; sujo = false; msgSel = null; msgLista(); });
+        bts.appendChild(bCanc);
+      }
+      if (m) { var bH = botao('', 'ti-history', 'Histórico'); bH.addEventListener('click', function () { mostrarHistorico(m, esq, bH); }); bts.appendChild(bH); }
+      if (m && pode('mensagens', 'excluir')) {
+        var bEx = botao('perigo', 'ti-trash', 'Excluir');
+        bEx.addEventListener('click', function () {
+          if (!bEx.classList.contains('confirmar')) { bEx.classList.add('confirmar'); bEx.appendChild(document.createTextNode(' — confirmar?')); return; }
+          bEx.disabled = true;
+          post('mensagem_excluir', { chave: m.chave }).then(function (j) {
+            if (!j.ok) { aviso(ret, false, j.erro); bEx.disabled = false; return; }
+            var l = msgs(); for (var i = 0; i < l.length; i++) if (l[i].chave === m.chave) { l.splice(i, 1); break; }
+            sujo = false; msgSel = null; msgLista();
+            aviso($('pbot-ret-texto'), true, 'Mensagem "' + m.titulo + '" excluída.');
+          });
+        });
+        bts.appendChild(bEx);
+      }
+      esq.appendChild(bts);
+      bSalvar.addEventListener('click', function () {
+        var c = conferirNova(iFr.value, m ? m.chave : '');
+        if (c.erro) { aviso(ret, false, c.erro); return; }
+        bSalvar.disabled = true;
+        var corpo = { titulo: iNome.value, texto: iTx.value, frases: linhasFrases(iFr.value), grupos: iGr.value };
+        if (m) corpo.chave = m.chave;
+        post(m ? 'mensagem_editar_nova' : 'mensagem_nova', corpo).then(function (j) {
+          if (!j.ok) { aviso(ret, false, j.erro); bSalvar.disabled = false; return; }
+          if (m) trocarMensagem(j.mensagem); else dados.mensagens.itens.unshift(j.mensagem);
+          sujo = false; msgSel = j.mensagem.chave; if (!m) msgFiltro = 'todas'; msgLista();
+          aviso($('pbot-ret-texto'), true, m ? 'Mensagem salva.' : 'Mensagem criada. Ela responde no WhatsApp com o whatsapp-ixc 0.5.0.');
+        });
+      });
+    } else if (m && pode('mensagens', 'ver')) {
+      var bH2 = botao('', 'ti-history', 'Histórico'); esq.appendChild(el('div', 'pbot-ed-bts')).appendChild(bH2);
+      bH2.addEventListener('click', function () { mostrarHistorico(m, esq, bH2); });
+    }
+    esq.appendChild(ret);
+    // teste
+    var teste = el('div', 'pbot-pq-teste');
+    teste.appendChild(el('i', 'ti ti-flask'));
+    var tIn = el('input', 'form-control'); tIn.type = 'text'; tIn.maxLength = 300; tIn.placeholder = 'Teste uma mensagem do grupo: ex. "bom dia, qual a senha do wifi do jockey?"';
+    var tRes = el('span', 'pbot-pq-res');
+    var testar = function () {
+      if (!tIn.value.trim()) { tRes.textContent = ''; tRes.className = 'pbot-pq-res'; return; }
+      var l = linhasFrases(iFr.value);
+      var esta = l.some(function (f) { return bateFrase(tIn.value, f); });
+      var outra = testarNova(tIn.value, true);
+      if (esta) { tRes.textContent = 'aciona esta mensagem' + (iGr.value === 'recados' ? ' (só no Recados)' : ''); tRes.className = 'pbot-pq-res ok'; }
+      else if (outra && (!m || outra.chave !== m.chave)) { tRes.textContent = 'aciona outra: "' + outra.titulo + '"'; tRes.className = 'pbot-pq-res nao'; }
+      else { tRes.textContent = 'não aciona esta mensagem'; tRes.className = 'pbot-pq-res nao'; }
+    };
+    tIn.addEventListener('input', testar);
+    teste.appendChild(tIn); teste.appendChild(tRes);
+    esq.appendChild(teste);
+    esq.appendChild(el('div', 'pbot-pq-nota', 'Tem prioridade sobre as respostas de escala e de setor. Vale no WhatsApp com o whatsapp-ixc 0.5.0.'));
+    dir.appendChild(el('label', 'pbot-rot', 'Pré-visualização'));
+    var pv = preVisualizacaoNova(iFr.value, iTx.value);
+    dir.appendChild(pv);
+    if (m && m.ativo === false) dir.classList.add('pbot-pv-off');
+    cols.appendChild(esq); cols.appendChild(dir);
+    ed.appendChild(cols);
+    var mudou = function () {
+      var orig = m ? [m.titulo, arr(m.frases).join('\n'), m.grupos, m.texto_padrao] : ['', '', 'todos', ''];
+      var agora = [iNome.value.trim(), linhasFrases(iFr.value).join('\n'), iGr.value, iTx.value.replace(/\s+$/, '')];
+      sujo = agora.some(function (v, i) { return v !== orig[i]; }) && (m !== null || agora[0] + agora[1] + agora[3] !== '');
+      var c = iFr.value.trim() ? conferirNova(iFr.value, m ? m.chave : '') : {};
+      var falta = !iNome.value.trim() ? 'Falta o nome.' : !linhasFrases(iFr.value).length ? 'Falta pelo menos uma frase.' : !iTx.value.trim() ? 'Falta o texto.' : /\{[a-z_]+\}/.test(iTx.value) ? 'Mensagem nova não aceita {variáveis}.' : '';
+      chk.textContent = c.erro || falta || c.aviso || '';
+      chk.className = 'pbot-ed-chk' + (c.erro || falta ? ' erro' : c.aviso ? ' aviso' : '');
+      if (bSalvar) bSalvar.disabled = !sujo || !!(c.erro || falta);
+      var novo = preVisualizacaoNova(iFr.value, iTx.value); pv.replaceWith(novo); pv = novo;
+      testar();
+    };
+    [iNome, iFr, iTx].forEach(function (x) { x.addEventListener('input', mudou); });
+    iGr.addEventListener('change', mudou);
+    if (!m && editar) iNome.focus();
   }
 
   // ---------------------------------------------------------------- 0.3.0: cadastros (shoppings, técnicos, contatos)

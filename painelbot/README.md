@@ -4,9 +4,11 @@ Gerencia o bot de WhatsApp da automação [`whatsapp-ixc`](../whatsapp-ixc/READM
 Autor SCDell, GPLv3+. Requisitos: GLPI 11.0.x, PHP 8.2+ com `pdo_pgsql` (`apt install php-pgsql`).
 
 Os dados **não** ficam no MariaDB do GLPI: o plugin lê e grava o Postgres do bot (schema `ixc`) com o usuário `painel_glpi`,
-que não tem acesso aos tokens do IXC e só grava nas tabelas do painel (mensagens, histórico e perguntas).
+que não tem acesso aos tokens do IXC e só grava nas tabelas do painel (mensagens, histórico, perguntas, apelidos e cadastros).
 
 ## O que tem
+
+**0.4.0** — **Mensagens**: **Nova mensagem** = resposta automática no grupo quando alguém escreve uma das frases escolhidas (nome, até 10 frases, todos os grupos ou só o Recados, texto com formatação do WhatsApp; telefone vira @; prioridade sobre escala e setores; chave `resp.N` em `ixc.mensagens`); editar, **excluir** (direito novo Mensagens > Excluir, dado na atualização a quem tem Configuração > Atualizar) e **ativar/desativar qualquer mensagem** (desativada = o trecho fica vazio; mensagem inteira vazia não é enviada; tipo de aviso de chamado desativado = registrado como ignorado). Filtro "Desativadas", teste da frase e pré-visualização. `sql/01` ganha as colunas `ativo, criada_painel, frases, frases_norm, grupos, criado_por, criado_em` (e as permissões do `painel_glpi`, sem precisar rodar o `02`). Vale no WhatsApp com o whatsapp-ixc 0.5.0. Testes em `tests/` (Editor 43, tela 42, migração).
 
 **0.3.1** — Técnicos: campo **Nome na planilha ESCALAS** (`ixc.tecnicos.nome_planilha`, coluna nova no `sql/01`): liga o nome da planilha dos 12x36 ao cadastro, para o nome editado no painel aparecer também nos 12x36 (com o whatsapp-ixc 0.4.1). Vazio = usa o nome. Coluna "Na planilha" na lista.
 

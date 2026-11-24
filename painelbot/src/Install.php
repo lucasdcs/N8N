@@ -31,6 +31,7 @@ final class Install
 
         self::criarDireitos($DB);
         Config::garantirPadroes();
+        self::migrar($DB);
         return true;
     }
 
@@ -49,6 +50,36 @@ final class Install
             unset($_SESSION['glpiactiveprofile'][$n]);
         }
         return true;
+    }
+
+    /**
+     * Uma vez por versão (chave "migracao" da configuração do plugin):
+     * 0.4.0 — Mensagens ganhou "Excluir" (apagar as mensagens criadas no painel). Perfil com Configuração > Atualizar
+     * (o mesmo critério da instalação) que já tem Mensagens > Editar recebe também Excluir. Os demais não mudam.
+     */
+    public static function migrar(\DBmysql $DB): void
+    {
+        $feita = (string) (\Config::getConfigurationValues(Config::CONTEXTO, ['migracao'])['migracao'] ?? '');
+        if (version_compare($feita === '' ? '0' : $feita, '0.4.0', '>=')) {
+            return;
+        }
+        $admins = [];
+        foreach ($DB->request(['SELECT' => ['profiles_id', 'rights'], 'FROM' => 'glpi_profilerights', 'WHERE' => ['name' => 'config']]) as $r) {
+            if (((int) $r['rights'] & UPDATE) === UPDATE) {
+                $admins[(int) $r['profiles_id']] = true;
+            }
+        }
+        $ativo = (int) ($_SESSION['glpiactiveprofile']['id'] ?? 0);
+        foreach ($DB->request(['SELECT' => ['id', 'profiles_id', 'rights'], 'FROM' => 'glpi_profilerights', 'WHERE' => ['name' => Direito::MENSAGENS]]) as $r) {
+            $v = (int) $r['rights'];
+            if (isset($admins[(int) $r['profiles_id']]) && ($v & UPDATE) === UPDATE && ($v & DELETE) !== DELETE) {
+                $DB->update('glpi_profilerights', ['rights' => $v | DELETE], ['id' => (int) $r['id']]);
+                if ((int) $r['profiles_id'] === $ativo) {
+                    $_SESSION['glpiactiveprofile'][Direito::MENSAGENS] = $v | DELETE;
+                }
+            }
+        }
+        \Config::setConfigurationValues(Config::CONTEXTO, ['migracao' => '0.4.0']);
     }
 
     /**

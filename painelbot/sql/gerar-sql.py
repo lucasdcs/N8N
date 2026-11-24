@@ -10,10 +10,10 @@ def norm(s):
     s = unicodedata.normalize('NFD', s.lower()); s = ''.join(c for c in s if unicodedata.category(c) != 'Mn')
     return re.sub(r'\s+', ' ', re.sub(r'[^a-z0-9 ]', ' ', s)).strip()
 L = []
-L.append("""-- Painel do Bot 0.3.1 — tabelas de MENSAGENS, PERGUNTAS e APELIDOS do bot (schema ixc, Postgres do whatsapp-ixc).
+L.append("""-- Painel do Bot 0.4.0 — tabelas de MENSAGENS, PERGUNTAS e APELIDOS do bot (schema ixc, Postgres do whatsapp-ixc).
 -- Rodar como o dono do banco (usuário ixc). Idempotente: pode rodar de novo; NÃO sobrescreve textos já editados.
 --   docker exec -i n8n-compose-postgres-ixc-1 psql -U ixc -d ixc -v ON_ERROR_STOP=1 < 01-mensagens-perguntas.sql
--- O whatsapp-ixc 0.3.0/0.4.0/0.4.1 lê estas tabelas (texto editado, perguntas, apelidos). Rodar ANTES de importar os workflows.
+-- O whatsapp-ixc 0.3.0 em diante lê estas tabelas (texto editado, perguntas, apelidos; 0.5.0: mensagens desativadas e novas). Rodar ANTES de importar os workflows.
 -- Gerado por sql/gerar-sql.py a partir dos textos atuais dos workflows 01/02/03/04.
 
 BEGIN;
@@ -60,6 +60,15 @@ CREATE TABLE IF NOT EXISTS ixc.perguntas (
 ALTER TABLE ixc.perguntas ADD COLUMN IF NOT EXISTS excluida boolean NOT NULL DEFAULT false;
 -- 0.3.1: nome do tecnico como aparece na planilha ESCALAS (12x36); vazio = nome. whatsapp-ixc 0.4.1 liga a planilha ao cadastro por ele
 ALTER TABLE ixc.tecnicos ADD COLUMN IF NOT EXISTS nome_planilha text;
+-- 0.4.0: mensagem desativada (o bot deixa o trecho vazio; mensagem inteira vazia nao e enviada) e mensagens NOVAS criadas
+-- no painel (chave resp.N): resposta automatica no grupo quando alguem escreve uma das frases. whatsapp-ixc 0.5.0 le.
+ALTER TABLE ixc.mensagens ADD COLUMN IF NOT EXISTS ativo boolean NOT NULL DEFAULT true;
+ALTER TABLE ixc.mensagens ADD COLUMN IF NOT EXISTS criada_painel boolean NOT NULL DEFAULT false;  -- resp.N: texto em texto_padrao
+ALTER TABLE ixc.mensagens ADD COLUMN IF NOT EXISTS frases text[] NOT NULL DEFAULT '{}';         -- como foram digitadas
+ALTER TABLE ixc.mensagens ADD COLUMN IF NOT EXISTS frases_norm text[] NOT NULL DEFAULT '{}';    -- o que o bot compara
+ALTER TABLE ixc.mensagens ADD COLUMN IF NOT EXISTS grupos text NOT NULL DEFAULT 'todos';        -- todos | recados
+ALTER TABLE ixc.mensagens ADD COLUMN IF NOT EXISTS criado_por text;
+ALTER TABLE ixc.mensagens ADD COLUMN IF NOT EXISTS criado_em timestamptz;
 
 -- 0.3.0: apelidos de shopping (como as pessoas chamam no grupo: "quem esta no <apelido>?"); antes fixos no WF 03
 CREATE TABLE IF NOT EXISTS ixc.apelidos (
@@ -103,10 +112,18 @@ for a in json.load(open(os.path.join(os.path.dirname(os.path.abspath(sys.argv[1]
     L.append("INSERT INTO ixc.apelidos (apelido, apelido_norm, alvos, generico, padrao, criado_por) VALUES (%s, %s, %s, %s, true, 'bot (padrão)') ON CONFLICT (apelido_norm) DO NOTHING;"
              % (lit(a['apelido']), lit(norm(a['apelido'])), arr(a['alvos']), 'true' if a['generico'] else 'false'))
 L.append("""
+-- 0.4.0: permissoes do usuario do painel nas colunas novas (sem precisar rodar o 02 de novo; o 02 tambem tem)
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'painel_glpi') THEN
+    GRANT INSERT, DELETE ON ixc.mensagens TO painel_glpi;
+    GRANT UPDATE (titulo, exemplo, texto_padrao, ativo, frases, frases_norm, grupos) ON ixc.mensagens TO painel_glpi;
+  END IF;
+END $$;
+
 COMMIT;
 
 -- conferência
-SELECT grupo, count(*) AS mensagens, count(*) FILTER (WHERE texto IS NOT NULL) AS editadas FROM ixc.mensagens GROUP BY grupo ORDER BY min(ordem);
+SELECT grupo, count(*) AS mensagens, count(*) FILTER (WHERE texto IS NOT NULL) AS editadas, count(*) FILTER (WHERE NOT ativo) AS desativadas FROM ixc.mensagens GROUP BY grupo ORDER BY min(ordem);
 SELECT alvo, count(*) AS perguntas, count(*) FILTER (WHERE NOT padrao) AS criadas_no_painel FROM ixc.perguntas GROUP BY alvo ORDER BY alvo;
 SELECT count(*) AS apelidos, count(*) FILTER (WHERE NOT padrao) AS criados_no_painel FROM ixc.apelidos;
 """)

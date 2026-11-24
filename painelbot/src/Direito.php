@@ -27,7 +27,7 @@ final class Direito
     /** Área → [rótulo, descrição, bits que a área usa]. Ordem = ordem da matriz no perfil. */
     public const AREAS = [
         self::GERAL     => ['Visão geral e últimos envios', 'funcionalidades, IXCs lidos, histórico de envios', READ],
-        self::MENSAGENS => ['Mensagens', 'textos das respostas, avisos e lembretes · restaurar padrão', READ | UPDATE],
+        self::MENSAGENS => ['Mensagens', 'textos das respostas, avisos e lembretes · restaurar padrão · desativar · mensagens novas (Excluir = apagar as criadas no painel)', READ | UPDATE | DELETE],
         self::PERGUNTAS => ['Perguntas', 'frases que acionam o bot (algum n2?, financeiro?…)', READ | UPDATE | DELETE],
         self::ESCALA    => ['Shoppings e escala', 'apelidos, horários, exceções de férias/folga', READ | UPDATE | DELETE],
         self::CADASTROS => ['Técnicos e contatos de setor', 'nomes, telefones, N2/financeiro/comercial…', READ | UPDATE | DELETE],
