@@ -80,7 +80,7 @@ function plantaoHoje(C, ESCALA, emp, loc) {
   // técnico cadastrado cujo 1º nome aparece; se dois tiverem o mesmo 1º nome, desempata pelo 2º (senão não marca ninguém)
   const porPrimeiro = {};
   for (const t of Object.values(C.tec).filter(t => t.empresa === emp)) {
-    const [p1, p2] = normTxt(t.nome).split(/\s+/);
+    const [p1, p2] = normTxt(t.nome_planilha || t.nome).split(/\s+/);  // 0.4.1: nome na planilha (Painel do Bot); vazio = nome
     if (tem(p1)) (porPrimeiro[p1] = porPrimeiro[p1] || []).push({ t, p2 });
   }
   const tecs = [];
@@ -88,7 +88,14 @@ function plantaoHoje(C, ESCALA, emp, loc) {
     if (cands.length === 1) tecs.push(cands[0].t);
     else { const f = cands.filter(c => tem(c.p2)); if (f.length === 1) tecs.push(f[0].t); }
   }
-  return { nomes, texto, tecs, tem };
+  // 0.4.1: o plantao sai com o nome do cadastro (editado no painel) quando o tecnico da planilha foi identificado
+  const pal_ = s => normTxt(s).replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(Boolean);
+  const exibe = nomes.map(n => {
+    const w = pal_(n), c = tecs.filter(t => pal_(t.nome_planilha || t.nome)[0] === w[0]);
+    const t = c.length === 1 ? c[0] : c.find(t => { const k = pal_(t.nome_planilha || t.nome); return k[1] && w.includes(k[1]); });
+    return t ? t.nome : n;
+  });
+  return { nomes: exibe, texto, tecs, tem };
 }
 
 const ESCALA_HOJE = CFGRAW.escala_hoje || [];
@@ -167,7 +174,7 @@ for (const e of porChamado.values()) {
     const tAtrib = C.tec[emp + ':' + pid];
     if (tAtrib && loc && rota.grupo === loc.grupo) {
       const pl = plantaoHoje(C, ESCALA_HOJE, emp, loc);
-      if (pl && pl.nomes.length && !pl.tem(normTxt(tAtrib.nome).split(/\s+/)[0])) {
+      if (pl && pl.nomes.length && !pl.tem(normTxt(tAtrib.nome_planilha || tAtrib.nome).split(/\s+/)[0])) {
         rota.marcar = [...rota.marcar];
         for (const t of pl.tecs) if (t.fone && !rota.marcar.includes(t.fone)) rota.marcar.push(t.fone);
         folga = tAtrib.nome + ' está de folga hoje — plantão no ' + loc.nome + ': ' + pl.nomes.join(' e ');

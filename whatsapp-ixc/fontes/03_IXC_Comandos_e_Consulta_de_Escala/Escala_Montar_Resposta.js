@@ -115,11 +115,24 @@ function pessoaTxt(x) {  // 0.3.0: "Nome (dd) nnnn-nnnn" -> mensagem escala.shop
   const m = String(x).trim().match(/^(.*?)\s*(\(\d{2}\)\s*[\d-]+)?$/);
   return M('escala.shopping.pessoa', '👤 {tecnico} — {telefone}', { tecnico: m ? m[1] : String(x).trim(), telefone: m && m[2] ? m[2] : '' });
 }
+// 0.4.1 (Painel do Bot): nome da planilha ESCALAS -> tecnico cadastrado ("nome na planilha"; vazio = nome).
+// Nome inteiro igual; senao 1o nome (empate desfeito pelo 2o). Achou: a resposta usa o nome e o telefone do cadastro.
+function tecDaPlanilha(emp, nome) {
+  const pal = s => norm(s).replace(/[^a-z0-9 ]+/g, ' ').trim().split(/\s+/).filter(Boolean);
+  const w = pal(nome); if (!w.length) return null;
+  const da = TEC.filter(t => t.empresa === emp);
+  const ex = da.filter(t => pal(t.nome_planilha || t.nome).join(' ') === w.join(' '));
+  if (ex.length === 1) return ex[0];
+  const c = da.filter(t => pal(t.nome_planilha || t.nome)[0] === w[0]);
+  if (c.length === 1) return c[0];
+  const d = c.filter(t => { const k = pal(t.nome_planilha || t.nome); return k[1] && w.includes(k[1]); });
+  return d.length === 1 ? d[0] : null;
+}
 function quemNoDia(loc, iso) {
   const b = EB[loc.empresa + ':' + loc.id_condominio] || {};
   if (b.tipo === '12x36' || b.tipo === 'escala') {
     const ns = ED.filter(d => d.empresa === loc.empresa && d.id_condominio === loc.id_condominio && String(d.data).slice(0, 10) === iso).map(d => d.tecnico);
-    if (ns.length) return ns.map(n => n + ' ' + foneDe(n, loc, b)).join(' / ').trim();
+    if (ns.length) return ns.map(n => { const t = tecDaPlanilha(loc.empresa, n); return t ? t.nome + (t.fone ? ' ' + fmtFone(t.fone) : '') : n + ' ' + foneDe(n, loc, b); }).join(' / ').trim();  // 0.4.1
     return b.tecnicos ? b.tecnicos.replace(/;/g, ' /') : M('escala.sem_escala_dia', '_(escala do dia não encontrada na planilha)_');  // sem escala do dia -> equipe da escala base
   }
   const tp = TEC.find(t => t.empresa === loc.empresa && t.id_func === loc.tec_padrao);
@@ -189,7 +202,8 @@ function quem(q) {
   const locs = LOC.filter(l => {
     const b = EB[l.empresa + ':' + l.id_condominio] || {};
     const tp = TEC.find(t => t.empresa === l.empresa && t.id_func === l.tec_padrao);
-    const nomes = [tp ? tp.nome : '', b.tecnicos || ''].concat(ED.filter(d => d.empresa === l.empresa && d.id_condominio === l.id_condominio).map(d => d.tecnico));
+    const nomes = [tp ? tp.nome : '', b.tecnicos || ''].concat(ED.filter(d => d.empresa === l.empresa && d.id_condominio === l.id_condominio).map(d => d.tecnico))
+      .concat(ED.filter(d => d.empresa === l.empresa && d.id_condominio === l.id_condominio).map(d => (tecDaPlanilha(l.empresa, d.tecnico) || {}).nome || ''));  // 0.4.1
     return nomes.some(n => norm(n).split(/[;\s()]+/).some(w => w && w === primeiro) && s.split(' ').every(p => norm(n).includes(p)));
   });
   if (locs.length) return locs.map(detalheLocal).join('\n\n');
