@@ -6,6 +6,8 @@ const MSG_ = (() => { try { let c = $('Escala: Buscar Dados').first().json.cfg; 
 const OFF_ = Object.keys(MSG_).some(k => MSG_[k] === null);  // 0.5.0: alguma mensagem desativada no Painel do Bot
 function M(chave, padrao, v) {
   if (MSG_[chave] === null) return '';  // 0.5.0: desativada no Painel do Bot
+  // 0.6.3: variavel do bot desativada no painel (vsys.<nome>) = vazia em todas as mensagens
+  if (v) { const v2_ = {}; for (const k of Object.keys(v)) v2_[k] = MSG_['vsys.' + k] === null ? '' : v[k]; v = v2_; }
   const t = typeof MSG_[chave] === 'string' && MSG_[chave].trim() ? MSG_[chave] : padrao;
   if (!v) return t;
   const vazio = k => v[k] === null || v[k] === undefined || String(v[k]) === '';
@@ -269,7 +271,12 @@ if (P0.resposta_fixa !== undefined) {
   const corpo0_ = String(P0.resposta_fixa || '').trim();
   if (!corpo0_) return [];
   // 0.6.2: variaveis do painel ({nome} = valor) e {shopping}; M() com chave inexistente = o texto dado, com as variaveis
-  const VR_ = Object.assign({}, P0.resposta_vars || {});
+  // 0.6.3: variavel por shopping {p: padrao, s: {"EMPRESA:ID": valor}}; a 0.6.2 mandava so o valor (texto)
+  const VRAW_ = P0.resposta_vars || {};
+  const varsDe_ = l => { const o = {}; for (const [k, d] of Object.entries(VRAW_)) {
+    if (d && typeof d === 'object') { const s = d.s || {}, ch = l ? l.empresa + ':' + l.id_condominio : null; o[k] = String(ch && s[ch] !== undefined ? s[ch] : (d.p || '')); }
+    else o[k] = String(d === null || d === undefined ? '' : d); } return o; };
+  const VR_ = varsDe_(null);
   let corpo_;
   if (P0.resposta_shopping === undefined || P0.resposta_shopping === null) corpo_ = M('__resp__', corpo0_, VR_);
   else {
@@ -284,7 +291,7 @@ if (P0.resposta_fixa !== undefined) {
     }
     let locs_ = ach.map(k => LOC.find(l => l.empresa + ':' + l.id_condominio === k)).filter(Boolean);
     if (!locs_.length) locs_ = LOC.slice().sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));   // nenhum reconhecido: todos
-    const partes_ = locs_.map(l => M('__resp__', corpo0_, Object.assign({}, VR_, { shopping: l.nome }))).filter(x => x.trim());
+    const partes_ = locs_.map(l => M('__resp__', corpo0_, Object.assign(varsDe_(l), { shopping: l.nome }))).filter(x => x.trim());
     corpo_ = partes_.join(corpo0_.includes('\n') ? '\n\n' : '\n');
   }
   if (!corpo_.trim()) return [];
