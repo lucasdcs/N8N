@@ -137,3 +137,8 @@ Recorte da planta comercial do shopping com a loja marcada em vermelho, mandado 
 - **Ligar/desligar:** `UPDATE ixc.parametros SET valor = 'sim' WHERE chave = 'planta_ativo';` (`'nao'` desliga nos dois workflows, sem mexer no n8n).
 - **WF 02, janela curta:** o lembrete "em 15 minutos" (3–15 min, tipo `lembrete_15min`) virou "daqui 10 minutos" (3–10 min, tipo `lembrete_10min`). Na troca, uma visita que já recebeu o de 15 min pode receber também o de 10 min — só nas visitas daquela hora.
 - **Conferência:** `SELECT tipo, status, motivo, count(*) FROM ixc.eventos WHERE tipo LIKE 'lembrete%' AND ts > now() - interval '1 day' GROUP BY 1,2,3;`
+
+## Simulador para o ambiente de teste (simulador 0.1.0)
+
+Pasta `simulador/`: WhatsApp (WAHA) e IXC **de mentira** com tela de grupos no navegador, para testar o bot de perguntas, os comandos `ixc`, os avisos de chamado e os lembretes de visita no n8n de teste, ligado ao banco de teste. Os workflows `[SIM]` são gerados da produção por `simulador/gerar_sim.py` com os endereços fixos no simulador (nada sai para o WhatsApp nem para o IXC reais). Instalação e limites: `simulador/README.md`. O pacote com os workflows convertidos tem dados reais e **não** vai para o repositório.
+

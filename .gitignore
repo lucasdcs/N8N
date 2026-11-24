@@ -11,3 +11,7 @@ node_modules/
 __pycache__/
 *.pyc
 whatsapp-ixc/scripts/valores.json
+!whatsapp-ixc/simulador/*.sql
+whatsapp-ixc/simulador/n8n/
+whatsapp-ixc/simulador/dados/
+whatsapp-ixc/simulador/.senha

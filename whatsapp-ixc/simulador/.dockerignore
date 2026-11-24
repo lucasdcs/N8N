@@ -1,0 +1,9 @@
+dados
+n8n
+check
+*.sh
+*.sql
+*.py
+README.md
+.env
+.senha

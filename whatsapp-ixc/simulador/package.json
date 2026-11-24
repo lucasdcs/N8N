@@ -1,0 +1,11 @@
+{
+  "name": "ixc-simulador",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Simulador do whatsapp-ixc para o ambiente de teste: WAHA + IXC de mentira com tela de grupos",
+  "main": "servidor.js",
+  "scripts": { "start": "node servidor.js" },
+  "dependencies": { "pg": "8.23.1" },
+  "author": "SCDell",
+  "license": "UNLICENSED"
+}

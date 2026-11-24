@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simulador whatsapp-ixc (teste)</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="topo">
+  <div class="marca">🧪 <b>Simulador</b> whatsapp-ixc <span class="tag">TESTE — nada vai para o WhatsApp nem para o IXC reais</span></div>
+  <div class="acoes-topo">
+    <button data-rodar="01" title="Roda agora o [SIM] 01 (avisos de chamado). Sozinho ele roda a cada 3 min.">▶ Avisos (01)</button>
+    <button data-rodar="02" title="Roda agora o [SIM] 02 (lembretes de visita). Sozinho ele roda a cada 5 min.">▶ Lembretes (02)</button>
+    <button data-rodar="04" title="Roda agora o [SIM] 04 (escala da planilha). Sozinho ele roda de hora em hora.">▶ Escala (04)</button>
+    <label class="chave" title="O WAHA simulado responde erro 503: serve para testar falha e reenvio"><input type="checkbox" id="wahaFora"> WAHA fora do ar</label>
+    <span id="status" class="status">…</span>
+  </div>
+</header>
+<main class="grade">
+  <aside class="chats">
+    <div class="busca"><input id="buscaChat" placeholder="Procurar conversa"></div>
+    <div id="listaChats"></div>
+    <div class="rodape-chats"><button id="recarregarCad" title="Lê de novo shoppings, técnicos e grupos do banco de teste (depois de editar no Painel do Bot)">↻ Reler banco</button>
+      <button id="limparConversas" class="perigo" title="Apaga todas as conversas do simulador">Limpar conversas</button></div>
+  </aside>
+  <section class="conversa">
+    <div class="cab-conversa"><div><b id="tituloChat">Escolha uma conversa</b><div id="subChat" class="sub"></div></div><button id="limparChat" class="mini" hidden>Limpar esta</button></div>
+    <div id="mensagens" class="mensagens"></div>
+    <form id="formEnviar" class="enviar">
+      <select id="comoQuem" title="Quem está escrevendo no grupo"></select>
+      <div id="respondendo" class="respondendo" hidden></div>
+      <textarea id="texto" rows="1" placeholder="Escreva como no grupo (ex.: quem está no jockey? / ixc ajuda)"></textarea>
+      <button type="submit">Enviar</button>
+    </form>
+  </section>
+  <aside class="lado">
+    <nav class="abas"><button data-aba="ixc" class="ativa">IXC simulado</button><button data-aba="log">Registro</button><button data-aba="ajuda">Como testar</button></nav>
+    <div id="aba-ixc" class="aba">
+      <form id="formChamado" class="cartao">
+        <h3>Novo chamado</h3>
+        <label>Empresa <select name="empresa" id="ch_empresa"></select></label>
+        <label>Shopping <select name="id_condominio" id="ch_local"></select></label>
+        <label>Assunto <select name="id_assunto" id="ch_assunto"></select></label>
+        <label>Técnico <select name="id_tecnico" id="ch_tecnico"></select></label>
+        <div class="linha2"><label>Loja nº <input name="loja" placeholder="ex.: 102"></label><label title="0 = abre agora (aviso de novo chamado). Mais que 0 = chamado antigo, sem o evento de abertura (para o aviso de sem técnico)">Aberto há (min) <input name="aberto_ha" type="number" min="0" value="0"></label></div>
+        <label>Cliente <input name="cliente" placeholder="Cliente Simulado"></label>
+        <label>Mensagem <textarea name="mensagem" rows="2" placeholder="Texto do chamado"></textarea></label>
+        <button type="submit">Abrir chamado</button>
+        <p class="dica">Sem técnico: o aviso "sem técnico" sai quando o chamado tiver 10+ min (use <i>Aberto há 12</i>). Depois clique ▶ Avisos.</p>
+      </form>
+      <div class="cartao"><h3>Chamados simulados <button id="limparIxc" class="mini perigo">limpar</button></h3><div id="listaChamados"></div></div>
+    </div>
+    <div id="aba-log" class="aba" hidden><div id="log" class="log"></div></div>
+    <div id="aba-ajuda" class="aba" hidden>
+      <div class="cartao ajuda">
+        <h3>Como testar</h3>
+        <ol>
+          <li><b>Bot de perguntas:</b> abra o grupo de um shopping ou de escala e escreva "quem está no jockey?". A resposta chega em 1–3 s.</li>
+          <li><b>Comandos:</b> no grupo <i>Automação</i>, escreva "ixc ajuda", "ixc quem jockey"… "ixc ok" aplica (no banco de teste).</li>
+          <li><b>Textos e perguntas do Painel do Bot:</b> edite no GLPI de teste e pergunte de novo aqui: vale na mensagem seguinte.</li>
+          <li><b>Avisos:</b> abra um chamado à direita, clique ▶ Avisos (01) e veja o aviso no grupo do shopping. Depois Assumir / Transferir e ▶ de novo.</li>
+          <li><b>Sem técnico:</b> chamado sem técnico com "Aberto há 12" → ▶ Avisos. O re-alerta segue as regras do banco (<code>realerta_min</code>, padrão 120 min, e o horário 10h–22h); para testar logo, baixe o <code>realerta_min</code> no banco de teste e use "−5h" (escalado).</li>
+          <li><b>Lembretes:</b> no chamado, "Agendar +55 min" (lembrete de 1 h) ou "+8 min" (10 min) → ▶ Lembretes (02). Com técnico com telefone, vai no particular dele.</li>
+          <li><b>Falha e reenvio:</b> ligue "WAHA fora do ar", gere um aviso, desligue e rode ▶ Avisos de novo.</li>
+        </ol>
+        <p>Os workflows <b>[SIM]</b> só falam com este simulador (endereços fixos). Os dados são do banco de teste <code>pbot-pg-teste</code>.</p>
+      </div>
+    </div>
+  </aside>
+</main>
+<div id="aviso" class="toast" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>
