@@ -15,7 +15,7 @@ function abrir(direitos) {
   const html = `<html><head><meta property="glpi:csrf_token" content="x"></head><body><div id="pbot" data-api="${BASE}/dados" data-acao="${BASE}/acao" data-direitos='${JSON.stringify(D)}'>
     <span id="pbot-status"></span><div id="pbot-erro" hidden></div>
     <section class="pbot-sec" data-sec="mensagens"><div class="pbot-msg"><div class="pbot-msg-lista"><input type="search" id="pbot-busca-msg"><div class="pbot-chips" id="pbot-msg-filtros"></div><div id="pbot-msg-itens"></div></div><div class="pbot-msg-ed" id="pbot-msg-ed"></div></div></section>
-    <section class="pbot-sec" data-sec="variaveis"><div class="pbot-tabela-wrap"><table class="pbot-tabela" id="pbot-variaveis"></table></div><div id="pbot-var-form"></div></section>
+    <section class="pbot-sec" data-sec="variaveis"><div class="pbot-tabela-wrap"><table class="pbot-tabela" id="pbot-variaveis"></table></div><div id="pbot-var-form"></div><div class="pbot-tabela-wrap"><table class="pbot-tabela" id="pbot-variaveis-bot"></table></div><div id="pbot-varbot-form"></div></section>
   </div></body></html>`;
   const dom = new JSDOM(html, { runScripts: 'outside-only', url: BASE + '/' });
   const w = dom.window;
@@ -33,6 +33,7 @@ const item = (w, titulo) => $$(w, '.pbot-msg-item').find(b => b.querySelector('.
 
 (async () => {
   execSync(require('path').join(__dirname, 'reset-banco.sh') + ' 2>/dev/null');
+  sql("INSERT INTO ixc.locais (empresa, id_condominio, nome) VALUES ('CACTA','263','Jockey Plaza'),('4B','199','Palladium Curitiba')");
   // ---------------- perfil com tudo
   let w = abrir({ m: 7, p: 7 });
   check('carregou', await ate(() => $$(w, '.pbot-msg-item').length === 55));
@@ -155,6 +156,38 @@ const item = (w, titulo) => $$(w, '.pbot-msg-item').find(b => b.querySelector('.
   check('excluir usada: recusa com o nome da mensagem', await ate(() => /Holding dos Shopping/.test($(w, '#pbot-var-ret').textContent) && $(w, '#pbot-var-ret').classList.contains('erro')));
   $(w, '#pbot-variaveis .pbot-sw').click();
   check('desativar variavel', await ate(() => sql("SELECT ativo FROM ixc.mensagens WHERE chave='var.holding'") === 'f' && /desativada/.test($(w, '#pbot-var-ret').textContent)));
+  // ---------------- 0.4.2: variável por shopping
+  bt(w, 'Nova variável').click();
+  let fsel = $(w, '#pbot-var-form select');
+  check('form: shoppings escondidos no fixo', $(w, '#pbot-var-form .pbot-var-shs').hidden);
+  fsel.value = 'shopping'; fsel.dispatchEvent(new w.Event('change'));
+  check('form: lista de shoppings no por shopping', !$(w, '#pbot-var-form .pbot-var-shs').hidden && $$(w, '#pbot-var-form .pbot-var-sh').length === 2);
+  digitar(w, $$(w, '#pbot-var-form input')[0], 'dono');
+  bt(w, 'Criar variável').click();
+  check('por shopping vazio: erro', /pelo menos um shopping/.test($(w, '#pbot-var-form .pbot-retorno').textContent));
+  const linJ = $$(w, '#pbot-var-form .pbot-var-sh').find(x => /Jockey/.test(x.textContent));
+  linJ.querySelector('input').value = 'Cacta Holding';
+  bt(w, 'Criar variável').click();
+  check('criou por shopping', await ate(() => sql("SELECT texto FROM ixc.mensagens WHERE chave='var.dono'") === '{"CACTA:263":"Cacta Holding"}' && /por shopping \(1\)/.test($(w, '#pbot-variaveis').textContent)));
+  check('tabela mostra o valor do shopping', /Jockey Plaza: Cacta Holding/.test($(w, '#pbot-variaveis').textContent));
+  bt(w, 'Nova mensagem').click();
+  { let [n4] = $$(w, '#pbot-msg-ed input.form-control'); let [f4, t4] = $$(w, '#pbot-msg-ed textarea');
+    digitar(w, n4, 'Dono'); digitar(w, f4, 'quem e o dono do {shopping}'); digitar(w, t4, 'Dono do {shopping}: {dono}');
+    check('preview com valor do shopping', /Dono do Jockey Plaza: Cacta Holding/.test($(w, '#pbot-msg-ed .pbot-wa-bolha').textContent), $(w, '#pbot-msg-ed .pbot-wa-bolha').textContent);
+    check('chip {dono}', $$(w, '#pbot-msg-ed .pbot-var-bt').some(b => b.textContent === '{dono}')); }
+  // ---------------- 0.4.2: variáveis do bot
+  check('tabela do bot: 36', $$(w, '#pbot-variaveis-bot tbody tr').length === 36);
+  const linhaBot = n => $$(w, '#pbot-variaveis-bot tbody tr').find(tr => tr.firstChild.textContent === '{' + n + '}');
+  check('usos do {protocolo}', /^2:/.test(linhaBot('protocolo').children[3].textContent));
+  linhaBot('protocolo').querySelector('button[title^="Editar"]').click();
+  { const [d5, e5] = $$(w, '#pbot-varbot-form input'); digitar(w, d5, 'Número do chamado'); digitar(w, e5, '2026-0001'); bt(w, 'Salvar', $(w, '#pbot-varbot-form')).click(); }
+  check('editou variavel do bot', await ate(() => sql("SELECT titulo||'|'||texto_padrao FROM ixc.mensagens WHERE chave='vsys.protocolo'") === 'Número do chamado|2026-0001' && /alterada/.test(linhaBot('protocolo').textContent)));
+  item(w, 'Chamado aberto com técnico') && item(w, 'Chamado aberto com técnico').click();
+  linhaBot('marcados').querySelector('.pbot-sw').click();
+  check('desativou {marcados} (confirmou)', await ate(() => sql("SELECT ativo FROM ixc.mensagens WHERE chave='vsys.marcados'") === 'f' && /desativada/.test($(w, '#pbot-varbot-ret').textContent)));
+  linhaBot('protocolo').querySelector('button[title^="Restaurar"]').click();
+  check('restaurou {protocolo}', await ate(() => sql("SELECT count(*) FROM ixc.mensagens WHERE chave='vsys.protocolo'") === '0' && !/alterada/.test(linhaBot('protocolo').textContent)));
+  check('vsys nao aparece em Mensagens', !$$(w, '.pbot-msg-item').some(b => /^vsys\./.test(b.getAttribute('data-chave'))));
   w.close();
 
   // ---------------- perfil só Visualizar
@@ -163,7 +196,7 @@ const item = (w, titulo) => $$(w, '.pbot-msg-item').find(b => b.querySelector('.
   check('so ver: sem Nova mensagem', !bt(w, 'Nova mensagem'));
   item(w, 'Senha do wi-fi do Jockey').click();
   check('so ver: campos somente leitura, sem chave, pill desativada', $$(w, '#pbot-msg-ed textarea').every(t => t.readOnly) && !$(w, '#pbot-msg-ed .pbot-sw') && /desativada/.test($(w, '.pbot-ed-ativa').textContent));
-  check('so ver: aba variaveis sem Nova/editar/chave', !bt(w, 'Nova variável') && !$(w, '#pbot-variaveis .pbot-sw') && !$(w, '#pbot-variaveis button[title^="Editar"]'));
+  check('so ver: aba variaveis sem Nova/editar/chave', !bt(w, 'Nova variável') && !$(w, '#pbot-variaveis .pbot-sw') && !$(w, '#pbot-variaveis button[title^="Editar"]') && !$(w, '#pbot-variaveis-bot .pbot-sw') && $$(w, '#pbot-variaveis-bot tbody tr').length === 36);
   check('so ver: sem Salvar/Excluir, com Historico', !bt(w, 'Salvar', $(w, '#pbot-msg-ed')) && !bt(w, 'Excluir', $(w, '#pbot-msg-ed')) && !!bt(w, 'Histórico', $(w, '#pbot-msg-ed')));
   w.close();
   // ---------------- editar sem excluir: sem botao Excluir; servidor recusa

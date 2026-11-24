@@ -92,7 +92,8 @@ check('bot: ativa sem edicao nao vem', !array_key_exists('escala.cabecalho', $cf
 
 // ---------------- 0.4.1: variáveis e {shopping}
 check('nome invalido', str_contains((string) erro(fn() => $ed->criarVariavel('Holding!', 'x', '')), 'minúsculas'));
-check('nome reservado', str_contains((string) erro(fn() => $ed->criarVariavel('shopping', 'x', '')), 'já é do bot'));
+check('nome reservado', str_contains((string) erro(fn() => $ed->criarVariavel('shopping', 'x', '')), 'variável do bot'));
+check('nome de variavel do bot', str_contains((string) erro(fn() => $ed->criarVariavel('protocolo', 'x', '')), 'variável do bot'));
 check('valor vazio', str_contains((string) erro(fn() => $ed->criarVariavel('holding', '  ', '')), 'valor'));
 check('valor com variavel', str_contains((string) erro(fn() => $ed->criarVariavel('holding', 'x {y}', '')), 'dentro'));
 $v = $ed->criarVariavel('{holding}', '4BTELECOM', 'Empresa dona dos shoppings');
@@ -121,5 +122,42 @@ check('variavel inexistente', str_contains((string) erro(fn() => $ed->editarVari
 $cfgB = json_decode($bot->pdo()->query("SELECT coalesce(json_object_agg(substr(m.chave, 5), CASE WHEN coalesce(to_jsonb(m)->>'ativo', 'true') = 'true' THEN m.texto_padrao ELSE '' END), '{}'::json)::text FROM ixc.mensagens m WHERE m.chave LIKE 'var.%'")->fetchColumn(), true);
 check('bot: variaveis {nome: valor}', $cfgB === ['holding' => '4B Telecom'], json_encode($cfgB));
 check('pergunta com frase de var nao conflita', $ed->criarPergunta('rh', 'holding rh teste', 'todos')['frase'] === 'holding rh teste');
+
+// ---------------- 0.4.2: variável por shopping e variáveis do bot
+$pdoA = new PDO('pgsql:host=' . (getenv('PGH') ?: '/tmp/pg') . ';port=' . (getenv('PGP') ?: 5499) . ';dbname=ixc', 'ixc', '');
+$pdoA->exec("INSERT INTO ixc.locais (empresa, id_condominio, nome) VALUES ('CACTA','263','Jockey Plaza'),('4B','199','Palladium Curitiba') ON CONFLICT DO NOTHING");
+check('lista de shoppings', array_column($bot->listaShoppings(), 'chave') === ['4B:199', 'CACTA:263']);
+check('por shopping sem nada', str_contains((string) erro(fn() => $ed->criarVariavel('dono', '', '', 'shopping', [])), 'pelo menos um shopping'));
+check('por shopping com chave invalida', str_contains((string) erro(fn() => $ed->criarVariavel('dono', '', '', 'shopping', ['X:1' => 'a'])), 'não encontrado'));
+check('por shopping valor com variavel', str_contains((string) erro(fn() => $ed->criarVariavel('dono', '', '', 'shopping', ['CACTA:263' => 'a {b}'])), 'Jockey Plaza'));
+$d1 = $ed->criarVariavel('dono', '', 'Holding por shopping', 'shopping', ['CACTA:263' => 'Cacta Holding', '4B:199' => '  ']);
+check('cria por shopping (vazio ignorado)', $d1['tipo'] === 'shopping' && $d1['valores'] === ['CACTA:263' => 'Cacta Holding'] && $d1['valor'] === '', json_encode($d1));
+$d2 = $ed->editarVariavel('dono', '4B Telecom', 'Holding por shopping', 'shopping', ['CACTA:263' => 'Cacta Holding', '4B:199' => 'Palladium Holding']);
+check('edita por shopping + padrao', $d2['valores'] === ['4B:199' => 'Palladium Holding', 'CACTA:263' => 'Cacta Holding'] && $d2['valor'] === '4B Telecom');
+check('historico por shopping', str_contains($ed->historicoVariavel('dono')[0]['depois'], 'Palladium Holding'));
+$d3 = $ed->editarVariavel('dono', 'Unica', '', 'fixo', []);
+check('volta para fixo', $d3['tipo'] === 'fixo' && $d3['valor'] === 'Unica' && $pdoA->query("SELECT texto FROM ixc.mensagens WHERE chave='var.dono'")->fetchColumn() === null);
+$ed->editarVariavel('dono', '', '', 'shopping', ['CACTA:263' => 'Cacta Holding']);
+check('mensagem nova aceita a variavel por shopping', $ed->criarNova('Dono do shopping', 'Dono do {shopping}: {dono}', 'quem e o dono do {shopping}', 'todos')['nova']);
+// bot lê (consulta da 0.6.3)
+$q = "SELECT coalesce(json_object_agg(substr(m.chave, 5), json_build_object('p', CASE WHEN coalesce(to_jsonb(m)->>'ativo', 'true') = 'true' THEN m.texto_padrao ELSE '' END, 's', CASE WHEN coalesce(to_jsonb(m)->>'ativo', 'true') = 'true' AND m.texto ~ '^\\s*\\{' THEN m.texto::json ELSE '{}'::json END)), '{}'::json)::text FROM ixc.mensagens m WHERE m.chave LIKE 'var.%'";
+$vb = json_decode($bot->pdo()->query($q)->fetchColumn(), true);
+check('bot: por shopping {p, s}', $vb['dono'] === ['p' => '', 's' => ['CACTA:263' => 'Cacta Holding']] && $vb['holding']['p'] === '4B Telecom' && $vb['holding']['s'] === [], json_encode($vb));
+// variáveis do bot
+$vs = $bot->variaveisBot();
+check('36 variaveis do bot', count($vs) === 36 && !array_filter($vs, fn($x) => $x['alterada'] || !$x['ativo']));
+$pr = array_values(array_filter($vs, fn($x) => $x['nome'] === 'protocolo'))[0];
+check('usos da variavel do bot', array_column($pr['mensagens'], 'chave') === ['aviso.corpo', 'lembrete.1h'], json_encode($pr['mensagens']));
+$e = $ed->editarVariavelBot('protocolo', 'Número do chamado', '2026-0001');
+check('editar variavel do bot', $e['descricao'] === 'Número do chamado' && $e['exemplo'] === '2026-0001' && $e['alterada'] && $e['ativo']);
+check('vsys fora das mensagens', !array_filter($bot->mensagens()['itens'], fn($x) => str_starts_with($x['chave'], 'vsys.')));
+check('descricao vazia recusa', erro(fn() => $ed->editarVariavelBot('protocolo', ' ', 'x')) !== null);
+check('exemplo com variavel recusa', erro(fn() => $ed->editarVariavelBot('protocolo', 'a', '{x}')) !== null);
+check('variavel do bot desconhecida', str_contains((string) erro(fn() => $ed->ligarVariavelBot('nada', false)), 'desconhecida'));
+$o = $ed->ligarVariavelBot('marcados', false);
+check('desativar variavel do bot (cria linha)', $o['ativo'] === false && $o['alterada'] && $o['descricao'] === Bot::VARS_BOT['marcados'][0]);
+$cfgM = json_decode($bot->pdo()->query("SELECT coalesce(json_object_agg(m.chave, CASE WHEN (to_jsonb(m)->>'ativo') = 'false' THEN NULL ELSE m.texto END), '{}'::json)::text FROM ixc.mensagens m WHERE m.chave NOT LIKE 'var.%' AND m.chave NOT LIKE 'resp.%' AND (m.texto IS NOT NULL OR (to_jsonb(m)->>'ativo') = 'false')")->fetchColumn(), true);
+check('bot: vsys.marcados = null no mapa', array_key_exists('vsys.marcados', $cfgM) && $cfgM['vsys.marcados'] === null && !array_key_exists('vsys.protocolo', $cfgM), json_encode($cfgM));
+check('restaurar', ($r = $ed->restaurarVariavelBot('marcados'))['ativo'] && !$r['alterada'] && $ed->restaurarVariavelBot('protocolo')['descricao'] === Bot::VARS_BOT['protocolo'][0]);
 echo "ok: $ok falhas: " . json_encode($falhas, JSON_UNESCAPED_UNICODE) . "\n";
 exit($falhas ? 1 : 0);

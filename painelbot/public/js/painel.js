@@ -1,6 +1,7 @@
 /* Painel do Bot 0.4.0 — leitura do banco do bot (schema ixc): visão geral, shoppings e escala, técnicos,
  * contatos de setor, mensagens (+ perguntas), parâmetros e últimos envios.
  * Só existem no HTML as seções que o perfil vê; o JSON também só traz essas.
+ * 0.4.2: variável por shopping (um valor para cada shopping + padrão) e variáveis do bot (listar, descrição/exemplo, desativar).
  * 0.4.1: aba Variáveis ({nome} = valor fixo nas mensagens novas) e {shopping} na frase da mensagem nova.
  * 0.4.0: Mensagens — mensagens novas (resposta no grupo a frases escolhidas: criar/editar/excluir) e ativar/desativar qualquer mensagem.
  * 0.3.0: cadastros (shoppings com escala e apelidos, técnicos, contatos de setor) com novo/editar/excluir.
@@ -790,8 +791,19 @@
     })[0] || null;
   }
   /** Texto da mensagem nova com os valores (como o bot): {shopping} = exemplo; variável desativada = vazio (linha só com ela some). */
+  /** Valor da variável criada para um shopping (chave EMPRESA:ID); por shopping sem valor = padrão. */
+  function valorVar(v, chaveSh) {
+    if (v.ativo === false) return '';
+    if (v.tipo === 'shopping') { var vs = v.valores || {}; return chaveSh && vs[chaveSh] !== undefined ? vs[chaveSh] : (v.valor || ''); }
+    return v.valor;
+  }
+  function chaveDoShopping(nome) {
+    var l = arr(dados.shoppings_lista).filter(function (x) { return x.nome === nome; })[0];
+    return l ? l.chave : null;
+  }
   function preencherNova(texto, shopping) {
-    var V = {}; vars().forEach(function (v) { V[v.nome] = v.ativo === false ? '' : v.valor; });
+    var V = {}, ch = shopping !== undefined ? chaveDoShopping(shopping) : null;
+    vars().forEach(function (v) { V[v.nome] = valorVar(v, ch); });
     if (shopping !== undefined) V.shopping = shopping;
     return String(texto || '').split('\n').map(function (l) {
       var ks = (l.match(/\{([a-z_]+)\}/g) || []).map(function (x) { return x.slice(1, -1); }).filter(function (k) { return k in V; });
@@ -808,7 +820,8 @@
     var html = '<div class="pbot-wa-cit">Fulano: ' + esc(perg) + '</div>';
     if (cab && cab.ativo !== false) html += whats(textoAtual(cab)) + '\n\n';
     var temSh = linhasFrases(frases).some(function (f) { return /\{[^}]*\}/.test(f); });
-    html += esc(preencherNova(texto || '…', temSh ? 'Jockey Plaza' : undefined)).replace(/\*([^*\n]+)\*/g, '<b>$1</b>').replace(/(^|[\s(])_([^_\n]+)_/g, '$1<i>$2</i>').replace(/~([^~\n]+)~/g, '<s>$1</s>');
+    var exSh = (arr(dados.shoppings_lista).filter(function (x) { return /jockey/i.test(x.nome); })[0] || arr(dados.shoppings_lista)[0] || { nome: 'Jockey Plaza' }).nome;
+    html += esc(preencherNova(texto || '…', temSh ? exSh : undefined)).replace(/\*([^*\n]+)\*/g, '<b>$1</b>').replace(/(^|[\s(])_([^_\n]+)_/g, '$1<i>$2</i>').replace(/~([^~\n]+)~/g, '<s>$1</s>');
     bolha.innerHTML = html.replace(/\n/g, '<br>') + '<div class="pbot-wa-hora">10:24</div>';   // texto escapado em esc()/whats()
     wa.appendChild(bolha);
     if (temSh) wa.appendChild(el('div', 'pbot-pq-nota', 'Exemplo com "jockey". Sem shopping reconhecido na pergunta, o bot responde uma vez para cada shopping.'));
@@ -845,6 +858,7 @@
     iTx.maxLength = 3000; iTx.rows = 6; iTx.value = m ? m.texto_padrao : ''; iTx.readOnly = !editar;
     // 0.4.1: variáveis (clique para inserir)
     var vBox = el('div', 'pbot-ed-vars');
+    var temShF = function () { return linhasFrases(iFr.value).some(function (f) { return /\{[^}]*\}/.test(f); }); };
     var desenharVars = function () {
       vBox.textContent = '';
       var lista = (linhasFrases(iFr.value).some(function (f) { return /\{[^}]*\}/.test(f); }) ? ['shopping'] : []).concat(nomesVars());
@@ -853,7 +867,7 @@
       lista.forEach(function (v) {
         var c = el(editar ? 'button' : 'code', editar ? 'pbot-var-bt' : null, '{' + v + '}');
         var info = vars().filter(function (x) { return x.nome === v; })[0];
-        c.title = v === 'shopping' ? 'nome do shopping da pergunta' : (info ? (info.ativo === false ? '(desativada) ' : '') + info.valor : '');
+        c.title = v === 'shopping' ? 'nome do shopping da pergunta' : (info ? (info.ativo === false ? '(desativada) ' : '') + (info.tipo === 'shopping' ? 'um valor por shopping' + (temShF() ? '' : ' — sem {shopping} na frase usa o padrão') : info.valor) : '');
         if (editar) c.type = 'button', c.addEventListener('click', function () {
           var a = iTx.selectionStart || iTx.value.length, b = iTx.selectionEnd || a;
           iTx.value = iTx.value.slice(0, a) + '{' + v + '}' + iTx.value.slice(b); iTx.focus(); iTx.selectionStart = iTx.selectionEnd = a + v.length + 2;
@@ -969,7 +983,7 @@
     barra('pbot-variaveis', 'Nova variável', podeE && !sem040 ? function () { varEditando = ''; formVariavel(); } : null);
     var ret = $('pbot-var-ret');
     if (!ret) { ret = el('div', 'pbot-retorno'); ret.id = 'pbot-var-ret'; t.parentNode.parentNode.insertBefore(ret, t.parentNode); }
-    tabela(t, ['Variável', 'Valor', 'Descrição', 'Usada em', 'Situação', ''], vars().map(function (v) {
+    tabela(t, ['Variável', 'Tipo', 'Valor', 'Descrição', 'Usada em', 'Situação', ''], vars().map(function (v) {
       var sit;
       if (podeE) {
         sit = el('button', 'pbot-sw' + (v.ativo !== false ? ' on' : '')); sit.type = 'button';
@@ -985,7 +999,11 @@
         });
       } else sit = v.ativo !== false ? pill('ativa', '#16a34a') : pill('desativada', '#64748b');
       var nome = el('code', 'pbot-var-nome', '{' + v.nome + '}');
-      var val = el('div', 'pbot-var-valor', v.valor);
+      var nVals = Object.keys(v.valores || {}).length;
+      var val = el('div', 'pbot-var-valor', v.tipo === 'shopping'
+        ? Object.keys(v.valores || {}).map(function (k) { var l = arr(dados.shoppings_lista).filter(function (x) { return x.chave === k; })[0]; return (l ? l.nome : k) + ': ' + v.valores[k]; }).concat(v.valor ? ['(outros): ' + v.valor] : []).join('\n')
+        : v.valor);
+      var tipo = v.tipo === 'shopping' ? pill('por shopping (' + nVals + ')', '#0891b2') : pill('fixo', '#64748b');
       var usos = arr(v.usos).length ? arr(v.usos).map(function (u) { return u.titulo; }).join(', ') : '—';
       var ac = acoesLinha(podeE, podeX, function () { varEditando = v.nome; formVariavel(); }, function (bx) {
         post('variavel_excluir', { nome: v.nome }).then(function (j) {
@@ -993,9 +1011,85 @@
           dados.variaveis = vars().filter(function (x) { return x.nome !== v.nome; }); variaveis(); aviso($('pbot-var-ret'), true, '{' + v.nome + '} excluída.');
         });
       }, '{' + v.nome + '}');
-      return [nome, val, v.descricao || '', usos, sit, ac];
+      return [nome, tipo, val, v.descricao || '', usos, sit, ac];
     }), sem040 ? 'Rode o painelbot/sql/01-mensagens-perguntas.sql da 0.4.0 no banco do bot.' : 'Nenhuma variável. Crie com "Nova variável" e use {nome} no texto das mensagens novas.');
     if (varEditando === null) { var f0 = $('pbot-var-form'); if (f0) f0.textContent = ''; }
+  }
+  // ---- 0.4.2: variáveis do bot
+  var varBotEditando = null;
+  function varsBot() { return arr(dados && dados.variaveis_bot); }
+  function aplicarExemplosBot() { varsBot().forEach(function (v) { EXEMPLO[v.nome] = v.ativo === false ? '' : v.exemplo; }); }
+  function trocarVarBot(v) { var l = varsBot(); for (var i = 0; i < l.length; i++) if (l[i].nome === v.nome) { l[i] = v; break; } aplicarExemplosBot(); }
+  function variaveisBot() {
+    var t = $('pbot-variaveis-bot'); if (!t) return;
+    var podeE = pode('mensagens', 'editar') && !(dados.mensagens && dados.mensagens.colunas040 === false);
+    var ret = $('pbot-varbot-ret');
+    if (!ret) { ret = el('div', 'pbot-retorno'); ret.id = 'pbot-varbot-ret'; t.parentNode.parentNode.insertBefore(ret, t.parentNode); }
+    tabela(t, ['Variável', 'O que traz', 'Exemplo', 'Usada em', 'Situação', ''], varsBot().map(function (v) {
+      var sit;
+      if (podeE) {
+        sit = el('button', 'pbot-sw' + (v.ativo !== false ? ' on' : '')); sit.type = 'button';
+        sit.setAttribute('role', 'switch'); sit.setAttribute('aria-checked', v.ativo !== false ? 'true' : 'false');
+        sit.title = v.ativo !== false ? 'Ativa — clique para desativar (fica vazia em todas as mensagens do bot)' : 'Desativada — clique para ativar';
+        sit.setAttribute('aria-label', sit.title);
+        sit.addEventListener('click', function () {
+          if (v.ativo !== false && (v.nome === 'marcados' || v.nome === 'telefone') && !window.confirm('Sem {' + v.nome + '} ninguém é marcado com @ nas mensagens do bot. Desativar mesmo?')) return;
+          sit.disabled = true;
+          post('varbot_ligar', { nome: v.nome, ativo: v.ativo === false }).then(function (j) {
+            if (!j.ok) { aviso($('pbot-varbot-ret'), false, j.erro); sit.disabled = false; return; }
+            trocarVarBot(j.variavel); variaveisBot(); aviso($('pbot-varbot-ret'), true, '{' + v.nome + '} ' + (j.variavel.ativo ? 'ativada.' : 'desativada: fica vazia nas mensagens do bot.'));
+          });
+        });
+      } else sit = v.ativo !== false ? pill('ativa', '#16a34a') : pill('desativada', '#64748b');
+      var nome = el('code', 'pbot-var-nome', '{' + v.nome + '}');
+      var desc = el('div'); desc.appendChild(document.createTextNode(v.descricao)); if (v.alterada) desc.appendChild(el('span', 'pbot-tag pers', 'alterada'));
+      var usos = arr(v.mensagens).length ? arr(v.mensagens).length + ': ' + arr(v.mensagens).map(function (u) { return u.titulo; }).join(' · ') : '—';
+      var ac = el('div', 'pbot-acoes-linha');
+      if (podeE) {
+        var be = botao('ico', 'ti-pencil', null, 'Editar descrição e exemplo de {' + v.nome + '}');
+        be.addEventListener('click', function () { varBotEditando = v.nome; formVarBot(); });
+        ac.appendChild(be);
+        if (v.alterada) {
+          var br = botao('ico', 'ti-arrow-back-up', null, 'Restaurar o padrão de {' + v.nome + '}');
+          br.addEventListener('click', function () {
+            br.disabled = true;
+            post('varbot_restaurar', { nome: v.nome }).then(function (j) {
+              if (!j.ok) { aviso($('pbot-varbot-ret'), false, j.erro); br.disabled = false; return; }
+              trocarVarBot(j.variavel); variaveisBot(); aviso($('pbot-varbot-ret'), true, '{' + v.nome + '} voltou ao padrão.');
+            });
+          });
+          ac.appendChild(br);
+        }
+      }
+      return [nome, desc, el('code', null, v.exemplo), el('div', 'pbot-var-valor', usos), sit, ac];
+    }), 'Rode o painelbot/sql/01-mensagens-perguntas.sql da 0.4.0 no banco do bot.');
+    if (varBotEditando === null) { var f0 = $('pbot-varbot-form'); if (f0) f0.textContent = ''; }
+  }
+  function formVarBot() {
+    var box = $('pbot-varbot-form'); if (!box) return;
+    box.textContent = '';
+    var v = varsBot().filter(function (x) { return x.nome === varBotEditando; })[0]; if (!v) return;
+    var f = el('div', 'pbot-form pbot-var-f');
+    f.appendChild(el('h4', null, 'Variável do bot {' + v.nome + '}'));
+    f.appendChild(el('div', 'pbot-pq-nota', 'O valor é preenchido pelo bot na hora. Aqui muda só o que aparece no painel. Padrão: "' + v.descricao_padrao + '" / exemplo "' + v.exemplo_padrao + '".'));
+    f.appendChild(el('label', 'pbot-rot', 'O que traz (descrição)'));
+    var iD = el('input', 'form-control'); iD.maxLength = 120; iD.value = v.descricao; f.appendChild(iD);
+    f.appendChild(el('label', 'pbot-rot', 'Exemplo (pré-visualização das mensagens)'));
+    var iE = el('input', 'form-control'); iE.maxLength = 300; iE.value = v.exemplo; f.appendChild(iE);
+    var r = el('div', 'pbot-retorno'), bts = el('div', 'pbot-ed-bts');
+    var ok = botao('pri', 'ti-device-floppy', 'Salvar'), no = botao('', null, 'Cancelar');
+    bts.appendChild(ok); bts.appendChild(no); f.appendChild(bts); f.appendChild(r);
+    box.appendChild(f); iD.focus();
+    no.addEventListener('click', function () { varBotEditando = null; box.textContent = ''; });
+    ok.addEventListener('click', function () {
+      ok.disabled = true;
+      post('varbot_editar', { nome: v.nome, descricao: iD.value, exemplo: iE.value }).then(function (j) {
+        ok.disabled = false;
+        if (!j.ok) { aviso(r, false, j.erro); return; }
+        trocarVarBot(j.variavel); varBotEditando = null; box.textContent = ''; variaveisBot();
+        aviso($('pbot-varbot-ret'), true, '{' + v.nome + '} salva.');
+      });
+    });
   }
   function trocarVariavel(v) {
     var l = vars(); for (var i = 0; i < l.length; i++) if (l[i].nome === v.nome) { l[i] = v; return; }
@@ -1010,8 +1104,36 @@
     var lin = function (rot, e, ajuda) { f.appendChild(el('label', 'pbot-rot', rot)); f.appendChild(e); if (ajuda) f.appendChild(el('div', 'pbot-pq-nota', ajuda)); return e; };
     var iN = lin('Nome', el('input', 'form-control'), v ? 'O nome não muda (as mensagens usam {' + v.nome + '}). Para trocar, crie outra e ajuste as mensagens.' : 'Só letras minúsculas sem acento, números e _ (ex.: holding, senha_wifi). No texto: {nome}.');
     iN.maxLength = 30; iN.value = v ? v.nome : ''; iN.readOnly = !!v; iN.placeholder = 'holding';
-    var iV = lin('Valor', el('textarea', 'pbot-ed-texto'), 'Texto que entra no lugar de {nome}. Aceita *negrito*, emojis e quebra de linha; não aceita outra {variável}.');
+    var iT = lin('Tipo', el('select', 'form-select pbot-pq-grupos'));
+    [['fixo', 'Valor fixo (o mesmo em todas as respostas)'], ['shopping', 'Um valor para cada shopping']].forEach(function (o) { var op = el('option', null, o[1]); op.value = o[0]; if ((v ? v.tipo : 'fixo') === o[0]) op.selected = true; iT.appendChild(op); });
+    var rotV = el('label', 'pbot-rot', 'Valor'); f.appendChild(rotV);
+    var iV = el('textarea', 'pbot-ed-texto'); f.appendChild(iV);
+    var ajV = el('div', 'pbot-pq-nota'); f.appendChild(ajV);
     iV.rows = 3; iV.maxLength = 1000; iV.value = v ? v.valor : '';
+    // por shopping: um campo por shopping (agrupado pela base)
+    var boxSh = el('div', 'pbot-var-shs'), inSh = {};
+    var busca = el('input', 'form-control form-control-sm'); busca.placeholder = 'Filtrar shopping…'; busca.type = 'search';
+    boxSh.appendChild(busca);
+    var lista = el('div', 'pbot-var-shs-l'); boxSh.appendChild(lista);
+    var emp0 = null;
+    arr(dados.shoppings_lista).forEach(function (l) {
+      if (l.empresa !== emp0) { emp0 = l.empresa; lista.appendChild(el('div', 'pbot-msg-grupo', l.empresa)); }
+      var ln = el('div', 'pbot-var-sh'); ln.setAttribute('data-nome', norm(l.nome));
+      ln.appendChild(el('span', null, l.nome));
+      var inp = el('input', 'form-control form-control-sm'); inp.maxLength = 1000; inp.value = v && v.tipo === 'shopping' && v.valores ? (v.valores[l.chave] || '') : '';
+      inSh[l.chave] = inp; ln.appendChild(inp); lista.appendChild(ln);
+    });
+    if (!arr(dados.shoppings_lista).length) lista.appendChild(el('div', 'pbot-pq-nota', 'Nenhum shopping cadastrado (Shoppings e escala).'));
+    busca.addEventListener('input', function () { var q = norm(busca.value); Array.prototype.forEach.call(lista.querySelectorAll('.pbot-var-sh'), function (x) { x.hidden = q && x.getAttribute('data-nome').indexOf(q) < 0; }); });
+    f.appendChild(boxSh);
+    var trocarTipo = function () {
+      var sh = iT.value === 'shopping';
+      boxSh.hidden = !sh;
+      rotV.textContent = sh ? 'Valor padrão (para os shoppings sem valor; pode ficar vazio)' : 'Valor';
+      ajV.textContent = sh ? 'Use {nome} numa mensagem nova com {shopping} na frase: o bot usa o valor do shopping perguntado (sem valor = o padrão).'
+        : 'Texto que entra no lugar de {nome}. Aceita *negrito*, emojis e quebra de linha; não aceita outra {variável}.';
+    };
+    iT.addEventListener('change', trocarTipo); trocarTipo();
     var iD = lin('Descrição (só no painel)', el('input', 'form-control')); iD.maxLength = 80; iD.value = v ? v.descricao : '';
     var r = el('div', 'pbot-retorno');
     var bts = el('div', 'pbot-ed-bts');
@@ -1025,9 +1147,11 @@
     ok.addEventListener('click', function () {
       var nome = iN.value.trim().replace(/^\{|\}$/g, '').toLowerCase();
       if (!v && !/^[a-z][a-z0-9_]{1,29}$/.test(nome)) { aviso(r, false, 'Nome: só letras minúsculas sem acento, números e _, começando com letra (2 a 30).'); return; }
-      if (!iV.value.trim()) { aviso(r, false, 'Escreva o valor.'); return; }
+      var valores = {}; Object.keys(inSh).forEach(function (k) { if (inSh[k].value.trim()) valores[k] = inSh[k].value; });
+      if (iT.value === 'fixo' && !iV.value.trim()) { aviso(r, false, 'Escreva o valor.'); return; }
+      if (iT.value === 'shopping' && !iV.value.trim() && !Object.keys(valores).length) { aviso(r, false, 'Preencha o valor de pelo menos um shopping (ou o padrão).'); return; }
       ok.disabled = true;
-      post(v ? 'variavel_editar' : 'variavel_criar', { nome: v ? v.nome : nome, valor: iV.value, descricao: iD.value }).then(function (j) {
+      post(v ? 'variavel_editar' : 'variavel_criar', { nome: v ? v.nome : nome, valor: iV.value, descricao: iD.value, tipo: iT.value, valores: iT.value === 'shopping' ? valores : {} }).then(function (j) {
         ok.disabled = false;
         if (!j.ok) { aviso(r, false, j.erro); return; }
         trocarVariavel(j.variavel); varEditando = null; variaveis(); box.textContent = '';
@@ -1251,7 +1375,7 @@
     });
   }
 
-  function render() { geral(); shoppings(); tecnicos(); contatos(); msgLista(); variaveis(); parametros(); eventos(); }
+  function render() { aplicarExemplosBot(); geral(); shoppings(); tecnicos(); contatos(); msgLista(); variaveis(); variaveisBot(); parametros(); eventos(); }
 
   // ---------------------------------------------------------------- abas e carga
   Array.prototype.forEach.call(raiz.querySelectorAll('.pbot-abas [data-sec]'), function (b) {

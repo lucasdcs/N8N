@@ -13,8 +13,8 @@ use GlpiPlugin\Painelbot\Direito;
 use GlpiPlugin\Painelbot\Menu;
 use GlpiPlugin\Painelbot\Profile;
 
-define('PLUGIN_PAINELBOT_VERSION', '0.4.1');
-define('PLUGIN_PAINELBOT_ASSETS', '0.4.1');   // carimbo do JS/CSS (cache do navegador); muda a cada entrega de tela
+define('PLUGIN_PAINELBOT_VERSION', '0.4.2');
+define('PLUGIN_PAINELBOT_ASSETS', '0.4.2');   // carimbo do JS/CSS (cache do navegador); muda a cada entrega de tela
 define('PLUGIN_PAINELBOT_MIN_GLPI', '11.0.0');
 define('PLUGIN_PAINELBOT_MAX_GLPI', '11.0.99');
 

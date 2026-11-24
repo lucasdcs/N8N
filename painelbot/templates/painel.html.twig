@@ -105,9 +105,14 @@
 
   {% if 'variaveis' in nav.secoes %}
   <section class="pbot-sec" data-sec="variaveis" {{ primeira == 'variaveis' ? '' : 'hidden' }}>
-    <div class="pbot-nota">Valores fixos para usar no texto das <b>mensagens novas</b> (Mensagens &gt; Nova mensagem): escreva <code>{nome}</code> no texto e o bot troca pelo valor. Desativada = o trecho fica vazio. <code>{shopping}</code> é do bot: o shopping citado na pergunta (sem shopping reconhecido, responde para todos).</div>
+    <div class="pbot-nota">Valores para usar no texto das <b>mensagens novas</b> (fixos ou um por shopping) (Mensagens &gt; Nova mensagem): escreva <code>{nome}</code> no texto e o bot troca pelo valor. Desativada = o trecho fica vazio. <code>{shopping}</code> é do bot: o shopping citado na pergunta (sem shopping reconhecido, responde para todos).</div>
+    <h3 class="pbot-sub-t">Criadas por vocês</h3>
     <div class="pbot-tabela-wrap"><table class="pbot-tabela" id="pbot-variaveis"></table></div>
     <div id="pbot-var-form"></div>
+    <h3 class="pbot-sub-t">Do bot (preenchidas na hora em cada mensagem)</h3>
+    <div class="pbot-nota">O valor vem do chamado, da escala ou do contato no momento do envio. Aqui dá para mudar a descrição e o exemplo da pré-visualização, e <b>desativar</b>: desativada = vazia em todas as mensagens do bot (whatsapp-ixc 0.6.3).</div>
+    <div class="pbot-tabela-wrap"><table class="pbot-tabela" id="pbot-variaveis-bot"></table></div>
+    <div id="pbot-varbot-form"></div>
   </section>
   {% endif %}
 

@@ -235,7 +235,7 @@ final class Editor
         }
         // 0.4.1: texto aceita as variáveis criadas (aba Variáveis) e {shopping} se alguma frase tiver {shopping}
         $comShopping = (bool) array_filter($ns, fn($x) => str_contains($x, '{shopping}'));
-        $permitidas = $this->nomesVariaveis();
+        $permitidas = $this->nomesVariaveis();   // criadas no painel (fixas e por shopping)
         if ($comShopping) {
             $permitidas[] = 'shopping';
         }
@@ -344,18 +344,56 @@ final class Editor
         throw new ErroDeUso('Variável não encontrada.');
     }
 
-    /** @return array<string,mixed> */
-    public function criarVariavel(string $nome, string $valor, string $descricao): array
+    /**
+     * 0.4.2: tipo "fixo" (valor) ou "shopping" (valor por shopping + valor padrão para quem não tiver; texto = JSON
+     * {"EMPRESA:ID": valor}). @param array<string,string> $valores @return array{0:string,1:string,2:?string}
+     */
+    private function validarTipo(string $tipo, string $valor, array $valores, string $descricao): array
+    {
+        if ($tipo !== 'shopping') {
+            [$v, $d] = self::validarValor($valor, $descricao);
+            return [$v, $d, null];
+        }
+        $padrao = trim($valor) === '' ? '' : self::validarValor($valor, $descricao)[0];
+        $d = self::validarValor('x', $descricao)[1];
+        $locais = [];
+        foreach ($this->bot->listaShoppings() as $l) {
+            $locais[$l['chave']] = $l['nome'];
+        }
+        $limpo = [];
+        foreach ($valores as $k => $v) {
+            $k = (string) $k;
+            if (trim((string) $v) === '') {
+                continue;
+            }
+            if (!isset($locais[$k])) {
+                throw new ErroDeUso('Shopping não encontrado: ' . $k . '. Recarregue a página.');
+            }
+            try {
+                $limpo[$k] = self::validarValor((string) $v, '')[0];
+            } catch (ErroDeUso $e) {
+                throw new ErroDeUso($locais[$k] . ': ' . $e->getMessage());
+            }
+        }
+        if ($padrao === '' && !$limpo) {
+            throw new ErroDeUso('Preencha o valor de pelo menos um shopping (ou o valor padrão).');
+        }
+        ksort($limpo);
+        return [$padrao, $d, json_encode($limpo, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)];
+    }
+
+    /** @param array<string,string> $valores @return array<string,mixed> */
+    public function criarVariavel(string $nome, string $valor, string $descricao, string $tipo = 'fixo', array $valores = []): array
     {
         $nome = mb_strtolower(trim(trim($nome), '{}'));
         if (!preg_match(self::RX_VARIAVEL, $nome)) {
             throw new ErroDeUso('Nome da variável: só letras minúsculas sem acento, números e _, começando com letra (2 a 30), ex.: holding, senha_wifi.');
         }
-        if (in_array($nome, self::RESERVADAS, true)) {
-            throw new ErroDeUso('{' . $nome . '} já é do bot (o shopping citado na pergunta). Escolha outro nome.');
+        if (in_array($nome, self::RESERVADAS, true) || isset(Bot::VARS_BOT[$nome])) {
+            throw new ErroDeUso('{' . $nome . '} já é uma variável do bot. Escolha outro nome.');
         }
-        [$v, $d] = self::validarValor($valor, $descricao);
-        $this->emTransacao(function (PDO $pdo) use ($nome, $v, $d) {
+        [$v, $d, $json] = $this->validarTipo($tipo, $valor, $valores, $descricao);
+        $this->emTransacao(function (PDO $pdo) use ($nome, $v, $d, $json) {
             $st = $pdo->prepare('SELECT 1 FROM ixc.mensagens WHERE chave = ?');
             $st->execute(['var.' . $nome]);
             if ($st->fetchColumn()) {
@@ -363,26 +401,92 @@ final class Editor
             }
             $pdo->prepare("INSERT INTO ixc.mensagens (chave, grupo, ordem, titulo, wf, exemplo, texto_padrao, texto, variaveis, ativo,
                                                       criada_painel, frases, frases_norm, grupos, criado_por, criado_em, atualizado, atualizado_por)
-                           VALUES (?, 'Variáveis', 0, ?, '03', NULL, ?, NULL, '{}', true, true, '{}', '{}', 'todos', ?, now(), now(), ?)")
-                ->execute(['var.' . $nome, $d, $v, $this->quem, $this->quem]);
-            $this->hist('var.' . $nome, null, '(criada) ' . $v);
+                           VALUES (?, 'Variáveis', 0, ?, '03', NULL, ?, ?, '{}', true, true, '{}', '{}', 'todos', ?, now(), now(), ?)")
+                ->execute(['var.' . $nome, $d, $v, $json, $this->quem, $this->quem]);
+            $this->hist('var.' . $nome, null, '(criada) ' . ($json === null ? $v : 'por shopping: ' . $json . ($v !== '' ? ' · padrão: ' . $v : '')));
         });
         return $this->variavel($nome);
     }
 
-    /** O nome não muda (as mensagens usam {nome}); muda valor e descrição. @return array<string,mixed> */
-    public function editarVariavel(string $nome, string $valor, string $descricao): array
+    /** O nome não muda (as mensagens usam {nome}); muda tipo, valor(es) e descrição. @param array<string,string> $valores @return array<string,mixed> */
+    public function editarVariavel(string $nome, string $valor, string $descricao, string $tipo = 'fixo', array $valores = []): array
     {
         $atual = $this->variavel($nome);
-        [$v, $d] = self::validarValor($valor, $descricao);
-        $this->emTransacao(function (PDO $pdo) use ($nome, $v, $d, $atual) {
-            $pdo->prepare("UPDATE ixc.mensagens SET titulo = ?, texto_padrao = ?, atualizado = now(), atualizado_por = ? WHERE chave = ?")
-                ->execute([$d, $v, $this->quem, 'var.' . $nome]);
-            if ($v !== $atual['valor']) {
-                $this->hist('var.' . $nome, $atual['valor'], $v);
+        [$v, $d, $json] = $this->validarTipo($tipo, $valor, $valores, $descricao);
+        $antes = $atual['tipo'] === 'fixo' ? $atual['valor'] : 'por shopping: ' . json_encode($atual['valores'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . ($atual['valor'] !== '' ? ' · padrão: ' . $atual['valor'] : '');
+        $depois = $json === null ? $v : 'por shopping: ' . $json . ($v !== '' ? ' · padrão: ' . $v : '');
+        $this->emTransacao(function (PDO $pdo) use ($nome, $v, $d, $json, $antes, $depois) {
+            $pdo->prepare("UPDATE ixc.mensagens SET titulo = ?, texto_padrao = ?, texto = ?, atualizado = now(), atualizado_por = ? WHERE chave = ?")
+                ->execute([$d, $v, $json, $this->quem, 'var.' . $nome]);
+            if ($antes !== $depois) {
+                $this->hist('var.' . $nome, $antes, $depois);
             }
         });
         return $this->variavel($nome);
+    }
+
+    // ---------------------------------------------------------------- 0.4.2: variáveis do bot (vsys.<nome>)
+
+    private function variavelBot(string $nome): array
+    {
+        foreach ($this->bot->variaveisBot() as $v) {
+            if ($v['nome'] === $nome) {
+                return $v;
+            }
+        }
+        throw new ErroDeUso('Variável do bot desconhecida: {' . $nome . '}.');
+    }
+
+    /** Cria a linha vsys.<nome> se ainda não existe (com o padrão). */
+    private function garantirVsys(PDO $pdo, string $nome): void
+    {
+        [$desc, $ex] = Bot::VARS_BOT[$nome];
+        $pdo->prepare("INSERT INTO ixc.mensagens (chave, grupo, ordem, titulo, wf, exemplo, texto_padrao, texto, variaveis, ativo,
+                                                  criada_painel, frases, frases_norm, grupos, criado_por, criado_em, atualizado, atualizado_por)
+                       VALUES (?, 'Variáveis do bot', 0, ?, '-', NULL, ?, NULL, '{}', true, false, '{}', '{}', 'todos', ?, now(), now(), ?)
+                       ON CONFLICT (chave) DO NOTHING")
+            ->execute(['vsys.' . $nome, $desc, $ex, $this->quem, $this->quem]);
+    }
+
+    /** Descrição e exemplo (só no painel: lista e pré-visualização). @return array<string,mixed> */
+    public function editarVariavelBot(string $nome, string $descricao, string $exemplo): array
+    {
+        $this->variavelBot($nome);
+        $d = trim(preg_replace('/\s+/u', ' ', $descricao) ?? $descricao);
+        if ($d === '' || mb_strlen($d) > 120) {
+            throw new ErroDeUso('Descrição: de 1 a 120 caracteres.');
+        }
+        if (mb_strlen($exemplo) > 300 || preg_match('/\{[a-z_]+\}/', $exemplo)) {
+            throw new ErroDeUso('Exemplo: até 300 caracteres, sem {variável} dentro.');
+        }
+        $this->emTransacao(function (PDO $pdo) use ($nome, $d, $exemplo) {
+            $this->garantirVsys($pdo, $nome);
+            $pdo->prepare('UPDATE ixc.mensagens SET titulo = ?, texto_padrao = ?, atualizado = now(), atualizado_por = ? WHERE chave = ?')
+                ->execute([$d, $exemplo, $this->quem, 'vsys.' . $nome]);
+        });
+        return $this->variavelBot($nome);
+    }
+
+    /** Desativada = vazia em todas as mensagens do bot (whatsapp-ixc 0.6.3). @return array<string,mixed> */
+    public function ligarVariavelBot(string $nome, bool $ativo): array
+    {
+        $v = $this->variavelBot($nome);
+        if ($v['ativo'] === $ativo) {
+            return $v;
+        }
+        $this->emTransacao(function (PDO $pdo) use ($nome) {
+            $this->garantirVsys($pdo, $nome);
+        });
+        $this->ligarMensagem('vsys.' . $nome, $ativo);
+        return $this->variavelBot($nome);
+    }
+
+    /** Volta descrição, exemplo e "ativa" ao padrão (apaga a linha vsys.<nome>). @return array<string,mixed> */
+    public function restaurarVariavelBot(string $nome): array
+    {
+        $this->variavelBot($nome);
+        $this->pdo()->prepare("DELETE FROM ixc.mensagens WHERE chave = ? AND NOT criada_painel")->execute(['vsys.' . $nome]);
+        return $this->variavelBot($nome);
     }
 
     /** @return array<string,mixed> */

@@ -159,6 +159,8 @@ final class Bot
         if ($tem('mensagens', 'variaveis')) {
             $out['mensagens'] = $this->mensagens();
             $out['variaveis'] = $this->variaveis();   // 0.4.1
+            $out['variaveis_bot'] = $this->variaveisBot();   // 0.4.2
+            $out['shoppings_lista'] = $this->listaShoppings();   // 0.4.2 (variável por shopping)
             $out['perguntas'] = Direito::ler(Direito::PERGUNTAS) ? $this->perguntas() : null;
         }
         return $out;
@@ -210,9 +212,86 @@ final class Bot
             return ['instalado' => false, 'itens' => [], 'colunas040' => false];
         }
         // 0.4.1: as variáveis (var.<nome>) moram na mesma tabela, mas têm aba própria
-        $rows = array_map([self::class, 'linhaMensagem'], $this->q(self::SQL_MENSAGEM . " WHERE chave NOT LIKE 'var.%' ORDER BY ordem, chave"));
+        $rows = array_map([self::class, 'linhaMensagem'], $this->q(self::SQL_MENSAGEM . " WHERE chave NOT LIKE 'var.%' AND chave NOT LIKE 'vsys.%' ORDER BY ordem, chave"));
         $c = $this->q("SELECT count(*) AS n FROM information_schema.columns WHERE table_schema = 'ixc' AND table_name = 'mensagens' AND column_name = 'criada_painel'");
         return ['instalado' => true, 'itens' => $rows, 'colunas040' => ((int) ($c[0]['n'] ?? 0)) > 0];
+    }
+
+    /**
+     * 0.4.2: variáveis que o bot preenche na hora nas mensagens do catálogo: descrição e exemplo padrão.
+     * O painel pode trocar a descrição/exemplo e desativar (linha vsys.<nome> em ixc.mensagens; desativada = vazia em
+     * todas as mensagens do bot, whatsapp-ixc 0.6.3).
+     */
+    public const VARS_BOT = [
+        'alteracao'  => ['A alteração pedida no comando ixc', 'número do Técnico A → (41) 99999-0001'],
+        'assunto'    => ['Assunto da O.S. no IXC', 'Ativação'],
+        'ate'        => ['Fim da janela da visita (" (até 11:00)")', ' (até 11:00)'],
+        'busca'      => ['O que a pessoa procurou e o bot não achou', 'xpto'],
+        'cliente'    => ['Nome do cliente da O.S.', 'Cliente Exemplo Ltda'],
+        'data'       => ['Data do dia (dd/mm)', '24/11'],
+        'dia'        => ['Dia da semana abreviado', 'Seg'],
+        'empresa'    => ['Base (IXC) do shopping', 'BASE'],
+        'erro'       => ['Erro da leitura da planilha', 'a planilha não devolveu CSV (acesso mudou?)'],
+        'fim'        => ['Hora de fim do atendimento/plantão', '18:00'],
+        'grupo'      => ['Grupo de destino (simulação)', '1203630000000000@g.us'],
+        'hora'       => ['Hora (da visita ou do agora)', '10:24'],
+        'horario'    => ['Horário do dia (início–fim)', '10:00–22:00'],
+        'inicio'     => ['Hora de início do atendimento/plantão', '10:00'],
+        'janela'     => ['Quando é a visita ("em 1 hora")', 'em 1 hora'],
+        'local'      => ['Referência do local da visita', 'Piso L2'],
+        'loja'       => ['Loja do cliente', 'Loja 101'],
+        'marcados'   => ['Quem é marcado com @ (sem isso ninguém é marcado)', '@5541999990001'],
+        'minutos'    => ['Minutos até a visita', '10 minutos'],
+        'na_empresa' => ['" na BASE" (busca de técnico)', ' na BASE'],
+        'nome'       => ['Nome do contato do setor', 'Técnico A'],
+        'onde'       => ['Shopping e loja da visita', 'Shopping Exemplo, Loja 101'],
+        'plantao'    => ['Quem está de plantão (folga do atribuído)', 'Técnico B'],
+        'protocolo'  => ['Protocolo da O.S.', '202611240001'],
+        'quando'     => ['Quando o setor volta ("amanhã")', 'amanhã'],
+        'regime'     => ['Regime do shopping (" · 12x36")', ' · 12x36'],
+        'resumo'     => ['Resumo da mensagem da O.S.', 'Cliente sem sinal desde ontem.'],
+        'rotulo'     => ['"Hoje" ou "Amanhã"', 'Hoje'],
+        'semana'     => ['Horário da semana do shopping', 'Seg–Sáb 10:00–22:00 · Dom 14:00–20:00'],
+        'setores'    => ['Setores citados (ir para o Recados)', 'Financeiro'],
+        'shopping'   => ['Nome do shopping (também o {shopping} das mensagens novas)', 'Shopping Exemplo'],
+        'status'     => ['Situação agora (" · 🟢 em atendimento…")', ' · 🟢 em atendimento (até 22:00)'],
+        'tecnico'    => ['Técnico do dia / atribuído', 'Técnico A'],
+        'telefone'   => ['Telefone (vira @ no WhatsApp)', '@5541999990001'],
+        'tempo'      => ['Há quanto tempo o chamado está sem técnico', '2h'],
+        'visita'     => ['Onde é a visita ("na *Loja*")', 'na *Loja Exemplo*'],
+    ];
+
+    /** 0.4.2: variáveis do bot com o que foi alterado no painel e em quais mensagens aparecem. @return list<array<string,mixed>> */
+    public function variaveisBot(): array
+    {
+        if (!$this->tabelasNovas()['mensagens']) {
+            return [];
+        }
+        $usos = [];
+        foreach ($this->q("SELECT chave, titulo, coalesce(array_to_json(variaveis)::text, '[]') AS v FROM ixc.mensagens WHERE chave NOT LIKE 'var.%' AND chave NOT LIKE 'resp.%' AND chave NOT LIKE 'vsys.%' ORDER BY ordem, chave") as $m) {
+            foreach (json_decode((string) $m['v'], true) ?: [] as $v) {
+                $usos[$v][] = ['chave' => (string) $m['chave'], 'titulo' => (string) $m['titulo']];
+            }
+        }
+        $alt = [];
+        foreach ($this->q(self::SQL_MENSAGEM . " WHERE chave LIKE 'vsys.%'") as $r) {
+            $alt[substr((string) $r['chave'], 5)] = self::linhaMensagem($r);
+        }
+        $out = [];
+        foreach (self::VARS_BOT as $nome => [$desc, $ex]) {
+            $a = $alt[$nome] ?? null;
+            $out[] = ['nome' => $nome, 'descricao' => $a ? (string) $a['titulo'] : $desc, 'exemplo' => $a ? (string) $a['texto_padrao'] : $ex,
+                'descricao_padrao' => $desc, 'exemplo_padrao' => $ex, 'ativo' => $a ? $a['ativo'] : true, 'alterada' => $a !== null,
+                'atualizado' => $a['atualizado'] ?? '', 'atualizado_por' => $a['atualizado_por'] ?? '', 'mensagens' => $usos[$nome] ?? []];
+        }
+        return $out;
+    }
+
+    /** 0.4.2: shoppings para a variável por shopping (chave EMPRESA:ID). @return list<array{chave:string,nome:string,empresa:string}> */
+    public function listaShoppings(): array
+    {
+        return array_map(fn($r) => ['chave' => $r['empresa'] . ':' . $r['id_condominio'], 'nome' => (string) $r['nome'], 'empresa' => (string) $r['empresa']],
+            $this->q('SELECT empresa, id_condominio, nome FROM ixc.locais ORDER BY empresa, nome'));
     }
 
     /**
@@ -237,7 +316,10 @@ final class Bot
                     $usos[] = ['chave' => (string) $m['chave'], 'titulo' => (string) $m['titulo']];
                 }
             }
-            $out[] = ['nome' => $nome, 'valor' => (string) $r['texto_padrao'], 'descricao' => (string) $r['titulo'], 'ativo' => $r['ativo'],
+            // 0.4.2: tipo "shopping" = texto com o JSON {"EMPRESA:ID": valor}; texto_padrao = valor padrão
+            $valores = $r['texto'] !== null ? (json_decode((string) $r['texto'], true) ?: []) : null;
+            $out[] = ['nome' => $nome, 'tipo' => $valores === null ? 'fixo' : 'shopping', 'valores' => $valores ?? (object) [],
+                'valor' => (string) $r['texto_padrao'], 'descricao' => (string) $r['titulo'], 'ativo' => $r['ativo'],
                 'criado_por' => $r['criado_por'], 'criado_em' => $r['criado_em'], 'atualizado' => $r['atualizado'], 'atualizado_por' => $r['atualizado_por'], 'usos' => $usos];
         }
         return $out;
