@@ -4,7 +4,7 @@ Postgres de teste (socket/porta em `PGH`/`PGP`, padrão `/tmp/pg` e `5499`), usu
 
 | Arquivo | O que testa |
 |---|---|
-| `teste-mensagens.php` | `Editor` + `Bot` da 0.4.0 (Mensagens): desativar, mensagens novas, validações, o que o bot lê |
+| `teste-mensagens.php` | `Editor` + `Bot` (Mensagens 0.4.0, Variáveis e {shopping} 0.4.1): desativar, mensagens novas, variáveis, validações, o que o bot lê |
 | `teste-migracao.php` | `Install::migrar` (Excluir em Mensagens para quem tem Configuração > Atualizar; uma vez só) |
 | `tela-mensagens.js` | `public/js/painel.js` no jsdom, gravando pelo `front/acao.php` real (GLPI simulado em `glpi-simulado.php`, servido por `servidor-teste.php`) |
 

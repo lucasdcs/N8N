@@ -156,8 +156,9 @@ final class Bot
             $out['parametros'] = $this->parametros();   // lista completa (substitui a dos cartões)
             $out['feriados']   = $this->q("SELECT data::text AS data, coalesce(empresa, '') AS empresa, coalesce(id_condominio, '') AS id_condominio, descricao FROM ixc.feriados WHERE data >= current_date ORDER BY data LIMIT 20");
         }
-        if ($tem('mensagens')) {
+        if ($tem('mensagens', 'variaveis')) {
             $out['mensagens'] = $this->mensagens();
+            $out['variaveis'] = $this->variaveis();   // 0.4.1
             $out['perguntas'] = Direito::ler(Direito::PERGUNTAS) ? $this->perguntas() : null;
         }
         return $out;
@@ -208,9 +209,38 @@ final class Bot
         if (!$this->tabelasNovas()['mensagens']) {
             return ['instalado' => false, 'itens' => [], 'colunas040' => false];
         }
-        $rows = array_map([self::class, 'linhaMensagem'], $this->q(self::SQL_MENSAGEM . ' ORDER BY ordem, chave'));
+        // 0.4.1: as variáveis (var.<nome>) moram na mesma tabela, mas têm aba própria
+        $rows = array_map([self::class, 'linhaMensagem'], $this->q(self::SQL_MENSAGEM . " WHERE chave NOT LIKE 'var.%' ORDER BY ordem, chave"));
         $c = $this->q("SELECT count(*) AS n FROM information_schema.columns WHERE table_schema = 'ixc' AND table_name = 'mensagens' AND column_name = 'criada_painel'");
         return ['instalado' => true, 'itens' => $rows, 'colunas040' => ((int) ($c[0]['n'] ?? 0)) > 0];
+    }
+
+    /**
+     * 0.4.1: variáveis das mensagens novas ({nome} = valor fixo), guardadas em ixc.mensagens com chave var.<nome>:
+     * titulo = descrição, texto_padrao = valor. usos = mensagens novas cujo texto usa a variável.
+     * @return list<array<string,mixed>>
+     */
+    public function variaveis(): array
+    {
+        if (!$this->tabelasNovas()['mensagens']) {
+            return [];
+        }
+        $vs = $this->q(self::SQL_MENSAGEM . " WHERE chave LIKE 'var.%' ORDER BY chave");
+        $resp = $this->q("SELECT chave, titulo, texto_padrao FROM ixc.mensagens WHERE chave LIKE 'resp.%' ORDER BY chave");
+        $out = [];
+        foreach ($vs as $r) {
+            $r = self::linhaMensagem($r);
+            $nome = substr((string) $r['chave'], 4);
+            $usos = [];
+            foreach ($resp as $m) {
+                if (str_contains((string) $m['texto_padrao'], '{' . $nome . '}')) {
+                    $usos[] = ['chave' => (string) $m['chave'], 'titulo' => (string) $m['titulo']];
+                }
+            }
+            $out[] = ['nome' => $nome, 'valor' => (string) $r['texto_padrao'], 'descricao' => (string) $r['titulo'], 'ativo' => $r['ativo'],
+                'criado_por' => $r['criado_por'], 'criado_em' => $r['criado_em'], 'atualizado' => $r['atualizado'], 'atualizado_por' => $r['atualizado_por'], 'usos' => $usos];
+        }
+        return $out;
     }
 
     /**

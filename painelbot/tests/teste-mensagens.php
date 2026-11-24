@@ -8,6 +8,7 @@ spl_autoload_register(function ($c) use ($dir) {
     if (str_starts_with($c, $p)) { $f = $dir . '/src/' . substr($c, strlen($p)) . '.php'; if (is_file($f)) require $f; }
 });
 // Config do GLPI não é usada (cfg de teste); Bot só precisa de CommonDBTM se carregar Config: evitamos.
+if (!class_exists('Session')) { class Session { public static function haveRight($a, $b) { return true; } } }   // dados() consulta direitos
 use GlpiPlugin\Painelbot\Bot; use GlpiPlugin\Painelbot\Editor; use GlpiPlugin\Painelbot\ErroDeUso;
 $cfg = ['pg_host' => $argv[2] ?? (getenv('PGH') ?: '/tmp/pg'), 'pg_porta' => (int) ($argv[3] ?? (getenv('PGP') ?: 5499)), 'pg_banco' => 'ixc', 'pg_usuario' => 'painel_glpi', 'pg_senha' => 'teste'];
 $bot = new Bot($cfg); $ed = new Editor($bot, 'Teste GLPI');
@@ -53,7 +54,7 @@ check('sem nome', str_contains((string) erro(fn() => $ed->criarNova('', 'x y', '
 check('sem texto', str_contains((string) erro(fn() => $ed->criarNova('Nome ok', '  ', 'aa bb', 'todos')), 'texto'));
 check('sem frase', str_contains((string) erro(fn() => $ed->criarNova('Nome ok', 'texto', "\n \n", 'todos')), 'frase'));
 check('frase de 1 palavra', str_contains((string) erro(fn() => $ed->criarNova('Nome ok', 'texto', 'wifi', 'todos')), '2 palavras'));
-check('variavel no texto', str_contains((string) erro(fn() => $ed->criarNova('Nome ok', 'oi {nome}', 'aa bb', 'todos')), 'não aceita variáveis'));
+check('variavel desconhecida no texto', str_contains((string) erro(fn() => $ed->criarNova('Nome ok', 'oi {nome}', 'aa bb', 'todos')), 'aba Variáveis'));
 check('frase ja usada por outra nova', str_contains((string) erro(fn() => $ed->criarNova('Outra', 'x', 'Senha WiFi Jockey!', 'todos')), 'Senha do wi-fi do Jockey'));
 $pq = $bot->pdo()->query("SELECT frase FROM ixc.perguntas WHERE alvo = 'financeiro' LIMIT 1")->fetchColumn();
 check('frase de pergunta de setor', str_contains((string) erro(fn() => $ed->criarNova('Outra', 'x', $pq, 'todos')), 'Financeiro'), (string) erro(fn() => $ed->criarNova('Outra', 'x', $pq, 'todos')));
@@ -88,5 +89,37 @@ $cfg = json_decode($cfg, true);
 check('bot: desativada vem null', array_key_exists('aviso.novo', $cfg) && $cfg['aviso.novo'] === null);
 check('bot: editada vem com texto', $cfg['lembrete.1h'] === '⏰ Lembrete editado {shopping}');
 check('bot: ativa sem edicao nao vem', !array_key_exists('escala.cabecalho', $cfg));
+
+// ---------------- 0.4.1: variáveis e {shopping}
+check('nome invalido', str_contains((string) erro(fn() => $ed->criarVariavel('Holding!', 'x', '')), 'minúsculas'));
+check('nome reservado', str_contains((string) erro(fn() => $ed->criarVariavel('shopping', 'x', '')), 'já é do bot'));
+check('valor vazio', str_contains((string) erro(fn() => $ed->criarVariavel('holding', '  ', '')), 'valor'));
+check('valor com variavel', str_contains((string) erro(fn() => $ed->criarVariavel('holding', 'x {y}', '')), 'dentro'));
+$v = $ed->criarVariavel('{holding}', '4BTELECOM', 'Empresa dona dos shoppings');
+check('cria variavel (chaves tiradas)', $v['nome'] === 'holding' && $v['valor'] === '4BTELECOM' && $v['descricao'] === 'Empresa dona dos shoppings' && $v['ativo'] && $v['usos'] === []);
+check('duplicada', str_contains((string) erro(fn() => $ed->criarVariavel('holding', 'y', '')), 'Já existe'));
+check('variavel fora da lista de mensagens', !array_filter($bot->mensagens()['itens'], fn($x) => str_starts_with($x['chave'], 'var.')));
+check('variaveis() no dados', count($bot->dados(['variaveis'])['variaveis']) === 1 && isset($bot->dados(['variaveis'])['mensagens']));
+$h = $ed->criarNova('Holding dos Shopping', 'Holding do *{shopping}* é {holding}', 'qual holding do {Shopping}', 'todos');
+check('frase com {shopping}: guarda placeholder', $h['frases'] === ['qual holding do {shopping}'], json_encode($h['frases']));
+check('norma com placeholder', $bot->pdo()->query("SELECT frases_norm[1] FROM ixc.mensagens WHERE chave = '" . $h['chave'] . "'")->fetchColumn() === 'qual holding do {shopping}');
+check('{shopping} sem estar na frase', str_contains((string) erro(fn() => $ed->criarNova('Teste 1', 'oi {shopping}', 'qual holding geral', 'todos')), 'coloque {shopping} na frase'));
+check('outra variavel na frase', str_contains((string) erro(fn() => $ed->criarNova('Teste 2', 'oi', 'qual {holding} do jockey', 'todos')), 'só vale a variável {shopping}'));
+check('{shopping} 2x na frase', str_contains((string) erro(fn() => $ed->criarNova('Teste 3', 'oi', '{shopping} qual holding {shopping}', 'todos')), 'uma vez'));
+check('so 1 palavra + {shopping}', str_contains((string) erro(fn() => $ed->criarNova('Teste 4', 'oi', 'holding {shopping}', 'todos')), '2 palavras'));
+check('frase {shopping} repetida em outra', str_contains((string) erro(fn() => $ed->criarNova('Teste 5', 'oi', 'Qual holding do {shopping}?', 'todos')), 'Holding dos Shopping'));
+check('usos da variavel', $ed->criarVariavel('pix', 'chave 123', '')['usos'] === [] && array_column(array_values(array_filter($bot->variaveis(), fn($x) => $x['nome'] === 'holding'))[0]['usos'], 'titulo') === ['Holding dos Shopping']);
+check('excluir usada recusa', str_contains((string) erro(fn() => $ed->excluirVariavel('holding')), 'Holding dos Shopping'));
+$e2 = $ed->editarVariavel('holding', '4B Telecom', 'nova desc');
+check('editar valor e descricao', $e2['valor'] === '4B Telecom' && $e2['descricao'] === 'nova desc');
+check('historico da variavel', count($ed->historicoVariavel('holding')) === 2);
+check('desativar variavel', $ed->ligarVariavel('holding', false)['ativo'] === false && $ed->ligarVariavel('holding', true)['ativo'] === true);
+$ed->excluirVariavel('pix');
+check('excluir nao usada', count($bot->variaveis()) === 1);
+check('variavel inexistente', str_contains((string) erro(fn() => $ed->editarVariavel('nada', 'x', '')), 'não encontrada'));
+// bot: o que lê
+$cfgB = json_decode($bot->pdo()->query("SELECT coalesce(json_object_agg(substr(m.chave, 5), CASE WHEN coalesce(to_jsonb(m)->>'ativo', 'true') = 'true' THEN m.texto_padrao ELSE '' END), '{}'::json)::text FROM ixc.mensagens m WHERE m.chave LIKE 'var.%'")->fetchColumn(), true);
+check('bot: variaveis {nome: valor}', $cfgB === ['holding' => '4B Telecom'], json_encode($cfgB));
+check('pergunta com frase de var nao conflita', $ed->criarPergunta('rh', 'holding rh teste', 'todos')['frase'] === 'holding rh teste');
 echo "ok: $ok falhas: " . json_encode($falhas, JSON_UNESCAPED_UNICODE) . "\n";
 exit($falhas ? 1 : 0);

@@ -53,6 +53,7 @@ final class Direito
         'tecnicos'   => self::CADASTROS,
         'contatos'   => self::CADASTROS,
         'mensagens'  => self::MENSAGENS,
+        'variaveis'  => self::MENSAGENS,   // 0.4.1: variáveis das mensagens novas
         'parametros' => self::CONFIG,
         'eventos'    => self::GERAL,
     ];

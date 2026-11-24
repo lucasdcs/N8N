@@ -210,10 +210,6 @@ final class Editor
         if (trim($texto) === '') {
             throw new ErroDeUso('Escreva o texto que o bot vai responder.');
         }
-        [$t, $erro] = self::validarTexto($texto, []);
-        if ($erro !== null) {
-            throw new ErroDeUso(str_replace('Este trecho não aceita variáveis.', 'Mensagem nova não aceita variáveis: escreva o texto como vai sair.', $erro));
-        }
         $lista = is_array($frases) ? $frases : preg_split('/\R/u', $frases);
         $fs = [];
         $ns = [];
@@ -221,7 +217,7 @@ final class Editor
             if (trim((string) $f) === '') {
                 continue;
             }
-            [$ff, $n, $e] = self::validarFrase((string) $f);
+            [$ff, $n, $e] = self::validarFraseNova((string) $f);
             if ($e !== null) {
                 throw new ErroDeUso('"' . trim((string) $f) . '": ' . $e);
             }
@@ -237,9 +233,24 @@ final class Editor
         if (count($fs) > self::MAX_FRASES) {
             throw new ErroDeUso('No máximo ' . self::MAX_FRASES . ' frases por mensagem.');
         }
+        // 0.4.1: texto aceita as variáveis criadas (aba Variáveis) e {shopping} se alguma frase tiver {shopping}
+        $comShopping = (bool) array_filter($ns, fn($x) => str_contains($x, '{shopping}'));
+        $permitidas = $this->nomesVariaveis();
+        if ($comShopping) {
+            $permitidas[] = 'shopping';
+        }
+        [$t, $erro] = self::validarTexto($texto, $permitidas);
+        if ($erro !== null) {
+            if (!$comShopping && in_array('shopping', self::variaveisDoTexto($texto), true)) {
+                throw new ErroDeUso('Para usar {shopping} no texto, coloque {shopping} na frase (ex.: "qual a holding do {shopping}").');
+            }
+            throw new ErroDeUso($permitidas
+                ? $erro . ' Para outra, crie na aba Variáveis.'
+                : str_replace('Este trecho não aceita variáveis.', 'Ainda não há variáveis: crie na aba Variáveis.', $erro));
+        }
         // conflito com outra mensagem nova
         $st = $this->pdo()->prepare("SELECT titulo, f FROM ixc.mensagens m, unnest(m.frases_norm) AS f
-                                       WHERE m.criada_painel AND m.chave <> ? AND f = ANY(?::text[]) LIMIT 1");
+                                       WHERE m.criada_painel AND m.chave LIKE 'resp.%' AND m.chave <> ? AND f = ANY(?::text[]) LIMIT 1");
         $st->execute([$ignorar, '{' . implode(',', array_map(fn($x) => '"' . $x . '"', $ns)) . '}']);
         if ($r = $st->fetch()) {
             throw new ErroDeUso('A frase "' . $fs[array_search($r['f'], $ns, true)] . '" já aciona a mensagem "' . $r['titulo'] . '".');
@@ -251,6 +262,152 @@ final class Editor
             throw new ErroDeUso('A frase "' . $r['frase'] . '" já aciona a resposta de ' . (self::ALVOS[$r['alvo']] ?? $r['alvo']) . ' (Perguntas). Use outra frase.');
         }
         return [$tit, (string) $t, $fs, $ns, in_array($grupos, self::GRUPOS, true) ? $grupos : 'todos'];
+    }
+
+    public const RX_VARIAVEL = '/^[a-z][a-z0-9_]{1,29}$/';
+    public const RESERVADAS = ['shopping'];
+    public const MAX_VALOR = 1000;
+
+    /**
+     * Frase de mensagem nova: as regras das perguntas + no máximo um {shopping} (casa com qualquer shopping cadastrado,
+     * nome ou apelido). Norma: as partes normalizadas em volta de "{shopping}". @return array{0:?string,1:?string,2:?string}
+     */
+    public static function validarFraseNova(string $frase): array
+    {
+        $f = trim(preg_replace('/\s+/u', ' ', $frase) ?? $frase);
+        preg_match_all('/\{([^}]*)\}/', $f, $m);
+        foreach ($m[1] as $v) {
+            if (mb_strtolower(trim($v)) !== 'shopping') {
+                return [null, null, 'na frase só vale a variável {shopping}.'];
+            }
+        }
+        if (count($m[1]) > 1) {
+            return [null, null, 'use {shopping} uma vez só na frase.'];
+        }
+        if (!$m[1]) {
+            return self::validarFrase($f);
+        }
+        $partes = preg_split('/\{[^}]*\}/', $f, 2);
+        $a = self::norm($partes[0]);
+        $b = self::norm($partes[1] ?? '');
+        $n = trim(($a !== '' ? $a . ' ' : '') . '{shopping}' . ($b !== '' ? ' ' . $b : ''));
+        if (mb_strlen($f) > self::MAX_FRASE) {
+            return [null, null, 'Pergunta grande demais (máximo ' . self::MAX_FRASE . ' caracteres): use só o trecho que identifica o pedido.'];
+        }
+        if (count(array_filter(explode(' ', trim($a . ' ' . $b)))) < 2) {
+            return [null, null, 'Use pelo menos 2 palavras além do {shopping} (ex.: "qual a holding do {shopping}").'];
+        }
+        $f = preg_replace('/\{[^}]*\}/', '{shopping}', $f) ?? $f;
+        return [$f, $n, null];
+    }
+
+    /** Nomes das variáveis criadas (ativas ou não). @return list<string> */
+    public function nomesVariaveis(): array
+    {
+        $st = $this->pdo()->query("SELECT substr(chave, 5) FROM ixc.mensagens WHERE chave LIKE 'var.%' ORDER BY chave");
+        return array_map('strval', $st->fetchAll(PDO::FETCH_COLUMN));
+    }
+
+    /** @return array{0:string,1:string} [valor, descricao] */
+    private static function validarValor(string $valor, string $descricao): array
+    {
+        $v = rtrim(str_replace(["\r\n", "\r"], "\n", $valor));
+        if (trim($v) === '') {
+            throw new ErroDeUso('Escreva o valor da variável.');
+        }
+        if (mb_strlen($v) > self::MAX_VALOR) {
+            throw new ErroDeUso('Valor grande demais (máximo ' . self::MAX_VALOR . ' caracteres).');
+        }
+        if (preg_match('/\{[a-z_]+\}/', $v)) {
+            throw new ErroDeUso('O valor não pode ter outra {variável} dentro.');
+        }
+        $d = trim(preg_replace('/\s+/u', ' ', $descricao) ?? $descricao);
+        if (mb_strlen($d) > self::MAX_TITULO) {
+            throw new ErroDeUso('Descrição grande demais (máximo ' . self::MAX_TITULO . ' caracteres).');
+        }
+        return [$v, $d];
+    }
+
+    private function variavel(string $nome): array
+    {
+        $st = $this->pdo()->prepare(Bot::SQL_MENSAGEM . ' WHERE chave = ?');
+        $st->execute(['var.' . $nome]);
+        $r = $st->fetch();
+        if (!$r) {
+            throw new ErroDeUso('Variável não encontrada (pode ter sido excluída por outra pessoa). Recarregue a página.');
+        }
+        foreach ($this->bot->variaveis() as $v) {
+            if ($v['nome'] === $nome) {
+                return $v;
+            }
+        }
+        throw new ErroDeUso('Variável não encontrada.');
+    }
+
+    /** @return array<string,mixed> */
+    public function criarVariavel(string $nome, string $valor, string $descricao): array
+    {
+        $nome = mb_strtolower(trim(trim($nome), '{}'));
+        if (!preg_match(self::RX_VARIAVEL, $nome)) {
+            throw new ErroDeUso('Nome da variável: só letras minúsculas sem acento, números e _, começando com letra (2 a 30), ex.: holding, senha_wifi.');
+        }
+        if (in_array($nome, self::RESERVADAS, true)) {
+            throw new ErroDeUso('{' . $nome . '} já é do bot (o shopping citado na pergunta). Escolha outro nome.');
+        }
+        [$v, $d] = self::validarValor($valor, $descricao);
+        $this->emTransacao(function (PDO $pdo) use ($nome, $v, $d) {
+            $st = $pdo->prepare('SELECT 1 FROM ixc.mensagens WHERE chave = ?');
+            $st->execute(['var.' . $nome]);
+            if ($st->fetchColumn()) {
+                throw new ErroDeUso('Já existe a variável {' . $nome . '}.');
+            }
+            $pdo->prepare("INSERT INTO ixc.mensagens (chave, grupo, ordem, titulo, wf, exemplo, texto_padrao, texto, variaveis, ativo,
+                                                      criada_painel, frases, frases_norm, grupos, criado_por, criado_em, atualizado, atualizado_por)
+                           VALUES (?, 'Variáveis', 0, ?, '03', NULL, ?, NULL, '{}', true, true, '{}', '{}', 'todos', ?, now(), now(), ?)")
+                ->execute(['var.' . $nome, $d, $v, $this->quem, $this->quem]);
+            $this->hist('var.' . $nome, null, '(criada) ' . $v);
+        });
+        return $this->variavel($nome);
+    }
+
+    /** O nome não muda (as mensagens usam {nome}); muda valor e descrição. @return array<string,mixed> */
+    public function editarVariavel(string $nome, string $valor, string $descricao): array
+    {
+        $atual = $this->variavel($nome);
+        [$v, $d] = self::validarValor($valor, $descricao);
+        $this->emTransacao(function (PDO $pdo) use ($nome, $v, $d, $atual) {
+            $pdo->prepare("UPDATE ixc.mensagens SET titulo = ?, texto_padrao = ?, atualizado = now(), atualizado_por = ? WHERE chave = ?")
+                ->execute([$d, $v, $this->quem, 'var.' . $nome]);
+            if ($v !== $atual['valor']) {
+                $this->hist('var.' . $nome, $atual['valor'], $v);
+            }
+        });
+        return $this->variavel($nome);
+    }
+
+    /** @return array<string,mixed> */
+    public function ligarVariavel(string $nome, bool $ativo): array
+    {
+        $this->variavel($nome);
+        $this->ligarMensagem('var.' . $nome, $ativo);
+        return $this->variavel($nome);
+    }
+
+    /** Só se nenhuma mensagem nova usa (senão o bot mostraria {nome} cru). */
+    public function excluirVariavel(string $nome): void
+    {
+        $v = $this->variavel($nome);
+        if ($v['usos']) {
+            throw new ErroDeUso('{' . $nome . '} é usada em: ' . implode(', ', array_map(fn($u) => '"' . $u['titulo'] . '"', $v['usos']))
+                . '. Tire das mensagens antes de excluir (ou desative a variável: o trecho fica vazio).');
+        }
+        $this->pdo()->prepare("DELETE FROM ixc.mensagens WHERE chave = ? AND criada_painel")->execute(['var.' . $nome]);
+    }
+
+    /** Histórico da variável (o mesmo das mensagens). @return list<array<string,mixed>> */
+    public function historicoVariavel(string $nome): array
+    {
+        return $this->historico('var.' . $nome);
     }
 
     private static function pgArr(array $l): string

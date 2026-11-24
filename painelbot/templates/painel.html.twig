@@ -7,6 +7,7 @@
   'tecnicos':   ['ti-user-cog', 'Técnicos'],
   'contatos':   ['ti-address-book', 'Contatos de setor'],
   'mensagens':  ['ti-message-2', 'Mensagens'],
+  'variaveis':  ['ti-braces', 'Variáveis'],
   'parametros': ['ti-adjustments', 'Parâmetros'],
   'eventos':    ['ti-list-details', 'Últimos envios']
 } %}
@@ -99,6 +100,14 @@
       </div>
       <div class="pbot-msg-ed" id="pbot-msg-ed"></div>
     </div>
+  </section>
+  {% endif %}
+
+  {% if 'variaveis' in nav.secoes %}
+  <section class="pbot-sec" data-sec="variaveis" {{ primeira == 'variaveis' ? '' : 'hidden' }}>
+    <div class="pbot-nota">Valores fixos para usar no texto das <b>mensagens novas</b> (Mensagens &gt; Nova mensagem): escreva <code>{nome}</code> no texto e o bot troca pelo valor. Desativada = o trecho fica vazio. <code>{shopping}</code> é do bot: o shopping citado na pergunta (sem shopping reconhecido, responde para todos).</div>
+    <div class="pbot-tabela-wrap"><table class="pbot-tabela" id="pbot-variaveis"></table></div>
+    <div id="pbot-var-form"></div>
   </section>
   {% endif %}
 

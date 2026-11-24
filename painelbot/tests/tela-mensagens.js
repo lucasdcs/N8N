@@ -15,6 +15,7 @@ function abrir(direitos) {
   const html = `<html><head><meta property="glpi:csrf_token" content="x"></head><body><div id="pbot" data-api="${BASE}/dados" data-acao="${BASE}/acao" data-direitos='${JSON.stringify(D)}'>
     <span id="pbot-status"></span><div id="pbot-erro" hidden></div>
     <section class="pbot-sec" data-sec="mensagens"><div class="pbot-msg"><div class="pbot-msg-lista"><input type="search" id="pbot-busca-msg"><div class="pbot-chips" id="pbot-msg-filtros"></div><div id="pbot-msg-itens"></div></div><div class="pbot-msg-ed" id="pbot-msg-ed"></div></div></section>
+    <section class="pbot-sec" data-sec="variaveis"><div class="pbot-tabela-wrap"><table class="pbot-tabela" id="pbot-variaveis"></table></div><div id="pbot-var-form"></div></section>
   </div></body></html>`;
   const dom = new JSDOM(html, { runScripts: 'outside-only', url: BASE + '/' });
   const w = dom.window;
@@ -113,19 +114,61 @@ const item = (w, titulo) => $$(w, '.pbot-msg-item').find(b => b.querySelector('.
   check('excluir pede confirmacao', /confirmar/.test(bEx.textContent) && sql("SELECT count(*) FROM ixc.mensagens WHERE chave='resp.2'") === '1');
   bEx.click();
   check('excluiu', await ate(() => sql("SELECT count(*) FROM ixc.mensagens WHERE chave='resp.2'") === '0' && !$$(w, '.pbot-msg-item').some(b => /Abre às 8h/.test(b.textContent))));
+  // ---------------- 0.4.1: aba Variáveis e {shopping}
+  check('aba variaveis vazia', /Nenhuma variável/.test($(w, '#pbot-variaveis').textContent));
+  bt(w, 'Nova variável').click();
+  let [vN, vD] = $$(w, '#pbot-var-form input'); let vV = $(w, '#pbot-var-form textarea');
+  digitar(w, vN, 'Holding!'); digitar(w, vV, 'x'); bt(w, 'Criar variável').click();
+  check('nome invalido na tela', /minúsculas/.test($(w, '#pbot-var-form .pbot-retorno').textContent));
+  digitar(w, vN, '{holding}'); digitar(w, vV, '4BTELECOM'); digitar(w, vD, 'Empresa dona'); bt(w, 'Criar variável').click();
+  check('variavel criada (banco + tabela)', await ate(() => sql("SELECT texto_padrao FROM ixc.mensagens WHERE chave='var.holding'") === '4BTELECOM' && /\{holding\}/.test($(w, '#pbot-variaveis').textContent)));
+  check('variavel nao aparece em Mensagens', !$$(w, '.pbot-msg-item').some(b => /holding/i.test(b.textContent)));
+  // mensagem nova com {shopping} e {holding}
+  bt(w, 'Nova mensagem').click();
+  let [h1] = $$(w, '#pbot-msg-ed input.form-control'); let [hf, ht] = $$(w, '#pbot-msg-ed textarea');
+  digitar(w, h1, 'Holding dos Shopping'); digitar(w, hf, 'qual holding do jockey'); digitar(w, ht, 'Holding do *{shopping}* é {holding}');
+  check('{shopping} sem frase: erro', /coloque \{shopping\} na frase/.test($(w, '#pbot-msg-ed .pbot-ed-chk').textContent));
+  check('chip so {holding}', $$(w, '#pbot-msg-ed .pbot-var-bt').map(b => b.textContent).join() === '{holding}');
+  digitar(w, hf, 'qual holding do {shopping}');
+  check('chips {shopping} + {holding}', $$(w, '#pbot-msg-ed .pbot-var-bt').map(b => b.textContent).join() === '{shopping},{holding}');
+  digitar(w, ht, 'Holding do *{shopping}* é {holdin}');
+  check('variavel inexistente: erro', /Variável que não existe: \{holdin\}/.test($(w, '#pbot-msg-ed .pbot-ed-chk').textContent) && bt(w, 'Criar mensagem').disabled);
+  digitar(w, ht, 'Holding do *{shopping}* é {holding}');
+  check('preview com valores', /Holding do <b>Jockey Plaza<\/b> é 4BTELECOM/.test($(w, '#pbot-msg-ed .pbot-wa-bolha').innerHTML), $(w, '#pbot-msg-ed .pbot-wa-bolha').innerHTML);
+  const tIn2 = $(w, '#pbot-msg-ed .pbot-pq-teste input');
+  digitar(w, tIn2, 'Qual holding do Palladium Curitiba?');
+  check('teste com shopping', /shopping: "palladium curitiba"/.test($(w, '#pbot-msg-ed .pbot-pq-res').textContent), $(w, '#pbot-msg-ed .pbot-pq-res').textContent);
+  digitar(w, tIn2, 'qual holding do ?');
+  check('teste sem shopping: todos', /sem shopping: responde todos/.test($(w, '#pbot-msg-ed .pbot-pq-res').textContent), $(w, '#pbot-msg-ed .pbot-pq-res').textContent);
+  bt(w, 'Criar mensagem').click();
+  check('criou com {shopping}', await ate(() => sql("SELECT frases_norm[1] FROM ixc.mensagens WHERE titulo='Holding dos Shopping'") === 'qual holding do {shopping}'));
+  // aba variáveis: usada em, editar, excluir bloqueado
+  {
+    w.pbot.recarregar(); await ate(() => /Holding dos Shopping/.test($(w, '#pbot-variaveis').textContent));
+  }
+  check('usada em', /Holding dos Shopping/.test($(w, '#pbot-variaveis').textContent));
+  $(w, '#pbot-variaveis button[title^="Editar"]').click();
+  check('editar: nome somente leitura', $$(w, '#pbot-var-form input')[0].readOnly);
+  digitar(w, $(w, '#pbot-var-form textarea'), '4B Telecom'); bt(w, 'Salvar', $(w, '#pbot-var-form')).click();
+  check('editou valor', await ate(() => sql("SELECT texto_padrao FROM ixc.mensagens WHERE chave='var.holding'") === '4B Telecom'));
+  let xb = $(w, '#pbot-variaveis button[title^="Excluir"]'); xb.click(); xb.click();
+  check('excluir usada: recusa com o nome da mensagem', await ate(() => /Holding dos Shopping/.test($(w, '#pbot-var-ret').textContent) && $(w, '#pbot-var-ret').classList.contains('erro')));
+  $(w, '#pbot-variaveis .pbot-sw').click();
+  check('desativar variavel', await ate(() => sql("SELECT ativo FROM ixc.mensagens WHERE chave='var.holding'") === 'f' && /desativada/.test($(w, '#pbot-var-ret').textContent)));
   w.close();
 
   // ---------------- perfil só Visualizar
   w = abrir({ m: 1, p: 1 });
-  await ate(() => $$(w, '.pbot-msg-item').length === 56);
+  await ate(() => $$(w, '.pbot-msg-item').length === 57);
   check('so ver: sem Nova mensagem', !bt(w, 'Nova mensagem'));
   item(w, 'Senha do wi-fi do Jockey').click();
   check('so ver: campos somente leitura, sem chave, pill desativada', $$(w, '#pbot-msg-ed textarea').every(t => t.readOnly) && !$(w, '#pbot-msg-ed .pbot-sw') && /desativada/.test($(w, '.pbot-ed-ativa').textContent));
+  check('so ver: aba variaveis sem Nova/editar/chave', !bt(w, 'Nova variável') && !$(w, '#pbot-variaveis .pbot-sw') && !$(w, '#pbot-variaveis button[title^="Editar"]'));
   check('so ver: sem Salvar/Excluir, com Historico', !bt(w, 'Salvar', $(w, '#pbot-msg-ed')) && !bt(w, 'Excluir', $(w, '#pbot-msg-ed')) && !!bt(w, 'Histórico', $(w, '#pbot-msg-ed')));
   w.close();
   // ---------------- editar sem excluir: sem botao Excluir; servidor recusa
   w = abrir({ m: 3, p: 0 });
-  await ate(() => $$(w, '.pbot-msg-item').length === 56);
+  await ate(() => $$(w, '.pbot-msg-item').length === 57);
   item(w, 'Senha do wi-fi do Jockey').click();
   check('editar sem excluir: sem botao Excluir', !bt(w, 'Excluir', $(w, '#pbot-msg-ed')) && !!bt(w, 'Salvar', $(w, '#pbot-msg-ed')));
   const r = await (await fetch(BASE + '/acao', { method: 'POST', body: JSON.stringify({ acao: 'mensagem_excluir', chave: 'resp.1' }) })).json();

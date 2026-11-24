@@ -23,6 +23,9 @@
  *   mensagem_nova        {titulo, texto, frases, grupos}         Mensagens > Editar   (resposta no grupo, chave resp.N)
  *   mensagem_editar_nova {chave, titulo, texto, frases, grupos}  Mensagens > Editar   (só as criadas no painel)
  *   mensagem_excluir     {chave}               Mensagens > Excluir  (só as criadas no painel)
+ * 0.4.1 — variáveis das mensagens novas ({nome} = valor fixo; aba Variáveis, direitos de Mensagens):
+ *   variavel_criar {nome, valor, descricao} · variavel_editar {nome, valor, descricao} · variavel_ligar {nome, ativo}  Mensagens > Editar
+ *   variavel_excluir {nome}  Mensagens > Excluir (só se nenhuma mensagem nova usa) · variavel_historico {nome}  Mensagens > Visualizar
  */
 
 use GlpiPlugin\Painelbot\Bot;
@@ -57,6 +60,11 @@ $exige = [
     'mensagem_nova'       => [Direito::MENSAGENS, UPDATE],
     'mensagem_editar_nova' => [Direito::MENSAGENS, UPDATE],
     'mensagem_excluir'    => [Direito::MENSAGENS, DELETE],
+    'variavel_criar'      => [Direito::MENSAGENS, UPDATE],
+    'variavel_editar'     => [Direito::MENSAGENS, UPDATE],
+    'variavel_ligar'      => [Direito::MENSAGENS, UPDATE],
+    'variavel_excluir'    => [Direito::MENSAGENS, DELETE],
+    'variavel_historico'  => [Direito::MENSAGENS, READ],
     'pergunta_criar'      => [Direito::PERGUNTAS, UPDATE],
     'pergunta_editar'     => [Direito::PERGUNTAS, UPDATE],
     'pergunta_ligar'      => [Direito::PERGUNTAS, UPDATE],
@@ -93,6 +101,11 @@ try {
         'mensagem_ligar'      => ['mensagem' => $ed->ligarMensagem((string) ($corpo['chave'] ?? ''), !empty($corpo['ativo']))],
         'mensagem_nova'       => ['mensagem' => $ed->criarNova((string) ($corpo['titulo'] ?? ''), (string) ($corpo['texto'] ?? ''), $frases, (string) ($corpo['grupos'] ?? 'todos'))],
         'mensagem_editar_nova' => ['mensagem' => $ed->editarNova((string) ($corpo['chave'] ?? ''), (string) ($corpo['titulo'] ?? ''), (string) ($corpo['texto'] ?? ''), $frases, (string) ($corpo['grupos'] ?? 'todos'))],
+        'variavel_criar'      => ['variavel' => $ed->criarVariavel((string) ($corpo['nome'] ?? ''), (string) ($corpo['valor'] ?? ''), (string) ($corpo['descricao'] ?? ''))],
+        'variavel_editar'     => ['variavel' => $ed->editarVariavel((string) ($corpo['nome'] ?? ''), (string) ($corpo['valor'] ?? ''), (string) ($corpo['descricao'] ?? ''))],
+        'variavel_ligar'      => ['variavel' => $ed->ligarVariavel((string) ($corpo['nome'] ?? ''), !empty($corpo['ativo']))],
+        'variavel_excluir'    => (function () use ($ed, $corpo) { $ed->excluirVariavel((string) ($corpo['nome'] ?? '')); return ['excluida' => (string) ($corpo['nome'] ?? '')]; })(),
+        'variavel_historico'  => ['historico' => $ed->historicoVariavel((string) ($corpo['nome'] ?? ''))],
         'mensagem_excluir'    => (function () use ($ed, $corpo) { $ed->excluirNova((string) ($corpo['chave'] ?? '')); return ['excluida' => (string) ($corpo['chave'] ?? '')]; })(),
         'pergunta_criar'      => ['pergunta' => $ed->criarPergunta((string) ($corpo['alvo'] ?? ''), (string) ($corpo['frase'] ?? ''), (string) ($corpo['grupos'] ?? 'todos'))],
         'pergunta_editar'     => ['pergunta' => $ed->editarPergunta($id, (string) ($corpo['frase'] ?? ''), (string) ($corpo['grupos'] ?? ''))],
