@@ -6,7 +6,7 @@
 # e os 4 workflows [SIM] (despublicados: publicar na tela do n8n). Pode rodar de novo (atualiza).
 # Variáveis opcionais: N8N_CONTAINER=<nome>  PG_CONTAINER=pbot-pg-teste  PORTA=3999  FORCAR=1 (pula a checagem do servidor)
 set -euo pipefail
-VERSAO=0.1.0
+VERSAO=0.1.1
 DIR="$(cd "$(dirname "$0")" && pwd)"
 PG="${PG_CONTAINER:-pbot-pg-teste}"
 PORTA="${PORTA:-3999}"

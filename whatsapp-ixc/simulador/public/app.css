@@ -72,4 +72,6 @@ input, select, textarea { font: inherit; border: 1px solid var(--borda); border-
 .vazio { color: var(--sub); text-align: center; padding: 20px; }
 .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: #323232; color: #fff; padding: 9px 16px; border-radius: 6px; max-width: 70vw; z-index: 9; }
 .toast.erro { background: #b3261e; }
+.toast { cursor: pointer; line-height: 1.45; }
+.log .l-resumo { background: #fff8e1; } .log .l-resumo b { color: #8d6e00; }
 @media (max-width: 1100px) { .grade { grid-template-columns: 240px 1fr 320px; } }

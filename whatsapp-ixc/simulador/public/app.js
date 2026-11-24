@@ -10,7 +10,8 @@ async function api(url, corpo) {
   if (!r.ok) throw new Error(j.erro || ('HTTP ' + r.status));
   return j;
 }
-function toast(t, erro) { const a = $('#aviso'); a.textContent = t; a.className = 'toast' + (erro ? ' erro' : ''); a.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { a.hidden = true; }, 4000); }
+function toast(t, erro, ms) { const a = $('#aviso'); a.textContent = t; a.className = 'toast' + (erro ? ' erro' : ''); a.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { a.hidden = true; }, ms || 4000); }
+document.addEventListener('click', e => { if (e.target.id === 'aviso') e.target.hidden = true; });
 const digitos = s => String(s || '').replace(/\D/g, '');
 
 // ---------- nomes ----------
@@ -176,7 +177,11 @@ document.addEventListener('click', async ev => {
   const ab = ev.target.closest('[data-aba]');
   if (ab) { document.querySelectorAll('[data-aba]').forEach(b => b.classList.toggle('ativa', b === ab)); document.querySelectorAll('.aba').forEach(a => { a.hidden = a.id !== 'aba-' + ab.dataset.aba; }); return; }
   const ro = ev.target.closest('[data-rodar]');
-  if (ro) { ro.disabled = true; try { const x = await api('/sim/rodar', { wf: ro.dataset.rodar }); toast(x.status === 200 ? `WF ${ro.dataset.rodar} disparado. As mensagens aparecem em alguns segundos.` : `WF ${ro.dataset.rodar}: HTTP ${x.status || '—'} ${x.status === 404 ? '(o workflow [SIM] não está publicado)' : x.txt}`, x.status !== 200); } catch (e) { toast(e.message, true); } ro.disabled = false; return; }
+  if (ro) {
+    const rot = ro.textContent; ro.disabled = true; ro.textContent = '⏳ rodando…';
+    try { const x = await api('/sim/rodar', { wf: ro.dataset.rodar }); toast(x.resumo || ('WF ' + ro.dataset.rodar + ': HTTP ' + x.status), x.status !== 200, 12000); } catch (e) { toast(e.message, true); }
+    ro.disabled = false; ro.textContent = rot; return;
+  }
   const ac = ev.target.closest('.chamado [data-a]');
   if (ac) {
     const box = ac.closest('.chamado'), a = ac.dataset.a;

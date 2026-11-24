@@ -1,4 +1,4 @@
-# Simulador do whatsapp-ixc (ambiente de teste) — 0.1.0
+# Simulador do whatsapp-ixc (ambiente de teste) — 0.1.1
 
 WhatsApp e IXC **de mentira** para testar o bot e os avisos no servidor de teste antes da produção.
 Nada sai para o WhatsApp real nem chega ao IXC real.
@@ -18,21 +18,23 @@ navegador ──► ixc-simulador:3999 (tela de grupos + IXC simulado)
 | `gerar_sim.py` | Gera as cópias `[SIM]` dos 4 workflows de produção: endereços do WAHA, IXC e planta **fixos** no simulador, sem credencial do WAHA, Postgres = credencial "Postgres SIMULADOR", webhook `sim-ixc-whatsapp` e webhooks `sim-rodar-01/02/04`. No fim confere que nenhum nó HTTP aponta para fora (só a planilha do Google no 04, leitura). |
 | `banco-sim.sql` / `banco-desfazer.sql` | Aponta o banco de teste para o simulador (`base_url`, `auth` fictício, `waha_url`, `envio = REAL`) guardando os valores antigos em `ixc.sim_antes`; o desfazer devolve. |
 | `instalar.sh` / `remover.sh` | Instala/atualiza tudo no servidor de teste (recusa rodar na produção) / remove. |
-| `check/` | `teste_api.js` (26), `teste_e2e.js` (15, com n8n de verdade), `teste_painel.js` (texto editado no painel vale no aviso). |
+| `check/` | `teste_api.js` (26), `teste_e2e.js` (15, com n8n de verdade), `teste_painel.js` (texto editado no painel vale no aviso), `teste_12x36.js` (5: nome do cadastro no 12x36, resumo do botão). |
+
+**0.1.1** — os botões ▶ esperam a rodada terminar e mostram um resumo (empresas consultadas, eventos novos, chamados sem técnico, visitas, mensagens enviadas e, quando não sai nada, o porquê). Workflows [SIM] gerados da whatsapp-ixc 0.4.1.
 
 ## Gerar o pacote de teste
 
 O pacote leva os workflows de **produção** convertidos (têm telefones e grupos reais): **não vai para o GitHub**.
 
 ```bash
-python3 gerar_sim.py <pasta com os 4 JSON de producao 0.4.0> n8n
+python3 gerar_sim.py <pasta com os 4 JSON de producao 0.4.1> n8n
 npm install --omit=dev          # node_modules vai no zip (o build no servidor não precisa de internet para o npm)
 ```
 
 ## Instalar (servidor de teste, root)
 
 ```bash
-cd /opt && unzip -oq /home/resolutto/ixc-simulador-0.1.0.zip && bash /opt/ixc-simulador/instalar.sh
+cd /opt && unzip -oq /home/resolutto/ixc-simulador-0.1.1.zip && bash /opt/ixc-simulador/instalar.sh
 ```
 
 Abrir `http://10.120.100.54:3999/` (usuário `sim`, senha: `cat /opt/ixc-simulador/.senha`).

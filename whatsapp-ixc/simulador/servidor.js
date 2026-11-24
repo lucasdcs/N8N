@@ -8,7 +8,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { Client } = require('pg');
 
-const VERSAO = '0.1.0';
+const VERSAO = '0.1.1';
 const PORTA = +process.env.PORTA || 3999;
 const SENHA = process.env.SIM_SENHA || '';
 const N8N = String(process.env.N8N_URL || 'http://n8n-compose-n8n-1:5678').replace(/\/+$/, '');
@@ -23,6 +23,8 @@ const MAX_MSG = 3000, MAX_LOG = 300;
 let E = { seq: 0, msgs: [], ixc: {}, idMsg: {}, idCh: 900000, idCli: 800000, wahaFora: false };
 try { Object.assign(E, JSON.parse(fs.readFileSync(ARQ, 'utf8'))); } catch (e) { /* primeiro uso */ }
 let LOG = [];
+let CHAM = [];   // chamadas do n8n (para o resumo do botão ▶): { t, tipo: 'ixc'|'waha', emp, tabela, qtype, n, chat }
+function chamada(x) { x.t = Date.now(); CHAM.push(x); if (CHAM.length > 500) CHAM = CHAM.slice(-500); }
 let gravarT = null;
 function gravar() {
   clearTimeout(gravarT);
@@ -192,6 +194,7 @@ function wahaEnvio(tipo, b) {
     imagem: tipo === 'imagem' && b.file ? (b.file.data ? 'data:' + (b.file.mimetype || 'image/png') + ';base64,' + b.file.data : (b.file.url || '')) : null,
     mentions: Array.isArray(b.mentions) ? b.mentions.map(String) : [], reply_to: b.reply_to || null, sessao: b.session || '' };
   novaMsg(m);
+  chamada({ tipo: 'waha', chat });
   log('waha', `bot → ${chat}: ${m.texto.split('\n')[0]}`);
   return [201, { id, timestamp: Math.floor(m.t / 1000), from: BOT.fone + '@c.us', to: chat, fromMe: true, body: m.texto, _data: { id: { id, fromMe: true, remote: chat } } }];
 }
@@ -220,12 +223,44 @@ async function mensagemDoGrupo(d) {
   gravar(); return m;
 }
 const RODAR = { '01': 'sim-rodar-01', '02': 'sim-rodar-02', '04': 'sim-rodar-04' };
-async function rodar(wf) {
+const espera = ms => new Promise(ok => setTimeout(ok, ms));
+// 0.1.1: o botão ▶ espera a rodada terminar (3 s sem chamadas novas, até 25 s) e devolve um resumo do que o workflow fez
+async function rodar(wf, quieto) {
   if (!RODAR[wf]) throw new Error('workflow inválido');
+  const t0 = Date.now();
   const r = await postar(N8N + '/webhook/' + RODAR[wf], { origem: 'simulador' });
   log('n8n', `rodar WF ${wf}: HTTP ${r.status || 'sem resposta'} ${r.status === 200 ? '' : r.txt}`);
+  if (r.status !== 200) { r.resumo = r.status === 404 ? `WF ${wf}: o workflow [SIM] ${wf} não está publicado no n8n de teste.` : `WF ${wf}: o n8n não respondeu (${r.status || r.txt}).`; return r; }
+  if (quieto) return r;
+  for (let i = 0; i < 25; i++) {
+    await espera(1000);
+    const ult = CHAM.filter(c => c.t >= t0).map(c => c.t);
+    const fim = ult.length ? Math.max(...ult) : 0;
+    if ((fim && Date.now() - fim > 3000) || (wf === '04' && Date.now() - t0 > 8000 && !fim)) break;
+  }
+  r.resumo = resumo(wf, CHAM.filter(c => c.t >= t0));
+  log('resumo', r.resumo);
   return r;
 }
+function resumo(wf, cs) {
+  const ixc = cs.filter(c => c.tipo === 'ixc'), env = cs.filter(c => c.tipo === 'waha');
+  const soma = f => ixc.filter(f).reduce((a, c) => a + c.n, 0);
+  const emps = new Set(ixc.map(c => c.emp)).size;
+  const msgs = env.length + (env.length === 1 ? ' mensagem enviada' : ' mensagens enviadas') + (env.length ? ' (' + [...new Set(env.map(c => nomeChatSim(c.chat)))].join(', ') + ')' : '');
+  if (wf === '01') {
+    if (!ixc.length) return 'WF 01 rodou mas não consultou o IXC simulado: veja a execução do [SIM] 01 em Executions no n8n.';
+    const ev = soma(c => c.tabela === 'su_oss_chamado_mensagem'), st = soma(c => c.tabela === 'su_oss_chamado' && c.qtype === 'su_oss_chamado.status');
+    return `WF 01: ${emps} empresas consultadas · ${ev} evento(s) novo(s) · ${st} chamado(s) sem técnico → ${msgs}.` +
+      (!env.length ? (ev || st ? ' Nada a avisar agora (ex.: sem técnico só avisa com 10+ min de aberto; repetido não reenvia).' : ' Nada a avisar: abra um chamado na aba IXC simulado.') : '');
+  }
+  if (wf === '02') {
+    if (!ixc.length) return 'WF 02 rodou mas não consultou o IXC simulado: veja a execução do [SIM] 02 em Executions no n8n.';
+    const ag = soma(c => c.tabela === 'su_oss_chamado');
+    return `WF 02: ${ag} visita(s) agendada(s) daqui pra frente → ${msgs}.` + (!env.length ? ' O lembrete só sai faltando 40–60 min (1 h) ou 3–10 min (10 min), uma vez por visita: use "Agendar +55 min" ou "+8 min" no chamado.' : '');
+  }
+  return `WF 04: planilha ESCALAS lida → ${msgs}.` + (!env.length ? ' O 04 só manda mensagem (no grupo de automação) quando a planilha tem alerta (nome não reconhecido, troca); a escala do dia vai para o banco de teste.' : '');
+}
+function nomeChatSim(jid) { const g = CAD.grupos[jid]; if (g) return g.nomes[0]; const t = CAD.tecnicos.find(x => x.fone && jid.startsWith(String(x.fone).replace(/\D/g, ''))); return t ? 'particular de ' + t.nome : jid; }
 
 // ---------- HTTP ----------
 const TIPOS = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml' };
@@ -279,6 +314,7 @@ const srv = http.createServer(async (req, res) => {
     if (m && req.method === 'POST') {
       const b = await lerCorpo(req); const empresa = decodeURIComponent(m[1]);
       const r = ixcConsulta(empresa, m[2], b);
+      chamada({ tipo: 'ixc', emp: empresa, tabela: m[2], qtype: String(b.qtype || ''), n: r.registros ? r.registros.length : 0 });
       if (m[2] !== 'su_oss_assunto' && m[2] !== 'cliente') log('ixc-api', `${empresa} ${m[2]} ${b.qtype || ''} ${b.oper || ''} ${b.query || ''} → ${r.total || 0}`);
       return enviar(res, 200, r);
     }
