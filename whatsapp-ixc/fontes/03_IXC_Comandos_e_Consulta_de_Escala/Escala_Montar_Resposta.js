@@ -207,6 +207,18 @@ const ALIAS = {
   'PONTO:159': ['passo fundo'], 'PONTO:273': ['pulse'], 'PONTO:84': ['patio chapeco', 'patio'], 'PONTO:84|PONTO:273': ['chapeco'], 'PONTO:110': ['riviera'],
   'PONTO:216': ['sinop'], 'PELOTAS': ['pelotas'], '4B:201|CACTA:260': ['catuai'] };  // apelidos vistos no historico do N1/N2 (27/07-26/09)
 const GENERICOS = ['curitiba'];  // so vale se nenhum shopping especifico foi citado
+// 0.4.0 (Painel do Bot): apelidos de ixc.apelidos, editados no painel. Banco sem apelidos = os fixos acima.
+const AP_ = Array.isArray(cfg.apelidos) ? cfg.apelidos : [];
+if (AP_.length) {
+  for (const k of Object.keys(ALIAS)) if (k !== 'PELOTAS') delete ALIAS[k];
+  GENERICOS.length = 0;
+  for (const a of AP_) {
+    const k = (Array.isArray(a.alvos) ? a.alvos : []).join('|'), ap = String(a.a || '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!k || !ap) continue;
+    (ALIAS[k] = ALIAS[k] || []).push(ap);
+    if (a.g) GENERICOS.push(ap);
+  }
+}
 
 const grupos = String((cfg.param || {}).escala_grupos || '').split(',').map(s => s.trim()).filter(Boolean);
 if (!grupos.includes(P0.grupo)) return [];

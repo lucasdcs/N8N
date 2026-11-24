@@ -1,6 +1,6 @@
 # whatsapp-ixc — Notificações de chamados IXC no WhatsApp (WAHA)
 
-Versão **0.3.0** (23/11/2026) — textos e perguntas editáveis pelo **Painel do Bot** (plugin GLPI [`painelbot`](../painelbot/README.md)). Adaptação para o **WAHA** da automação "IXC → WhatsApp" recebida de terceiro (feita para a Evolution API, documentação de 04/10/2026). Sem IA (o assistente "Hermes", workflows 05/06, ficou de fora).
+Versão **0.4.0** (24/11/2026) — textos, perguntas e apelidos de shopping editáveis pelo **Painel do Bot** (plugin GLPI [`painelbot`](../painelbot/README.md)). Adaptação para o **WAHA** da automação "IXC → WhatsApp" recebida de terceiro (feita para a Evolution API, documentação de 04/10/2026). Sem IA (o assistente "Hermes", workflows 05/06, ficou de fora).
 
 | Pasta | Conteúdo |
 |---|---|
@@ -117,10 +117,11 @@ Pré-requisitos: WAHA `WORKING` com o 2121; o 2121 **membro de todos os grupos**
 | 0.2.1 | 29/10/2026 | WF 02: lembretes (1 h com planta e 10 min) no **particular do técnico**, sem @ e sem cópia no grupo; sem técnico/sem telefone/dono do número → grupo como antes; parâmetro `lembrete_privado` |
 | 0.2.6 | 19/11/2026 | WF 03: apelidos do Shopping Canoas (BUZZ 281). WF 04: `escala_ler_porto_belo` (Porto Belo/Tijucas podem sair da planilha e virar técnico fixo); armadilhas de reimportação e da sessão do WAHA no README |
 | 0.3.0 | 23/11/2026 | Painel do Bot: os 55 textos do bot passam por `M(chave, padrão, vars)` — texto editado em `ixc.mensagens` ou o padrão embutido (sem edição = resposta igual à 0.2.6, teste diferencial). Linha cuja variável vem vazia some. WF 03: as frases ligadas de `ixc.perguntas` **somam** ao reconhecimento de setor de hoje; frase padrão desligada cala o setor; "só Recados" respeitado. Menção (@) pelo telefone em qualquer linha da resposta. Exige `painelbot/sql/01-mensagens-perguntas.sql` no banco antes de importar |
+| 0.4.0 | 24/11/2026 | WF 03: apelidos de shopping ("quem está no <apelido>?") vêm de `ixc.apelidos`, editados no Painel do Bot (tabela vazia = os fixos de antes; com os padrão carregados a resposta é igual à 0.3.0 — `check/teste06.js`). Shopping novo cadastrado no painel passa a ser reconhecido pelo apelido. Exige o `painelbot/sql/01` da 0.3.0 do painel |
 
 Regenerar a partir do pacote original: `python3 scripts/adaptar_waha.py <Exportacao_Automacao_IXC> <saída>`; cópia pública: `python3 scripts/sanitizar_publico.py n8n/sanitizar-workflows.py <saída> <Exportacao_Automacao_IXC> <pública>`; validar: `node scripts/check/valida.js <saída>/n8n && node scripts/check/teste01.js && node scripts/check/teste03.js`.
 
-A partir da 0.2.0, depois do `adaptar_waha.py`: `python3 scripts/v020_lembrete_planta.py <saída>` (WF 02 com a planta) e `node scripts/check/teste02.js <saída>/n8n`. Na 0.2.1, depois do v020: `python3 scripts/v021_lembrete_particular.py <saída>`. Na 0.3.0, depois do v021: `python3 scripts/v030_mensagens_perguntas.py <saída>` e `node scripts/check/teste05.js <n8n 0.2.6> <saída>/n8n <cfgs.json>` (cfgs = saída das queries dos nós de config num banco com o schema `ixc` + `painelbot/sql/01`).
+A partir da 0.2.0, depois do `adaptar_waha.py`: `python3 scripts/v020_lembrete_planta.py <saída>` (WF 02 com a planta) e `node scripts/check/teste02.js <saída>/n8n`. Na 0.2.1, depois do v020: `python3 scripts/v021_lembrete_particular.py <saída>`. Na 0.3.0, depois do v021: `python3 scripts/v030_mensagens_perguntas.py <saída>` e `node scripts/check/teste05.js <n8n 0.2.6> <saída>/n8n <cfgs.json>` (cfgs = saída das queries dos nós de config num banco com o schema `ixc` + `painelbot/sql/01`). Na 0.4.0: `python3 scripts/v040_apelidos.py <saída>` e `node scripts/check/teste06.js <n8n 0.3.0> <saída>/n8n <cfgs com apelidos>`.
 
 ## Planta da loja (0.2.0)
 
