@@ -98,7 +98,7 @@ check('simulacao igual 0.4.3', JSON.stringify(anexar(N, 'oi', cS)) === JSON.stri
 check('cabecalho de simulacao desativado: so o texto', anexar(N, 'oi', off(cS, 'envio.simulacao'))[0].json.corpo.text === 'oi');
 // Rotear: tipo de aviso desativado = ignorado
 const cR = { empresas: [{ id: 'CACTA', nome: 'Cacta' }], tecnicos: [{ empresa: 'CACTA', id_func: '12', nome: 'Juliano', fone: '5541900000012', grupo: null }],
-  locais: [{ empresa: 'CACTA', id_condominio: '263', nome: 'Jockey Plaza', grupo: 'gJ@g.us', marcar_sem_tec: [] }], funcionarios: [], param: {}, pendentes: [], lembretes: [], mensagens: {}, escala_hoje: [] };
+  locais: [{ empresa: 'CACTA', id_condominio: '263', nome: 'Jockey Plaza', grupo: 'gJ@g.us', marcar_sem_tec: [] }], funcionarios: [], param: { aviso_privado: 'nao' }, pendentes: [], lembretes: [], mensagens: {}, escala_hoje: [] };   // modo grupo (0.6.0: padrao = particular)
 const rotear = (codes, cfg) => run(codes.w1['Rotear'], { items: [{ json: { registros: [{ id: '5', razao: 'Cli', id_condominio: '263' }] } }], nodes: {
   'Carregar Config': [{ json: { cfg } }],
   'Processar Eventos': [{ json: { empresa: 'CACTA', id_evento: '8', id_chamado: '77', id_tecnico: '12', mensagem: 'x' } }],
@@ -108,6 +108,8 @@ check('Rotear ativo: igual 0.4.3', JSON.stringify(r0) === JSON.stringify(rotear(
 const r1 = rotear(N, off(cR, r0.evento_chave));
 check('Rotear: tipo desativado = ignorado com motivo', r1.ignorado === true && r1.motivo === 'aviso desativado no Painel do Bot (' + r0.evento_chave + ')' && r1.id_chamado === '77', JSON.stringify(r1));
 check('Rotear: outro tipo desativado nao afeta', rotear(N, off(cR, 'aviso.escalado')).ignorado === false);
+const cP = clone(cR); delete cP.param.aviso_privado;   // 0.6.0+: modo particular (padrao)
+if (/PRIVADO_/.test(N.w1['Rotear'])) check('Rotear particular: tipo desativado tambem vira ignorado com o motivo', rotear(N, off(cP, r0.evento_chave)).motivo === 'aviso desativado no Painel do Bot (' + r0.evento_chave + ')');
 
 // ---------------- WF 02: lembretes
 const c2 = clone(CFG['02:Carregar Config']); c2.param.envio = 'REAL'; c2.param.planta_ativo = 'sim'; c2.mensagens = {};

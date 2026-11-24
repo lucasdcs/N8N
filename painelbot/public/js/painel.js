@@ -740,7 +740,7 @@
     return ((a ? a + ' ' : '') + '{shopping}' + (b ? ' ' + b : '')).trim();
   }
   /**
-   * Mensagem do grupo como o bot compara (whatsapp-ixc 0.5.0/0.5.1): normal e sem hífen ("Wi-Fi" também vale como "wifi").
+   * Mensagem do grupo como o bot compara (whatsapp-ixc 0.5.0/0.6.2): normal e sem hífen ("Wi-Fi" também vale como "wifi").
    * Com {shopping}: as palavras antes e depois na ordem; o que fica no lugar é o shopping. @return false | {shopping: texto}
    */
   function bateFrase(txt, f) {

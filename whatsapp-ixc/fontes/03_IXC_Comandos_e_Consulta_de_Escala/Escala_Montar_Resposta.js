@@ -266,8 +266,28 @@ const CAB_ = c => (c ? c + '\n\n' : '');  // 0.5.0: cabecalho desativado nao dei
 const marcarFones_ = (r, menc) => r.replace(/()\((\d{2})\)\s*(\d{4,5})-(\d{4})/g, (x, pre, dd, p1, p2) => { const num = '55' + dd + p1 + p2; if (!menc.includes(num)) menc.push(num); return pre + '@' + num; });
 // 0.5.0: MENSAGEM NOVA do Painel do Bot (resposta fixa): cabecalho + texto; telefone (dd) nnnnn-nnnn vira @
 if (P0.resposta_fixa !== undefined) {
-  const corpo_ = String(P0.resposta_fixa || '').trim();
-  if (!corpo_) return [];
+  const corpo0_ = String(P0.resposta_fixa || '').trim();
+  if (!corpo0_) return [];
+  // 0.6.2: variaveis do painel ({nome} = valor) e {shopping}; M() com chave inexistente = o texto dado, com as variaveis
+  const VR_ = Object.assign({}, P0.resposta_vars || {});
+  let corpo_;
+  if (P0.resposta_shopping === undefined || P0.resposta_shopping === null) corpo_ = M('__resp__', corpo0_, VR_);
+  else {
+    let t2 = ' ' + norm(P0.resposta_shopping).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
+    const td = [];
+    for (const [k, al] of Object.entries(ALIAS)) for (const a of al) td.push([a, k]);
+    td.sort((a, b) => (GENERICOS.includes(a[0]) - GENERICOS.includes(b[0])) || b[0].length - a[0].length);
+    const ach = [];
+    for (const [a, k] of td) {
+      if (GENERICOS.includes(a) && ach.length) continue;
+      if (t2.includes(' ' + a + ' ')) { t2 = t2.replace(' ' + a + ' ', ' # '); for (const kk of k.split('|')) if (!ach.includes(kk)) ach.push(kk); }
+    }
+    let locs_ = ach.map(k => LOC.find(l => l.empresa + ':' + l.id_condominio === k)).filter(Boolean);
+    if (!locs_.length) locs_ = LOC.slice().sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));   // nenhum reconhecido: todos
+    const partes_ = locs_.map(l => M('__resp__', corpo0_, Object.assign({}, VR_, { shopping: l.nome }))).filter(x => x.trim());
+    corpo_ = partes_.join(corpo0_.includes('\n') ? '\n\n' : '\n');
+  }
+  if (!corpo_.trim()) return [];
   const menc = [];
   const resp = marcarFones_(CAB_(M('escala.cabecalho', '🤖 *Resposta automática do bot de escalas*')) + corpo_, menc);
   return [{ json: { grupo: P0.grupo, resposta: resp, mentioned: menc, resposta_chave: P0.resposta_chave, quoted: { key: { id: P0.id, remoteJid: P0.grupo, fromMe: P0.fromMe, participant: P0.participant }, message: { conversation: P0.texto } } } }];
