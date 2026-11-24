@@ -126,13 +126,28 @@ function tecDaPlanilha(emp, nome) {
   const c = da.filter(t => pal(t.nome_planilha || t.nome)[0] === w[0]);
   if (c.length === 1) return c[0];
   const d = c.filter(t => { const k = pal(t.nome_planilha || t.nome); return k[1] && w.includes(k[1]); });
-  return d.length === 1 ? d[0] : null;
+  if (d.length === 1) return d[0];
+  if (c.length) return null;  // 1o nome bate com mais de um e o 2o nao desempatou: como na 0.4.1
+  // 0.4.2: renomeado no painel sem "Nome na planilha" ("Juliano" -> "Testinho - Juliano")
+  if (w.some(p => p.length < 3)) return null;
+  const r = da.filter(t => !t.nome_planilha && w.every(p => pal(t.nome).includes(p)));
+  return r.length === 1 ? r[0] : null;
+}
+// 0.4.2: tecnico do dia no 12x36 = regras acima; senao o telefone da Equipe do shopping (o mesmo que vira o @)
+function tecDoDia(loc, nome) {
+  const t = tecDaPlanilha(loc.empresa, nome);
+  if (t) return t;
+  const b = EB[loc.empresa + ':' + loc.id_condominio] || {};
+  const f = String(foneDe(nome, loc, b) || '').replace(/\D/g, '');
+  if (f.length < 10) return null;
+  const r = TEC.filter(x => x.empresa === loc.empresa && String(x.fone || '').replace(/\D/g, '').slice(-10) === f.slice(-10));
+  return r.length === 1 ? r[0] : null;
 }
 function quemNoDia(loc, iso) {
   const b = EB[loc.empresa + ':' + loc.id_condominio] || {};
   if (b.tipo === '12x36' || b.tipo === 'escala') {
     const ns = ED.filter(d => d.empresa === loc.empresa && d.id_condominio === loc.id_condominio && String(d.data).slice(0, 10) === iso).map(d => d.tecnico);
-    if (ns.length) return ns.map(n => { const t = tecDaPlanilha(loc.empresa, n); return t ? t.nome + (t.fone ? ' ' + fmtFone(t.fone) : '') : n + ' ' + foneDe(n, loc, b); }).join(' / ').trim();  // 0.4.1
+    if (ns.length) return ns.map(n => { const t = tecDoDia(loc, n); return t ? t.nome + (t.fone ? ' ' + fmtFone(t.fone) : '') : n + ' ' + foneDe(n, loc, b); }).join(' / ').trim();  // 0.4.1
     return b.tecnicos ? b.tecnicos.replace(/;/g, ' /') : M('escala.sem_escala_dia', '_(escala do dia não encontrada na planilha)_');  // sem escala do dia -> equipe da escala base
   }
   const tp = TEC.find(t => t.empresa === loc.empresa && t.id_func === loc.tec_padrao);
@@ -203,7 +218,7 @@ function quem(q) {
     const b = EB[l.empresa + ':' + l.id_condominio] || {};
     const tp = TEC.find(t => t.empresa === l.empresa && t.id_func === l.tec_padrao);
     const nomes = [tp ? tp.nome : '', b.tecnicos || ''].concat(ED.filter(d => d.empresa === l.empresa && d.id_condominio === l.id_condominio).map(d => d.tecnico))
-      .concat(ED.filter(d => d.empresa === l.empresa && d.id_condominio === l.id_condominio).map(d => (tecDaPlanilha(l.empresa, d.tecnico) || {}).nome || ''));  // 0.4.1
+      .concat(ED.filter(d => d.empresa === l.empresa && d.id_condominio === l.id_condominio).map(d => (tecDoDia(l, d.tecnico) || {}).nome || ''));  // 0.4.1 / 0.4.2
     return nomes.some(n => norm(n).split(/[;\s()]+/).some(w => w && w === primeiro) && s.split(' ').every(p => norm(n).includes(p)));
   });
   if (locs.length) return locs.map(detalheLocal).join('\n\n');

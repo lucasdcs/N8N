@@ -88,12 +88,25 @@ function plantaoHoje(C, ESCALA, emp, loc) {
     if (cands.length === 1) tecs.push(cands[0].t);
     else { const f = cands.filter(c => tem(c.p2)); if (f.length === 1) tecs.push(f[0].t); }
   }
+  // 0.4.2: renomeado no painel sem "Nome na planilha" ("Juliano" -> "Testinho - Juliano"): o nome da planilha esta
+  // dentro do nome do cadastro (todas as palavras, >= 3 letras) e so um tecnico da empresa bate
+  const palR = s => normTxt(s).replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(Boolean);
+  const daEmp = Object.values(C.tec).filter(t => t.empresa === emp);
+  const contido = n => { const w = palR(n); if (!w.length || w.some(p => p.length < 3)) return null;
+    const r = daEmp.filter(t => !t.nome_planilha && w.every(p => palR(t.nome).includes(p))); return r.length === 1 ? r[0] : null; };
+  const extra = {};
+  for (const n of nomes) {
+    const w = palR(n);
+    if (tecs.some(t => palR(t.nome_planilha || t.nome)[0] === w[0])) continue;  // ja ligado pela regra da 0.4.1
+    const t = contido(n);
+    if (t && !tecs.includes(t)) { tecs.push(t); extra[n] = t; }
+  }
   // 0.4.1: o plantao sai com o nome do cadastro (editado no painel) quando o tecnico da planilha foi identificado
   const pal_ = s => normTxt(s).replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(Boolean);
   const exibe = nomes.map(n => {
     const w = pal_(n), c = tecs.filter(t => pal_(t.nome_planilha || t.nome)[0] === w[0]);
     const t = c.length === 1 ? c[0] : c.find(t => { const k = pal_(t.nome_planilha || t.nome); return k[1] && w.includes(k[1]); });
-    return t ? t.nome : n;
+    return t ? t.nome : (extra[n] ? extra[n].nome : n);  // 0.4.2: extra = regra do nome contido
   });
   return { nomes: exibe, texto, tecs, tem };
 }
@@ -174,7 +187,7 @@ for (const e of porChamado.values()) {
     const tAtrib = C.tec[emp + ':' + pid];
     if (tAtrib && loc && rota.grupo === loc.grupo) {
       const pl = plantaoHoje(C, ESCALA_HOJE, emp, loc);
-      if (pl && pl.nomes.length && !pl.tem(normTxt(tAtrib.nome_planilha || tAtrib.nome).split(/\s+/)[0])) {
+      if (pl && pl.nomes.length && !pl.tecs.includes(tAtrib) && !pl.tem(normTxt(tAtrib.nome_planilha || tAtrib.nome).split(/\s+/)[0])) {
         rota.marcar = [...rota.marcar];
         for (const t of pl.tecs) if (t.fone && !rota.marcar.includes(t.fone)) rota.marcar.push(t.fone);
         folga = tAtrib.nome + ' está de folga hoje — plantão no ' + loc.nome + ': ' + pl.nomes.join(' e ');
