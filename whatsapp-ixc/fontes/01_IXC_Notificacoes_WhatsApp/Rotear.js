@@ -120,6 +120,8 @@ const ESCALA_HOJE = CFGRAW.escala_hoje || [];
 
 // 1 mensagem por chamado por checagem (estado final). Grupo = shopping (condominio do chamado ou do cliente).
 const C = carregarConfig();
+// 0.6.0 (24/11/2026): avisos so no particular do tecnico atribuido; nada em grupo. aviso_privado = 'nao' volta aos grupos.
+const PRIVADO_ = String(C.param.aviso_privado || 'sim').trim().toLowerCase() !== 'nao';
 const agoraMs = paraData(agoraBRT());
 const items = $input.all();
 const porChamado = new Map();
@@ -187,6 +189,7 @@ for (const e of porChamado.values()) {
       continue;
     }
     rota = rotaPessoa(C, emp, loc, pid);
+    if (!rota && PRIVADO_) rota = { grupo: null, marcar: [], nome: nomePessoa(C, emp, pid), shopping: null };  // 0.6.0
     if (!rota) { out.push({ pairedItem: { item: e.i }, json: Object.assign(base, { ignorado: true, motivo: 'sem shopping mapeado e pessoa fora do mapa (' + nomePessoa(C, emp, pid) + ')' }) }); continue; }
     // Técnico de campo atribuído mas fora da escala de hoje no shopping: marca também quem está de plantão (regra de 29/09/2026)
     const tAtrib = C.tec[emp + ':' + pid];
@@ -203,6 +206,26 @@ for (const e of porChamado.values()) {
   // 0.5.0: tipo de aviso desativado no Painel do Bot -> nao envia, registra como ignorado
   const MSG_OFF_ = (() => { try { let c = $('Carregar Config').first().json.cfg; if (typeof c === 'string') c = JSON.parse(c); return (c && c.mensagens) || {}; } catch (x) { return {}; } })();
   if (chave && MSG_OFF_[chave] === null) { out.push({ pairedItem: { item: e.i }, json: Object.assign(base, { ignorado: true, motivo: 'aviso desativado no Painel do Bot (' + chave + ')' }) }); continue; }
+  // 0.6.0: so particular: tecnico atribuido (aberto/transferido) ou responsavel pela infra (infra_fone). Assumido, sem tecnico,
+  // dono do numero, fora do cadastro ou sem telefone = nao sai (fica como ignorado)
+  if (PRIVADO_) {
+    const pidP = (ev === 'INFRA' || ev === 'SEMTEC') ? null : (tecEvento || tecChamado);
+    const tP = pidP ? C.tec[emp + ':' + pidP] : null;
+    const foneP = tP ? String(tP.fone || '').replace(/\D/g, '') : '';
+    let motivoP = null;
+    const foneI = String(C.param.infra_fone || '').replace(/\D/g, '');
+    if (ev === 'SEMTEC') motivoP = 'sem técnico atribuído (avisos só no particular do técnico)';
+    else if (ev === 'INFRA') { if (foneI.length < 12) motivoP = 'pedido de infra: infra_fone não cadastrado'; }
+    else if (label === 'Chamado assumido') motivoP = 'chamado assumido (não notifica)';
+    else if (!pidP) motivoP = 'sem técnico atribuído (avisos só no particular do técnico)';
+    else if (E.dono_id && pidP === String(E.dono_id)) motivoP = 'atribuído ao dono do número (avisos só no particular do técnico)';
+    else if (!tP) motivoP = 'pessoa fora do cadastro de técnicos (' + nomePessoa(C, emp, pidP) + ')';
+    else if (foneP.length < 12) motivoP = 'técnico sem telefone cadastrado (' + tP.nome + ')';
+    if (motivoP) { out.push({ pairedItem: { item: e.i }, json: Object.assign(base, { ignorado: true, motivo: motivoP }) }); continue; }
+    rota = ev === 'INFRA' ? { grupo: foneI + '@c.us', marcar: [], nome: null, shopping: loc ? loc.nome : 'Local não identificado' }
+      : { grupo: foneP + '@c.us', marcar: [], nome: null, shopping: loc ? loc.nome : null };
+    semTec = false; folga = null; folgaV = null;
+  }
   out.push({ pairedItem: { item: e.i }, json: Object.assign(base, {
     ignorado: false, chamado, cliente, mensagem: (e.novo && e.textoAbertura) || msg.mensagem || '', grupo_jid: rota.grupo, marcar: rota.marcar,
     nome: rota.nome || null, shopping: rota.shopping, sem_tecnico: semTec, evento_emoji: emoji, evento_label: label, folga, evento_chave: chave, tempo, folga_v: folgaV,

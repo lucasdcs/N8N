@@ -1,7 +1,8 @@
+// Encanamento do WAHA (envio, reenvio, modos). aviso_privado = 'nao' (0.6.0): o reenvio para grupo continua testado aqui; o particular esta no teste11.
 const fs = require('fs'); const { run } = require('./harness');
 const w = JSON.parse(fs.readFileSync((process.argv[2] || 'n8n') + '/01_IXC_Notificacoes_WhatsApp.json', 'utf8'));
 const code = Object.fromEntries(w.nodes.filter(n => n.parameters.jsCode).map(n => [n.name, n.parameters.jsCode]));
-const cfg = [{ json: { cfg: { empresas: [], tecnicos: [], locais: [], funcionarios: [], param: { waha_url: 'http://waha:3000/', waha_session: 's1', falha_max_tentativas: '5', envio: 'REAL', envio_teste_para: '5541900000001' }, pendentes: [{ id: 7, empresa: '4B', id_chamado: '1', protocolo: 'P1', evento: '1', grupo: 'g@g.us', mentioned: ['5541900000002'], texto: 'oi', tentativas: 1 }] } } }];
+const cfg = [{ json: { cfg: { empresas: [], tecnicos: [], locais: [], funcionarios: [], param: { waha_url: 'http://waha:3000/', waha_session: 's1', falha_max_tentativas: '5', envio: 'REAL', envio_teste_para: '5541900000001', aviso_privado: 'nao' }, pendentes: [{ id: 7, empresa: '4B', id_chamado: '1', protocolo: 'P1', evento: '1', grupo: 'g@g.us', mentioned: ['5541900000002'], texto: 'oi', tentativas: 1 }] } } }];
 const mm = [{ json: { empresa: '4B', id_chamado: '10', protocolo: '202610', evento: '1', texto: '🆕 Novo chamado — @5541900000002', grupo_jid: '120363000000000002@g.us', mentioned: ['5541900000002'], planta: { empresa: '4B', id_condominio: '199', loja: '36' } } },
             { json: { empresa: '4B', id_chamado: '11', protocolo: '202611', evento: '8', texto: '👤 Chamado assumido — *Fulano*', grupo_jid: '120363000000000002@g.us', mentioned: [], planta: null } }];
 const plantas = [{ json: { ok: true, imagem: 'iVBORw0KGgo=', piso: 'Térreo', lojas: ['36'] } }, { json: {} }];

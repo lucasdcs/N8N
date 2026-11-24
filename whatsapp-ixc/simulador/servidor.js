@@ -69,7 +69,7 @@ async function lerBanco() {
     const envio = String(P.envio || '').toUpperCase();
     const base = d.empresas.map(e => String(e.base_url || ''));
     CAD = { ok: true, erro: null, lido: Date.now(), empresas: d.empresas.map(e => { delete e.base_url; return e; }), locais: d.locais, tecnicos: d.tecnicos, funcionarios: d.funcionarios, grupos,
-      param: { envio, envio_teste_para: P.envio_teste_para || '', waha_url: P.waha_url || '', semtec_min: P.semtec_min || '10', planta_ativo: P.planta_ativo || '', lembrete_privado: P.lembrete_privado || 'sim',
+      param: { envio, envio_teste_para: P.envio_teste_para || '', waha_url: P.waha_url || '', semtec_min: P.semtec_min || '10', planta_ativo: P.planta_ativo || '', lembrete_privado: P.lembrete_privado || 'sim', aviso_privado: P.aviso_privado || 'sim',
         base_ok: base.every(b => /ixc-simulador/.test(b)) } };
     for (const e of CAD.empresas) { const ix = emp(e.id); if (!ix.idMsg || ix.idMsg < +e.last) ix.idMsg = +e.last || 0; }
     gravar();

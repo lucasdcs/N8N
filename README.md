@@ -8,7 +8,7 @@ Repositório da verdade das automações sobre a API do IXC em 5 bases (Resolutt
 | `painelixc/n8n/` | Modelos e scripts de geração dos workflows do painel | junto com o plugin |
 | `n8n/` | Cópia limpa dos workflows **ativos** na produção ([detalhes](n8n/README.md)) | tags `n8n-AAAA-MM-DD` |
 | `painelbot/` | Plugin **Painel do Bot** para GLPI 11 (SCDell, GPLv3+): gerencia o bot do `whatsapp-ixc` — escala, contatos, mensagens e perguntas ([detalhes](painelbot/README.md)) | tags `painelbot-vX.Y.Z` + Release com o zip |
-| `whatsapp-ixc/` | Notificações de chamados IXC nos grupos de WhatsApp (WAHA): 4 workflows + schema `ixc` no PostgreSQL ([detalhes](whatsapp-ixc/README.md)) | tags `whatsapp-ixc-vX.Y.Z` + Release com o zip |
+| `whatsapp-ixc/` | Notificações de chamados IXC no WhatsApp (WAHA) — no particular do técnico desde a 0.6.0: 4 workflows + schema `ixc` no PostgreSQL ([detalhes](whatsapp-ixc/README.md)) | tags `whatsapp-ixc-vX.Y.Z` + Release com o zip |
 
 ## Plugin: instalar / atualizar
 
