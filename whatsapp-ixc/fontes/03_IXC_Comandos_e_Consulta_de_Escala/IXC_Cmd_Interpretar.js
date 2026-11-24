@@ -106,13 +106,18 @@ const addDia = (iso, n) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDat
 const diaSem = iso => DIAS[new Date(iso + 'T12:00:00Z').getUTCDay()];
 const ddmm = iso => iso.slice(8, 10) + '/' + iso.slice(5, 7);
 const hfmt = h => h ? h.replace('-', '–') : null;
-function foneDe(nome, loc, b) {
-  const n = norm(nome);
-  const m = String((b && b.tecnicos) || '').split(';').map(x => x.trim()).find(x => norm(x).startsWith(n.split(' ')[0]));
+// 2o nome "compativel": algum dos dois nao tem 2o nome, ou o 2o de um aparece no outro (0.4.3)
+const palN = s => norm(s).replace(/\(\d{2}\).*$/, '').replace(/[^a-z0-9 ]+/g, ' ').trim().split(/\s+/).filter(Boolean);
+const compat = (a, k) => !a[1] || !k[1] || a.includes(k[1]) || k.includes(a[1]);
+function foneDe(nome, loc, b) {  // 0.4.3: nome inteiro > 2o nome > unico com o 1o nome (antes: 1a linha com o 1o nome)
+  const w = palN(nome); if (!w.length) return '';
+  const eq = String((b && b.tecnicos) || '').split(';').map(x => x.trim()).filter(x => palN(x)[0] === w[0]);
+  const ok = eq.filter(x => compat(w, palN(x)));
+  const m = eq.find(x => palN(x).join(' ') === w.join(' ')) || (w[1] && ok.find(x => palN(x).includes(w[1]))) || (ok.length === 1 ? ok[0] : null);
   const f = m && m.match(/\(\d{2}\)\s*[\d-]+/);
   if (f) return f[0];
-  const t = TEC.find(t => t.empresa === loc.empresa && norm(t.nome).split(' ')[0] === n.split(' ')[0]);
-  return t && t.fone ? fmtFone(t.fone) : '';
+  const ts = TEC.filter(t => t.empresa === loc.empresa && palN(t.nome)[0] === w[0] && compat(w, palN(t.nome)));
+  return ts.length === 1 && ts[0].fone ? fmtFone(ts[0].fone) : '';
 }
 function pessoaTxt(x) {  // 0.3.0: "Nome (dd) nnnn-nnnn" -> mensagem escala.shopping.pessoa
   const m = String(x).trim().match(/^(.*?)\s*(\(\d{2}\)\s*[\d-]+)?$/);
@@ -127,13 +132,17 @@ function tecDaPlanilha(emp, nome) {
   const ex = da.filter(t => pal(t.nome_planilha || t.nome).join(' ') === w.join(' '));
   if (ex.length === 1) return ex[0];
   const c = da.filter(t => pal(t.nome_planilha || t.nome)[0] === w[0]);
-  if (c.length === 1) return c[0];
+  if (c.length === 1 && compat(w, pal(c[0].nome_planilha || c[0].nome))) return c[0];  // 0.4.3: 2o nome nao pode contradizer
+  if (c.length === 1) return contido_(da, w);  // 0.4.3: "Joao Soares" nao e o "Joao Henrique" que sobrou
   const d = c.filter(t => { const k = pal(t.nome_planilha || t.nome); return k[1] && w.includes(k[1]); });
   if (d.length === 1) return d[0];
   if (c.length) return null;  // 1o nome bate com mais de um e o 2o nao desempatou: como na 0.4.1
   // 0.4.2: renomeado no painel sem "Nome na planilha" ("Juliano" -> "Testinho - Juliano")
+  return contido_(da, w);
+}
+function contido_(da, w) {  // 0.4.2: nome da planilha dentro do nome do cadastro (so com "Nome na planilha" vazio)
   if (w.some(p => p.length < 3)) return null;
-  const r = da.filter(t => !t.nome_planilha && w.every(p => pal(t.nome).includes(p)));
+  const r = da.filter(t => !t.nome_planilha && w.every(p => palN(t.nome).includes(p)));
   return r.length === 1 ? r[0] : null;
 }
 // 0.4.2: tecnico do dia no 12x36 = regras acima; senao o telefone da Equipe do shopping (o mesmo que vira o @)

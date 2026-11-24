@@ -85,7 +85,10 @@ function plantaoHoje(C, ESCALA, emp, loc) {
   }
   const tecs = [];
   for (const cands of Object.values(porPrimeiro)) {
-    if (cands.length === 1) tecs.push(cands[0].t);
+    if (cands.length === 1) {  // 0.4.3: 2o nome da planilha nao pode contradizer ("Joao Soares" x "Joao Henrique")
+      const p = cands[0], ns = nomes.map(n => normTxt(n).replace(/[^a-z0-9]+/g, ' ').trim().split(' ')).filter(w => w[0] === normTxt(p.t.nome_planilha || p.t.nome).split(/\s+/)[0]);
+      if (!ns.length || ns.some(w => !w[1] || !p.p2 || w.includes(p.p2))) tecs.push(p.t);
+    }
     else { const f = cands.filter(c => tem(c.p2)); if (f.length === 1) tecs.push(f[0].t); }
   }
   // 0.4.2: renomeado no painel sem "Nome na planilha" ("Juliano" -> "Testinho - Juliano"): o nome da planilha esta
@@ -97,7 +100,7 @@ function plantaoHoje(C, ESCALA, emp, loc) {
   const extra = {};
   for (const n of nomes) {
     const w = palR(n);
-    if (tecs.some(t => palR(t.nome_planilha || t.nome)[0] === w[0])) continue;  // ja ligado pela regra da 0.4.1
+    if (tecs.some(t => { const k = palR(t.nome_planilha || t.nome); return k[0] === w[0] && (!w[1] || !k[1] || w.includes(k[1])); })) continue;  // ja ligado pela regra da 0.4.1 (0.4.3: com o 2o nome compativel)
     const t = contido(n);
     if (t && !tecs.includes(t)) { tecs.push(t); extra[n] = t; }
   }
@@ -108,7 +111,9 @@ function plantaoHoje(C, ESCALA, emp, loc) {
     const t = c.length === 1 ? c[0] : c.find(t => { const k = pal_(t.nome_planilha || t.nome); return k[1] && w.includes(k[1]); });
     return t ? t.nome : (extra[n] ? extra[n].nome : n);  // 0.4.2: extra = regra do nome contido
   });
-  return { nomes: exibe, texto, tecs, tem };
+  // 0.4.3: o tecnico atribuido "esta na planilha" se algum nome tem o 1o nome dele e o 2o nao contradiz
+  const bate = t => { const k = palR(t.nome_planilha || t.nome); return nomes.some(n => { const w = palR(n); return w[0] === k[0] && (!w[1] || !k[1] || w.includes(k[1]) || k.includes(w[1])); }); };
+  return { nomes: exibe, texto, tecs, tem, bate };
 }
 
 const ESCALA_HOJE = CFGRAW.escala_hoje || [];
@@ -187,7 +192,7 @@ for (const e of porChamado.values()) {
     const tAtrib = C.tec[emp + ':' + pid];
     if (tAtrib && loc && rota.grupo === loc.grupo) {
       const pl = plantaoHoje(C, ESCALA_HOJE, emp, loc);
-      if (pl && pl.nomes.length && !pl.tecs.includes(tAtrib) && !pl.tem(normTxt(tAtrib.nome_planilha || tAtrib.nome).split(/\s+/)[0])) {
+      if (pl && pl.nomes.length && !pl.tecs.includes(tAtrib) && !pl.bate(tAtrib)) {
         rota.marcar = [...rota.marcar];
         for (const t of pl.tecs) if (t.fone && !rota.marcar.includes(t.fone)) rota.marcar.push(t.fone);
         folga = tAtrib.nome + ' está de folga hoje — plantão no ' + loc.nome + ': ' + pl.nomes.join(' e ');
