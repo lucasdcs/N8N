@@ -3,7 +3,9 @@
 
 // 0.3.0 (Painel do Bot): textos editaveis em ixc.mensagens; sem texto editado usa o padrao embutido na chamada.
 const MSG_ = (() => { try { let c = $('Carregar Config').first().json.cfg; if (typeof c === 'string') c = JSON.parse(c); return (c && c.mensagens) || {}; } catch (e) { return {}; } })();
+const OFF_ = Object.keys(MSG_).some(k => MSG_[k] === null);  // 0.5.0: alguma mensagem desativada no Painel do Bot
 function M(chave, padrao, v) {
+  if (MSG_[chave] === null) return '';  // 0.5.0: desativada no Painel do Bot
   const t = typeof MSG_[chave] === 'string' && MSG_[chave].trim() ? MSG_[chave] : padrao;
   if (!v) return t;
   const vazio = k => v[k] === null || v[k] === undefined || String(v[k]) === '';
@@ -136,6 +138,8 @@ const ENVIO = String(PARAM.envio || 'NENHUM').trim().toUpperCase();
 const TESTE = String(PARAM.envio_teste_para || '').replace(/\D/g, '');
 if (ENVIO === 'NENHUM') return [];
 if (ENVIO !== 'REAL' && !TESTE) throw new Error('parametro envio=' + ENVIO + ' exige envio_teste_para');
-if (ENVIO !== 'REAL') for (const o of out) { o.json.chat_envio = TESTE + '@c.us'; o.json.texto = M('envio.simulacao', '🧪 SIMULAÇÃO → {grupo}', { grupo: o.json.grupo_jid }) + '\n' + o.json.texto; o.json.simulado = true; }
+// 0.5.0: lembrete desativado no Painel do Bot (texto vazio) nao sai; trecho desativado nao deixa linha em branco
+for (let k = out.length - 1; k >= 0; k--) { if (OFF_) out[k].json.texto = String(out[k].json.texto || '').split('\n').filter(l => l.trim()).join('\n'); if (!String(out[k].json.texto || '').trim()) out.splice(k, 1); }
+if (ENVIO !== 'REAL') for (const o of out) { const cs = M('envio.simulacao', '🧪 SIMULAÇÃO → {grupo}', { grupo: o.json.grupo_jid }); o.json.chat_envio = TESTE + '@c.us'; o.json.texto = (cs ? cs + '\n' : '') + o.json.texto; o.json.simulado = true; }
 return out;
 

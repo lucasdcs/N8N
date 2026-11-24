@@ -3,7 +3,9 @@
 
 // 0.3.0 (Painel do Bot): textos editaveis em ixc.mensagens; sem texto editado usa o padrao embutido na chamada.
 const MSG_ = (() => { try { let c = $('Escala: Buscar Dados').first().json.cfg; if (typeof c === 'string') c = JSON.parse(c); return (c && c.mensagens) || {}; } catch (e) { return {}; } })();
+const OFF_ = Object.keys(MSG_).some(k => MSG_[k] === null);  // 0.5.0: alguma mensagem desativada no Painel do Bot
 function M(chave, padrao, v) {
+  if (MSG_[chave] === null) return '';  // 0.5.0: desativada no Painel do Bot
   const t = typeof MSG_[chave] === 'string' && MSG_[chave].trim() ? MSG_[chave] : padrao;
   if (!v) return t;
   const vazio = k => v[k] === null || v[k] === undefined || String(v[k]) === '';
@@ -260,6 +262,16 @@ if (AP_.length) {
 
 const grupos = String((cfg.param || {}).escala_grupos || '').split(',').map(s => s.trim()).filter(Boolean);
 if (!grupos.includes(P0.grupo)) return [];
+const CAB_ = c => (c ? c + '\n\n' : '');  // 0.5.0: cabecalho desativado nao deixa linha em branco no topo
+const marcarFones_ = (r, menc) => r.replace(/()\((\d{2})\)\s*(\d{4,5})-(\d{4})/g, (x, pre, dd, p1, p2) => { const num = '55' + dd + p1 + p2; if (!menc.includes(num)) menc.push(num); return pre + '@' + num; });
+// 0.5.0: MENSAGEM NOVA do Painel do Bot (resposta fixa): cabecalho + texto; telefone (dd) nnnnn-nnnn vira @
+if (P0.resposta_fixa !== undefined) {
+  const corpo_ = String(P0.resposta_fixa || '').trim();
+  if (!corpo_) return [];
+  const menc = [];
+  const resp = marcarFones_(CAB_(M('escala.cabecalho', '🤖 *Resposta automática do bot de escalas*')) + corpo_, menc);
+  return [{ json: { grupo: P0.grupo, resposta: resp, mentioned: menc, resposta_chave: P0.resposta_chave, quoted: { key: { id: P0.id, remoteJid: P0.grupo, fromMe: P0.fromMe, participant: P0.participant }, message: { conversation: P0.texto } } } }];
+}
 // RESPOSTA DE SETOR (regra de 04/10): contatos de ixc.contatos_setor + horario + se esta atendendo agora; marca o numero
 if (P0.setores && P0.setores.length) {
   const ST = cfg.setores || [];
@@ -310,14 +322,17 @@ if (P0.setores && P0.setores.length) {
       if (c.obs && c.obs !== obsSetor && !/sem horário/i.test(c.obs)) L.push('_' + c.obs + '_');
     }
     if (!cs.length) L.push(M('setor.sem_contato', '_sem contato cadastrado_'));
-    blocos.push(L.join('\n'));
+    blocos.push((OFF_ ? L.filter(x => String(x).trim()) : L).join('\n'));
   }
   if (foraRecados.length) {
     const lista = foraRecados.map(s => NOME_S[s]);
     const txt = lista.length > 1 ? lista.slice(0, -1).join(', ') + ' e ' + lista[lista.length - 1] : lista[0];
     blocos.push(M('setor.ir_recados', '📌 Para falar com *{setores}*, pergunte no grupo *Resolutto - Recados*: é lá que estão todos os setores (Financeiro, Comercial, Compras e RH).', { setores: txt }));
   }
-  let resp = M('escala.cabecalho', '🤖 *Resposta automática do bot de escalas*') + '\n\n' + blocos.join('\n\n');
+  const corpoSet_ = (OFF_ ? blocos.filter(b => b.trim()) : blocos).join('\n\n');
+  if (OFF_ && !corpoSet_.trim()) return [];  // 0.5.0: tudo desativado (so sobraria o cabecalho): nao responde
+  let resp = CAB_(M('escala.cabecalho', '🤖 *Resposta automática do bot de escalas*')) + corpoSet_;
+  if (OFF_) resp = resp.replace(/\n{3,}/g, '\n\n').trim();
   const menc = [];
   resp = resp.replace(/()\((\d{2})\)\s*(\d{4,5})-(\d{4})/g, (x, pre, dd, p1, p2) => { const num = '55' + dd + p1 + p2; if (!menc.includes(num)) menc.push(num); return pre + '@' + num; });
   return [{ json: { grupo: P0.grupo, resposta: resp, mentioned: menc, quoted: { key: { id: P0.id, remoteJid: P0.grupo, fromMe: P0.fromMe, participant: P0.participant }, message: { conversation: P0.texto } } } }];
@@ -346,7 +361,9 @@ else if (!locs.length) {
   if (!/\bhoje\b|\bagora\b/.test(t) || !/\bquem\b/.test(t)) return [];   // "quem ta hoje?" sem shopping -> lista geral
   resposta = quem('hoje');
 } else resposta = (locs.length > 2 ? locs.map(compacto) : locs.map(detalheLocal)).concat(extras).join('\n\n');
-resposta = M('escala.cabecalho', '🤖 *Resposta automática do bot de escalas*') + '\n\n' + resposta;  // legenda do bot (regra de 04/10)
+if (OFF_ && !String(resposta || '').trim()) return [];  // 0.5.0: tudo desativado (so sobraria o cabecalho): nao responde
+resposta = CAB_(M('escala.cabecalho', '🤖 *Resposta automática do bot de escalas*')) + resposta;  // legenda do bot (regra de 04/10)
+if (OFF_) resposta = resposta.replace(/\n{3,}/g, '\n\n').trim();  // 0.5.0: trechos desativados
 // Marca os tecnicos (regra de 02/10/2026): telefone da linha 👤 vira mencao de verdade (@55...). Lista geral "quem atende hoje" nao tem telefone -> nao marca ninguem.
 const mencoes = [];
 resposta = resposta.replace(/()\((\d{2})\)\s*(\d{4,5})-(\d{4})/g, (m, pre, dd, p1, p2) => {

@@ -26,6 +26,20 @@ function ehPergunta(n) {
   if (/\brespons[a]vel\s+(do|da|pelo|pela|de)\b/.test(n)) return true;                          // responsavel pelo shopping X
   return false;
 }
+// 0.5.0 (Painel do Bot 0.4.0): MENSAGENS NOVAS criadas no painel = resposta fixa quando a mensagem tem uma das frases.
+// Mesma regra das perguntas (palavras inteiras, na ordem, ate 200 caracteres); prioridade sobre setores e escala.
+if (n.length <= 200) {
+  let RS_ = [];
+  try { RS_ = JSON.parse(String($('Carregar Parametros').first().json.respostas || '[]')); } catch (e) { RS_ = []; }
+  if (Array.isArray(RS_) && RS_.length) {
+    const recados_ = String($('Carregar Parametros').first().json.setores_grupo || '');
+    // a mensagem tambem e comparada sem hifen: frase "wifi" vale para "wifi", "Wi-Fi" e "wi-fi"
+    const nn_ = ' ' + n.replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
+    const nh_ = ' ' + n.replace(/-/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
+    const r_ = RS_.find(r => (r.g !== 'recados' || key.remoteJid === recados_) && (Array.isArray(r.f) ? r.f : []).some(f => f && (nn_.includes(' ' + f + ' ') || nh_.includes(' ' + f + ' '))));
+    if (r_) return [{ json: { grupo: key.remoteJid, texto, id: key.id, participant: key.participant || null, fromMe: !!key.fromMe, resposta_fixa: String(r_.t || ''), resposta_chave: r_.chave } }];
+  }
+}
 // SETORES (04/10): "alguem do financeiro?", "algum n2 disponivel?", "comercial na ativa?", "contato do rh" -> contatos + horario
 const SET = { financeiro: 'financeiro|financeiron|faturamento|cobranca', comercial: 'comercial|vendas', rh: 'rh|recursos humanos', compras: 'compras', n2: 'n2' };
 const setores = [];

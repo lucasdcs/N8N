@@ -200,6 +200,9 @@ for (const e of porChamado.values()) {
       }
     }
   }
+  // 0.5.0: tipo de aviso desativado no Painel do Bot -> nao envia, registra como ignorado
+  const MSG_OFF_ = (() => { try { let c = $('Carregar Config').first().json.cfg; if (typeof c === 'string') c = JSON.parse(c); return (c && c.mensagens) || {}; } catch (x) { return {}; } })();
+  if (chave && MSG_OFF_[chave] === null) { out.push({ pairedItem: { item: e.i }, json: Object.assign(base, { ignorado: true, motivo: 'aviso desativado no Painel do Bot (' + chave + ')' }) }); continue; }
   out.push({ pairedItem: { item: e.i }, json: Object.assign(base, {
     ignorado: false, chamado, cliente, mensagem: (e.novo && e.textoAbertura) || msg.mensagem || '', grupo_jid: rota.grupo, marcar: rota.marcar,
     nome: rota.nome || null, shopping: rota.shopping, sem_tecnico: semTec, evento_emoji: emoji, evento_label: label, folga, evento_chave: chave, tempo, folga_v: folgaV,

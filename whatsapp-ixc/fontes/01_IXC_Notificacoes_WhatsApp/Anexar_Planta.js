@@ -3,7 +3,9 @@
 
 // 0.3.0 (Painel do Bot): textos editaveis em ixc.mensagens; sem texto editado usa o padrao embutido na chamada.
 const MSG_ = (() => { try { let c = $('Carregar Config').first().json.cfg; if (typeof c === 'string') c = JSON.parse(c); return (c && c.mensagens) || {}; } catch (e) { return {}; } })();
+const OFF_ = Object.keys(MSG_).some(k => MSG_[k] === null);  // 0.5.0: alguma mensagem desativada no Painel do Bot
 function M(chave, padrao, v) {
+  if (MSG_[chave] === null) return '';  // 0.5.0: desativada no Painel do Bot
   const t = typeof MSG_[chave] === 'string' && MSG_[chave].trim() ? MSG_[chave] : padrao;
   if (!v) return t;
   const vazio = k => v[k] === null || v[k] === undefined || String(v[k]) === '';
@@ -86,12 +88,14 @@ return $input.all().map((it, i) => {
   const com = !!(m.planta && p.ok && p.imagem);
   const simular = ENVIO !== 'REAL';
   const chatId = simular ? TESTE + '@c.us' : m.grupo_jid;
-  const texto = simular ? M('envio.simulacao', '🧪 SIMULAÇÃO → {grupo}', { grupo: m.grupo_jid }) + '\n' + m.texto : m.texto;
+  if (!String(m.texto || '').trim()) return null;  // 0.5.0: mensagem inteira desativada no Painel do Bot: nao envia
+  const cabSim = simular ? M('envio.simulacao', '🧪 SIMULAÇÃO → {grupo}', { grupo: m.grupo_jid }) : '';
+  const texto = simular ? (cabSim ? cabSim + '\n' : '') + m.texto : m.texto;
   const corpo = com
     ? { session: sessao, chatId, file: { mimetype: 'image/png', filename: 'planta-loja.png', data: p.imagem }, caption: texto }
     : { session: sessao, chatId, text: texto, linkPreview: false };
   if (m.mentioned && m.mentioned.length) corpo.mentions = paraMentions(m.mentioned);
   const info = !m.planta ? null : com ? 'com planta: ' + (p.piso || '') + ' loja ' + (p.lojas || []).join('/') : 'sem planta: ' + (p.motivo || (p.error && p.error.message) || 'erro ao gerar');
   return { pairedItem: { item: i }, json: { endpoint: base + (com ? '/api/sendImage' : '/api/sendText'), corpo, planta_info: (simular ? 'SIMULADO' + (info ? ' · ' + info : '') : info), simulado: simular } };
-});
+}).filter(Boolean);
 

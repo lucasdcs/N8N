@@ -3,7 +3,9 @@
 
 // 0.3.0 (Painel do Bot): textos editaveis em ixc.mensagens; sem texto editado usa o padrao embutido na chamada.
 const MSG_ = (() => { try { let c = $('Carregar Config').first().json.cfg; if (typeof c === 'string') c = JSON.parse(c); return (c && c.mensagens) || {}; } catch (e) { return {}; } })();
+const OFF_ = Object.keys(MSG_).some(k => MSG_[k] === null);  // 0.5.0: alguma mensagem desativada no Painel do Bot
 function M(chave, padrao, v) {
+  if (MSG_[chave] === null) return '';  // 0.5.0: desativada no Painel do Bot
   const t = typeof MSG_[chave] === 'string' && MSG_[chave].trim() ? MSG_[chave] : padrao;
   if (!v) return t;
   const vazio = k => v[k] === null || v[k] === undefined || String(v[k]) === '';
@@ -136,6 +138,7 @@ for (let i = 0; i < items.length; i++) {
       planta = { empresa: d.empresa, id_condominio: loc.id_condominio, loja: numLoja.replace(/^Loja\s+/i, '') };
     }
   }
+  if (OFF_) texto = texto.split('\n').filter(l => l.trim()).join('\n');  // 0.5.0: trecho desativado nao deixa linha em branco
   out.push({ pairedItem: { item: i }, json: { empresa: d.empresa, id_chamado: d.id_chamado, protocolo: d.chamado.protocolo, evento: d.evento, texto, grupo_jid: d.grupo_jid, mentioned: marcar, planta } });
 }
 return out;
