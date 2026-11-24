@@ -232,5 +232,15 @@ for (const e of porChamado.values()) {
     primeira: !!(e.novo || (ev === 'SEMTEC' && !msg.realerta)), // 1a notificacao do chamado (planta da loja, regra de 29/09/2026)
   }) });
 }
+// 0.6.1: no maximo aviso_max_rodada avisos por rodada (anti-bloqueio); o excedente fica registrado como ignorado
+const MAXR_ = C.param.aviso_max_rodada === undefined || C.param.aviso_max_rodada === '' ? 10 : +C.param.aviso_max_rodada;
+let envR_ = 0;
+for (const o of out) {
+  if (o.json.ignorado) continue;
+  if (++envR_ > MAXR_) {
+    const j = o.json;
+    o.json = { empresa: j.empresa, id_chamado: j.id_chamado, protocolo: j.protocolo, evento: j.evento, ignorado: true, motivo: 'limite de ' + MAXR_ + ' avisos por rodada (anti-bloqueio)' };
+  }
+}
 return out;
 

@@ -65,7 +65,7 @@ const TESTE = String(C.param.envio_teste_para || '').replace(/\D/g, '');
 if (ENVIO === 'NENHUM' || (ENVIO !== 'REAL' && !TESTE)) return [];
 // 0.6.0: com aviso_privado (padrao) falha antiga que era para grupo nao e reenviada
 const PRIV_ = String(C.param.aviso_privado || 'sim').trim().toLowerCase() !== 'nao';
-return C.pendentes.filter(p => p.tentativas < max && !(PRIV_ && /@g\.us$/.test(String(p.grupo || '')))).map(p => ({ json: {
+return C.pendentes.filter(p => p.tentativas < max && !(PRIV_ && /@g\.us$/.test(String(p.grupo || '')))).slice(0, C.param.reenvio_max_rodada === undefined || C.param.reenvio_max_rodada === '' ? 5 : +C.param.reenvio_max_rodada).map(p => ({ json: {
   falha_id: p.id, empresa: p.empresa, id_chamado: p.id_chamado, protocolo: p.protocolo, evento: p.evento,
   texto: ENVIO === 'REAL' ? p.texto : '🧪 SIMULAÇÃO (reenvio) → ' + p.grupo + '\n' + p.texto, grupo_jid: p.grupo, chat_envio: ENVIO === 'REAL' ? p.grupo : TESTE + '@c.us', mentioned: p.mentioned || [] } }));
 

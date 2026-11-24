@@ -101,10 +101,20 @@ const inicioDiaMs = agoraMs - minDia * 60000;
 function horaDeRealertar(ultimo) {
   return HORARIOS.some(h => { const hm = inicioDiaMs + h * 60000; return agoraMs >= hm && agoraMs - hm < 30 * 60000 && ultimo < hm - 60 * 60000; });
 }
+// 0.6.1: so eventos de hoje (BRT) e com ate aviso_max_idade_min minutos (padrao 60; 0 = so o dia). Sem data valida passa.
+const maxIdade_ = P.aviso_max_idade_min === undefined || P.aviso_max_idade_min === null || P.aviso_max_idade_min === '' ? 60 : +P.aviso_max_idade_min;
+const hoje_ = agoraBRT().slice(0, 10);
+function antigo_(m) {
+  const d = String((m && m.data) || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}/.test(d) || d.startsWith('0000')) return false;
+  if (d.slice(0, 10) !== hoje_) return true;
+  return maxIdade_ > 0 && (agoraMs - paraData(d)) / 60000 > maxIdade_;
+}
 const out = [];
 emps.forEach((e, k) => {
   const r = unwrap(novas[k] && novas[k].json);
   for (const m of (r.registros || [])) {
+    if (antigo_(m)) continue;  // 0.6.1: evento antigo (historico parado) nao avisa
     if (NOTIFICA.includes(String(m.id_evento))) out.push({ json: Object.assign({}, m, { empresa: e.empresa }) });
     if (pedeInfra(m.mensagem) && String(m.id_tecnico || '0') !== String((C.empresas[e.empresa] || {}).dono_id || '')) {
       const ki = e.empresa + ':' + m.id_chamado, ult = st.infra[ki] || 0;

@@ -413,6 +413,9 @@ INSERT INTO ixc.parametros (chave, valor, descricao) VALUES ('coordenador_nome',
 INSERT INTO ixc.parametros (chave, valor, descricao) VALUES ('planta_ativo', 'nao', 'sim = manda o recorte da planta (servico planta-loja no ar); nao = so texto');
 INSERT INTO ixc.parametros (chave, valor, descricao) VALUES ('aviso_privado', 'sim', 'WF 01 (0.6.0): sim = avisos de chamado so no particular do tecnico atribuido (assumido, sem tecnico e sem telefone nao saem; infra vai para infra_fone); nao = grupos como antes');
 INSERT INTO ixc.parametros (chave, valor, descricao) VALUES ('infra_fone', '55__TELEFONE__', 'WF 01 (0.6.0): particular de quem recebe o pedido de infra (55 + DDD + numero); vazio = nao sai');
+INSERT INTO ixc.parametros (chave, valor, descricao) VALUES ('aviso_max_idade_min', '60', 'WF 01 (0.6.1): evento de O.S. de outro dia ou mais velho que N minutos nao avisa (0 = so a regra do dia)');
+INSERT INTO ixc.parametros (chave, valor, descricao) VALUES ('aviso_max_rodada', '10', 'WF 01 (0.6.1): no maximo N avisos por rodada de 3 min (anti-bloqueio)');
+INSERT INTO ixc.parametros (chave, valor, descricao) VALUES ('reenvio_max_rodada', '5', 'WF 01 (0.6.1): no maximo N reenvios de falha por rodada');
 INSERT INTO ixc.parametros (chave, valor, descricao) VALUES ('envio', 'NENHUM', 'Modo dos workflows 01/02: NENHUM (so avanca o estado, nao manda), SIMULAR (manda tudo para envio_teste_para) ou REAL');
 INSERT INTO ixc.parametros (chave, valor, descricao) VALUES ('envio_teste_para', '55__TELEFONE__', 'Numero que recebe as mensagens no modo SIMULAR');
 INSERT INTO ixc.parametros (chave, valor, descricao) VALUES ('escala_ler_porto_belo', 'sim', 'WF 04: sim = Porto Belo/Tijucas vem da planilha ESCALAS (escala do dia); nao = tecnico fixo pela escala_base');
