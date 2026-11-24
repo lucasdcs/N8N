@@ -489,6 +489,12 @@ final class Editor
         if ($g !== '' && $grupo === null) {
             throw new ErroDeUso('Grupo do WhatsApp inválido (formato 1203…@g.us).');
         }
+        // 0.3.1: como o nome aparece na planilha ESCALAS (12x36); vazio = o próprio nome
+        $np = trim(preg_replace('/\s+/u', ' ', (string) ($d['nome_planilha'] ?? '')));
+        if (mb_strlen($np) > 60 || ($np !== '' && !preg_match('/\p{L}/u', $np))) {
+            throw new ErroDeUso('Nome na planilha: até 60 caracteres, com letras (ou vazio).');
+        }
+        $np = ($np === '' || self::norm($np) === self::norm($nome)) ? null : $np;
         $st = $this->pdo()->prepare('SELECT coalesce(fone, \'\') FROM ixc.tecnicos WHERE empresa = ? AND id_func = ?');
         $st->execute([$emp, $id]);
         $antigo = $st->fetchColumn();
@@ -498,14 +504,14 @@ final class Editor
         if (!$novo && $antigo === false) {
             throw new ErroDeUso('Técnico não encontrado (pode ter sido excluído). Recarregue a página.');
         }
-        $this->emTransacao(function (PDO $pdo) use ($novo, $emp, $id, $nome, $fone, $grupo, $antigo) {
+        $this->emTransacao(function (PDO $pdo) use ($novo, $emp, $id, $nome, $fone, $grupo, $antigo, $np) {
             if ($novo) {
-                $pdo->prepare('INSERT INTO ixc.tecnicos (empresa, id_func, nome, fone, grupo) VALUES (?, ?, ?, ?, ?)')
-                    ->execute([$emp, $id, $nome, $fone === '' ? null : $fone, $grupo]);
+                $pdo->prepare('INSERT INTO ixc.tecnicos (empresa, id_func, nome, fone, grupo, nome_planilha) VALUES (?, ?, ?, ?, ?, ?)')
+                    ->execute([$emp, $id, $nome, $fone === '' ? null : $fone, $grupo, $np]);
                 return null;
             }
-            $pdo->prepare('UPDATE ixc.tecnicos SET nome = ?, fone = ?, grupo = ? WHERE empresa = ? AND id_func = ?')
-                ->execute([$nome, $fone === '' ? null : $fone, $grupo, $emp, $id]);
+            $pdo->prepare('UPDATE ixc.tecnicos SET nome = ?, fone = ?, grupo = ?, nome_planilha = ? WHERE empresa = ? AND id_func = ?')
+                ->execute([$nome, $fone === '' ? null : $fone, $grupo, $np, $emp, $id]);
             // trocou o número: as listas de marcação dos shoppings acompanham (igual ao "ixc numero")
             if ($antigo !== '' && $antigo !== $fone) {
                 $pdo->prepare($fone === ''

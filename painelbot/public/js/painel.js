@@ -154,9 +154,9 @@
     var lista = arr(dados.tecnicos).filter(function (t) { return !q || norm([t.empresa, t.nome, t.shoppings, t.id_func].join(' ')).indexOf(q) >= 0; });
     var eT = pode('cadastros', 'editar'), xT = pode('cadastros', 'excluir');
     barra('pbot-tecnicos', 'Novo técnico', eT ? function () { formTecnico(null); } : null);
-    tabela($('pbot-tecnicos'), ['Base', 'Id no IXC', 'Nome', 'WhatsApp', 'Técnico padrão em', 'Marcado sem técnico em'].concat(eT || xT ? [''] : []),
+    tabela($('pbot-tecnicos'), ['Base', 'Id no IXC', 'Nome', 'Na planilha', 'WhatsApp', 'Técnico padrão em', 'Marcado sem técnico em'].concat(eT || xT ? [''] : []),
       lista.map(function (t) {
-        var l = [t.empresa, t.id_func, t.nome, fone(t.fone), t.shoppings || '—', t.marcado_em || '—'];
+        var l = [t.empresa, t.id_func, t.nome, t.nome_planilha || '—', fone(t.fone), t.shoppings || '—', t.marcado_em || '—'];
         if (eT || xT) l.push(acoesLinha(eT, xT, function () { formTecnico(t); }, function (x) {
           excluirEm('tecnico_excluir', { empresa: t.empresa, id_func: t.id_func }, 'Técnico "' + t.nome + '" excluído.', x); }, t.nome));
         return l;
@@ -851,10 +851,11 @@
     return formulario(novo ? 'Novo técnico' : 'Editar ' + t.nome, [
       { k: 'empresa', rot: 'Base (IXC)', tipo: 'select', opcoes: opEmpresas, fixo: !novo },
       { k: 'id_func', rot: 'ID do colaborador no IXC', tipo: 'num', fixo: !novo, dica: novo ? 'O id do técnico no IXC da base: é por ele que o bot sabe quem foi atribuído no chamado.' : null },
-      { k: 'nome', rot: 'Nome', tipo: 'text' },
+      { k: 'nome', rot: 'Nome', tipo: 'text', dica: 'É o nome que o bot mostra, inclusive nos shoppings 12x36.' },
+      { k: 'nome_planilha', rot: 'Nome na planilha ESCALAS (opcional)', tipo: 'text', dica: 'Como ele aparece na planilha dos 12x36. Preencha se o nome acima não começa igual ao da planilha (ex.: "Juliano"). Vazio = usa o nome.' },
       { k: 'fone', rot: 'WhatsApp', tipo: 'text', dica: 'DDD + número, ex.: 41 99999-0000. Trocar aqui troca também nas listas de marcação dos shoppings.' },
       { k: 'grupo', rot: 'Grupo do técnico (opcional)', tipo: 'grupo', largo: true, dica: 'Usado quando o chamado não tem shopping.' },
-    ], novo ? {} : { empresa: t.empresa, id_func: t.id_func, nome: t.nome, fone: t.fone ? fone(t.fone) : '', grupo: t.grupo }, function (d) {
+    ], novo ? {} : { empresa: t.empresa, id_func: t.id_func, nome: t.nome, nome_planilha: t.nome_planilha || '', fone: t.fone ? fone(t.fone) : '', grupo: t.grupo }, function (d) {
       if (!novo) { d.empresa = t.empresa; d.id_func = t.id_func; }
       return post('tecnico_salvar', { novo: novo, dados: d }).then(function (j) { if (j.ok) j.msg = 'Técnico "' + d.nome + '" ' + (novo ? 'criado.' : 'salvo.'); return j; });
     });

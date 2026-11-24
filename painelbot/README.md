@@ -8,6 +8,8 @@ que não tem acesso aos tokens do IXC e só grava nas tabelas do painel (mensage
 
 ## O que tem
 
+**0.3.1** — Técnicos: campo **Nome na planilha ESCALAS** (`ixc.tecnicos.nome_planilha`, coluna nova no `sql/01`): liga o nome da planilha dos 12x36 ao cadastro, para o nome editado no painel aparecer também nos 12x36 (com o whatsapp-ixc 0.4.1). Vazio = usa o nome. Coluna "Na planilha" na lista.
+
 **0.3.0** — **cadastros editáveis**: Shoppings e escala (novo/editar/excluir: base, id do condomínio, nome, grupo do WhatsApp, técnico padrão, tipo, horários, equipe, quem marcar sem técnico e ao escalar, **apelidos**), Técnicos (novo/editar/excluir; trocar o número atualiza as marcações) e Contatos de setor (novo/editar/excluir). Pergunta padrão agora também se exclui (some da lista e o bot para de responder; volta em "Restaurar padrões"). Tabela nova `ixc.apelidos` (os apelidos valem no WhatsApp com o whatsapp-ixc 0.4.0).
 
 **0.2.1** — catálogo de textos padrão igual ao do whatsapp-ixc 0.3.0 (ajuda dos comandos, lembretes, técnico não encontrado, linha "sem técnico").

@@ -331,6 +331,7 @@ final class Bot
     public function tecnicos(): array
     {
         return $this->q("SELECT t.empresa, t.id_func, t.nome, coalesce(t.fone, '') AS fone, coalesce(t.grupo, '') AS grupo,
+                                coalesce(to_jsonb(t)->>'nome_planilha', '') AS nome_planilha,
                                 coalesce((SELECT string_agg(l.nome, ', ' ORDER BY l.nome) FROM ixc.locais l
                                           WHERE l.empresa = t.empresa AND l.tec_padrao = t.id_func), '') AS shoppings,
                                 coalesce((SELECT string_agg(l.nome, ', ' ORDER BY l.nome) FROM ixc.locais l
