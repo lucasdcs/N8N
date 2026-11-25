@@ -28,12 +28,22 @@
  *   variavel_excluir {nome}  Mensagens > Excluir (só se nenhuma mensagem nova usa) · variavel_historico {nome}  Mensagens > Visualizar
  * 0.4.2 — variavel_criar/editar aceitam {tipo: fixo|shopping, valores: {"EMPRESA:ID": valor}}; variáveis do bot:
  *   varbot_editar {nome, descricao, exemplo} · varbot_ligar {nome, ativo} · varbot_restaurar {nome}  Mensagens > Editar
+ * 0.5.0 — operação (aba Operação; toda mudança vai para ixc.painel_auditoria):
+ *   operacao_status   {}                          Operação > Visualizar  (n8n: workflows/execuções; WAHA: sessão)
+ *   workflow_ligar    {id, ativo}                 Operação > Editar      (pausar/retomar; só os workflows do bot)
+ *   modo_envio        {chave, valor, confirmar}   Operação > Editar      (envio / envio_lembretes; REAL pede confirmar = "REAL")
+ *   parametro_salvar  {chave, valor, confirmar}   Parâmetros > Editar    (valor validado pelo tipo, ver src/Parametros.php)
+ *   base_salvar       {id, dados}                 Parâmetros > Editar    (ixc.empresas, sem token)
+ *   base_token        {id, token}                 Parâmetros > Editar + Configuração > Atualizar do GLPI (só grava; ninguém lê)
+ *   auditoria         {alvo}                      Parâmetros > Visualizar
  */
 
 use GlpiPlugin\Painelbot\Bot;
 use GlpiPlugin\Painelbot\Direito;
 use GlpiPlugin\Painelbot\Editor;
 use GlpiPlugin\Painelbot\ErroDeUso;
+use GlpiPlugin\Painelbot\Operacao;
+use GlpiPlugin\Painelbot\Servicos;
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
@@ -81,6 +91,13 @@ $exige = [
     'tecnico_excluir'     => [Direito::CADASTROS, DELETE],
     'contato_salvar'      => [Direito::CADASTROS, UPDATE],
     'contato_excluir'     => [Direito::CADASTROS, DELETE],
+    'operacao_status'     => [Direito::AVISOS, READ],
+    'workflow_ligar'      => [Direito::AVISOS, UPDATE],
+    'modo_envio'          => [Direito::AVISOS, UPDATE],
+    'parametro_salvar'    => [Direito::CONFIG, UPDATE],
+    'base_salvar'         => [Direito::CONFIG, UPDATE],
+    'base_token'          => [Direito::CONFIG, UPDATE],
+    'auditoria'           => [Direito::CONFIG, READ],
 ];
 if (!isset($exige[$acao])) {
     $saida(['ok' => false, 'erro' => 'Ação desconhecida.'], 400);
@@ -89,6 +106,10 @@ if (!isset($exige[$acao])) {
 if (!Direito::pode($area, $bit)) {
     $nomes = [READ => 'Visualizar', UPDATE => 'Editar', DELETE => 'Excluir'];
     $saida(['ok' => false, 'erro' => 'Seu perfil não tem "' . Direito::AREAS[$area][0] . ' > ' . $nomes[$bit] . '" (Administração > Perfis > Painel do Bot).'], 403);
+}
+
+if ($acao === 'base_token' && !Session::haveRight('config', UPDATE)) {   // 0.5.0: token do IXC só para administrador do GLPI
+    $saida(['ok' => false, 'erro' => 'Trocar o token do IXC é só para quem tem Configuração > Atualizar no GLPI (administrador).'], 403);
 }
 
 $quem = trim((string) ($_SESSION['glpifriendlyname'] ?? $_SESSION['glpiname'] ?? ''));
@@ -127,6 +148,30 @@ try {
         'tecnico_excluir'     => ['aviso' => $ed->excluirTecnico((string) ($corpo['empresa'] ?? ''), (string) ($corpo['id_func'] ?? ''))],
         'contato_salvar'      => ['id' => $ed->salvarContato(is_array($corpo['dados'] ?? null) ? $corpo['dados'] : [])],
         'contato_excluir'     => (function () use ($ed, $id) { $ed->excluirContato($id); return ['excluido' => true]; })(),
+        'operacao_status'     => (function () {
+            $sv = Servicos::daConfig();
+            $sessao = (string) ((new Bot())->parametro('waha_session') ?? '');
+            return ['n8n' => $sv->workflows(), 'waha' => $sv->waha($sessao) + ['sessao' => $sessao]];
+        })(),
+        'workflow_ligar'      => (function () use ($quem, $corpo) {
+            $r = Servicos::daConfig()->alternar((string) ($corpo['id'] ?? ''), !empty($corpo['ativo']));
+            if ($r['antes'] !== $r['depois']) {
+                (new Operacao(new Bot(), mb_substr($quem, 0, 100)))->registrar($r['depois'] ? 'workflow_retomar' : 'workflow_pausar',
+                    (string) ($corpo['id'] ?? '') . ' ' . $r['nome'], $r['antes'] ? 'ativo' : 'pausado', $r['depois'] ? 'ativo' : 'pausado');
+            }
+            return ['workflow' => $r];
+        })(),
+        'modo_envio'          => (function () use ($quem, $corpo) {
+            $chave = (string) ($corpo['chave'] ?? '');
+            if (!in_array($chave, ['envio', 'envio_lembretes'], true)) {
+                throw new ErroDeUso('Modo de envio: só envio ou envio_lembretes.');
+            }
+            return ['parametro' => (new Operacao(new Bot(), mb_substr($quem, 0, 100)))->salvarParametro($chave, (string) ($corpo['valor'] ?? ''), (string) ($corpo['confirmar'] ?? ''))];
+        })(),
+        'parametro_salvar'    => ['parametro' => (new Operacao(new Bot(), mb_substr($quem, 0, 100)))->salvarParametro((string) ($corpo['chave'] ?? ''), (string) ($corpo['valor'] ?? ''), (string) ($corpo['confirmar'] ?? ''))],
+        'base_salvar'         => ['base' => (new Operacao(new Bot(), mb_substr($quem, 0, 100)))->salvarBase((string) ($corpo['id'] ?? ''), is_array($corpo['dados'] ?? null) ? $corpo['dados'] : [])],
+        'base_token'          => (function () use ($quem, $corpo) { (new Operacao(new Bot(), mb_substr($quem, 0, 100)))->trocarToken((string) ($corpo['id'] ?? ''), (string) ($corpo['token'] ?? '')); return ['trocado' => true]; })(),
+        'auditoria'           => ['auditoria' => (new Operacao(new Bot(), mb_substr($quem, 0, 100)))->auditoria(60, (string) ($corpo['alvo'] ?? ''))],
     };
     $saida(['ok' => true] + $r);
 } catch (ErroDeUso $e) {

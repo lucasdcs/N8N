@@ -1,4 +1,4 @@
--- Painel do Bot 0.4.0 — tabelas de MENSAGENS, PERGUNTAS e APELIDOS do bot (schema ixc, Postgres do whatsapp-ixc).
+-- Painel do Bot 0.5.0 — tabelas de MENSAGENS, PERGUNTAS, APELIDOS e AUDITORIA do painel (schema ixc, Postgres do whatsapp-ixc).
 -- Rodar como o dono do banco (usuário ixc). Idempotente: pode rodar de novo; NÃO sobrescreve textos já editados.
 --   docker exec -i n8n-compose-postgres-ixc-1 psql -U ixc -d ixc -v ON_ERROR_STOP=1 < 01-mensagens-perguntas.sql
 -- O whatsapp-ixc 0.3.0 em diante lê estas tabelas (texto editado, perguntas, apelidos; 0.5.0: mensagens desativadas e novas). Rodar ANTES de importar os workflows.
@@ -405,9 +405,31 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- 0.5.0: o painel passa a operar o bot. Auditoria de quem mudou parametros, bases, modo de envio e workflows.
+CREATE TABLE IF NOT EXISTS ixc.painel_auditoria (
+  id      bigserial PRIMARY KEY,
+  ts      timestamptz NOT NULL DEFAULT now(),
+  quem    text NOT NULL,                 -- usuario do GLPI
+  acao    text NOT NULL,                 -- parametro, base, base_token, workflow_pausar, workflow_retomar...
+  alvo    text NOT NULL,                 -- chave do parametro, id da base, id do workflow
+  antes   text,                          -- valor anterior (token nunca: so "(token trocado)")
+  depois  text
+);
+CREATE INDEX IF NOT EXISTS painel_auditoria_ts ON ixc.painel_auditoria (ts DESC);
+-- 0.5.0: parametros e bases editaveis no painel. Token do IXC (auth): o painel GRAVA, mas continua sem LER.
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'painel_glpi') THEN
+    GRANT SELECT, INSERT ON ixc.painel_auditoria TO painel_glpi;
+    GRANT USAGE ON SEQUENCE ixc.painel_auditoria_id_seq TO painel_glpi;
+    GRANT UPDATE (valor) ON ixc.parametros TO painel_glpi;
+    GRANT UPDATE (nome, base_url, ativo, ignorar_assuntos, assuntos_financeiros, semtec_sem_local, dono_id, auth) ON ixc.empresas TO painel_glpi;
+  END IF;
+END $$;
+
 COMMIT;
 
 -- conferência
 SELECT grupo, count(*) AS mensagens, count(*) FILTER (WHERE texto IS NOT NULL) AS editadas, count(*) FILTER (WHERE NOT ativo) AS desativadas FROM ixc.mensagens GROUP BY grupo ORDER BY min(ordem);
 SELECT alvo, count(*) AS perguntas, count(*) FILTER (WHERE NOT padrao) AS criadas_no_painel FROM ixc.perguntas GROUP BY alvo ORDER BY alvo;
 SELECT count(*) AS apelidos, count(*) FILTER (WHERE NOT padrao) AS criados_no_painel FROM ixc.apelidos;
+SELECT count(*) AS alteracoes_auditadas FROM ixc.painel_auditoria;

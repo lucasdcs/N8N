@@ -1,0 +1,11 @@
+CREATE SCHEMA ixc;
+CREATE TABLE ixc.parametros (chave text PRIMARY KEY, valor text, descricao text);
+CREATE TABLE ixc.empresas (id text PRIMARY KEY, nome text, base_url text, auth text, last_evento_id bigint, dono_id text, ignorar_assuntos text[], semtec_sem_local bool, ativo bool, atualizado timestamptz, assuntos_financeiros text[]);
+CREATE TABLE ixc.locais (empresa text, id_condominio text, nome text, grupo text, tec_padrao text, marcar_sem_tec text[], marcar_escalar text[], PRIMARY KEY (empresa,id_condominio));
+CREATE TABLE ixc.tecnicos (empresa text, id_func text, nome text, fone text, grupo text, PRIMARY KEY (empresa,id_func));
+CREATE TABLE ixc.escala_base (empresa text, id_condominio text, tipo text, tecnicos text, obs text);
+CREATE TABLE ixc.escala_dia (data date, empresa text, id_condominio text, tecnico text);
+CREATE TABLE ixc.contatos_setor (id serial PRIMARY KEY, setor text, nome text, fone text, ordem int, ativo bool);
+CREATE TABLE ixc.feriados (data date, empresa text, id_condominio text, descricao text);
+CREATE TABLE ixc.eventos (id serial PRIMARY KEY);
+CREATE TABLE ixc.funcionarios (empresa text, id_func text, nome text);

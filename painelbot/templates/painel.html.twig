@@ -2,6 +2,7 @@
 <link rel="stylesheet" href="{{ nav.url_assets }}/css/painelbot.css?v={{ nav.assets }}">
 
 {% set abas = {
+  'operacao':   ['ti-player-play', 'Operação'],
   'geral':      ['ti-layout-dashboard', 'Visão geral'],
   'shoppings':  ['ti-building-store', 'Shoppings e escala'],
   'tecnicos':   ['ti-user-cog', 'Técnicos'],
@@ -17,6 +18,7 @@
      data-api="{{ nav.url_dados }}"
      data-acao="{{ nav.url_acao }}"
      data-direitos="{{ nav.direitos|json_encode }}"
+     data-admin="{{ nav.admin_glpi ? '1' : '0' }}"
      data-tema="{{ nav.tema }}" data-tema-ativo="{{ nav.tema == 'escuro' ? 'escuro' : 'claro' }}" data-url-tema="{{ nav.url_tema }}">
 
   <div class="pbot-cabecalho">
@@ -53,6 +55,24 @@
   </div>
 
   <div class="pbot-erro" id="pbot-erro" hidden></div>
+
+  {% if 'operacao' in nav.secoes %}
+  <section class="pbot-sec" data-sec="operacao" {{ primeira == 'operacao' ? '' : 'hidden' }}>
+    <div class="pbot-nota">O que antes era feito por linha de comando: <b>modo de envio</b>, <b>pausar/retomar</b> os workflows do bot, conferir o WhatsApp e a leitura do IXC, e editar as bases. Toda mudança fica registrada em "Últimas alterações".</div>
+    <h3 class="pbot-sub-t">Modo de envio</h3>
+    <div class="pbot-op-modos" id="pbot-op-modos"></div>
+    <h3 class="pbot-sub-t">Workflows no n8n <span class="pbot-op-hora" id="pbot-op-hora"></span></h3>
+    <div class="pbot-barra" id="pbot-op-barra"></div>
+    <div class="pbot-retorno" id="pbot-op-n8n-aviso"></div>
+    <div class="pbot-tabela-wrap"><table class="pbot-tabela" id="pbot-op-workflows"></table></div>
+    <h3 class="pbot-sub-t">WhatsApp (WAHA)</h3>
+    <div class="pbot-op-waha" id="pbot-op-waha"></div>
+    <h3 class="pbot-sub-t">Bases do IXC</h3>
+    <div class="pbot-tabela-wrap"><table class="pbot-tabela" id="pbot-op-bases"></table></div>
+    <h3 class="pbot-sub-t">Últimas alterações pelo painel</h3>
+    <div class="pbot-tabela-wrap"><table class="pbot-tabela" id="pbot-op-auditoria"></table></div>
+  </section>
+  {% endif %}
 
   {% if 'geral' in nav.secoes %}
   <section class="pbot-sec" data-sec="geral" {{ primeira == 'geral' ? '' : 'hidden' }}>
@@ -119,6 +139,8 @@
   {% if 'parametros' in nav.secoes %}
   <section class="pbot-sec" data-sec="parametros" {{ primeira == 'parametros' ? '' : 'hidden' }}>
     <div class="pbot-tabela-wrap"><table class="pbot-tabela" id="pbot-parametros"></table></div>
+    <h5 class="pbot-h">Últimas alterações de parâmetros e bases</h5>
+    <div class="pbot-tabela-wrap"><table class="pbot-tabela" id="pbot-param-auditoria"></table></div>
     <h5 class="pbot-h">Próximos feriados (sem reaviso de chamado sem técnico)</h5>
     <div class="pbot-tabela-wrap"><table class="pbot-tabela" id="pbot-feriados"></table></div>
   </section>
@@ -130,7 +152,7 @@
   </section>
   {% endif %}
 
-  <div class="pbot-rodape">painelbot {{ nav.versao }} · banco do bot {{ nav.conexao.host }}:{{ nav.conexao.porta }}/{{ nav.conexao.banco }} · mensagens, perguntas e cadastros editáveis</div>
+  <div class="pbot-rodape">painelbot {{ nav.versao }} · banco do bot {{ nav.conexao.host }}:{{ nav.conexao.porta }}/{{ nav.conexao.banco }} · operação, parâmetros, mensagens, perguntas e cadastros editáveis</div>
 </div>
 
 <script src="{{ nav.url_assets }}/js/pbot-tema.js?v={{ nav.assets }}"></script>

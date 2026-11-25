@@ -4,9 +4,13 @@ Gerencia o bot de WhatsApp da automação [`whatsapp-ixc`](../whatsapp-ixc/READM
 Autor SCDell, GPLv3+. Requisitos: GLPI 11.0.x, PHP 8.2+ com `pdo_pgsql` (`apt install php-pgsql`).
 
 Os dados **não** ficam no MariaDB do GLPI: o plugin lê e grava o Postgres do bot (schema `ixc`) com o usuário `painel_glpi`,
-que não tem acesso aos tokens do IXC e só grava nas tabelas do painel (mensagens, histórico, perguntas, apelidos e cadastros).
+que não lê os tokens do IXC e só grava nas tabelas do painel (mensagens, histórico, perguntas, apelidos e cadastros) e, desde a 0.5.0,
+no valor dos parâmetros, nos dados das bases (o token só se troca, nunca se lê) e na auditoria. Desde a 0.5.0 o painel também fala com o
+**n8n** (API pública) e o **WAHA** para operar o bot: o objetivo do painel é fazer na tela o que antes era feito por linha de comando.
 
 ## O que tem
+
+**0.5.0** — **Operação** (primeira aba, F1 do roadmap de ações): **modo de envio** dos avisos e dos lembretes (NENHUM / SIMULAR / REAL; ligar REAL pede digitar REAL), **workflows do n8n** (ativo/pausado, última execução, último erro; **pausar/retomar** só os 4 do bot e as cópias [SIM], o resto fica só leitura), **sessão do WhatsApp** no WAHA, **bases do IXC** (último evento lido, editar nome/endereço/ativa/assuntos/dono; **trocar token** só administrador do GLPI) e **auditoria** de toda mudança (`ixc.painel_auditoria`). **Parâmetros editáveis** com validação por tipo (`src/Parametros.php`). Configuração ganha endereço + chave do n8n e do WAHA (chaves cifradas). Banco: rodar o `sql/01` e o `sql/02` desta versão. Testes: Operação 77, tela Operação 45 (n8n/WAHA falsos), Editor 90, tela Mensagens 73.
 
 **0.4.2** — Variáveis: tipo **por shopping** (um valor para cada shopping + valor padrão; ex. `{holding}`: "qual a holding do jockey?" responde o do Jockey) e lista das **36 variáveis do bot** (o que traz, exemplo, em quais mensagens aparece), com descrição/exemplo editáveis, **desativar** (fica vazia em todas as mensagens do bot) e restaurar padrão (linhas `vsys.<nome>` em `ixc.mensagens`). Sem mudança no banco. Vale no WhatsApp com o whatsapp-ixc 0.6.3. Testes: Editor 90, tela 73.
 
@@ -39,13 +43,14 @@ Tema claro/escuro (botão só com ícone, gravado por usuário). Conexão em **C
 ## Permissões (Administração > Perfis > aba Painel do Bot)
 
 Matriz Área × **Visualizar / Editar / Excluir**: Visão geral e últimos envios (V) · Mensagens (V, E) · Perguntas (V, E, X) ·
-Shoppings e escala (V, E, X) · Técnicos e contatos (V, E, X) · Avisos automáticos (V, E, X) · Parâmetros e conexão (V, E).
+Shoppings e escala (V, E, X) · Técnicos e contatos (V, E, X) · Operação e avisos automáticos (V = aba Operação, E = modo de envio e pausar/retomar) ·
+Parâmetros e conexão (V, E = editar parâmetros e bases). Trocar o token do IXC exige também **Configuração > Atualizar** do GLPI.
 Na instalação só os perfis com Configuração > Atualizar (Super-Admin) recebem tudo; os demais nascem sem acesso.
 
 ## Banco do bot (`sql/`)
 
-1. `01-mensagens-perguntas.sql` — cria `ixc.mensagens`, `ixc.mensagens_hist` e `ixc.perguntas` com os textos e perguntas atuais (idempotente; não sobrescreve texto editado).
-2. `02-usuario-painel.sql` — cria/atualiza o usuário `painel_glpi` (leitura sem `empresas.auth`; grava em mensagens, perguntas, apelidos e, desde a 0.3.0, em `locais`, `escala_base`, `tecnicos` e `contatos_setor`; nunca em parâmetros, eventos, empresas). Rodar com `-v senha="'...'"` (rodar de novo a cada versão que mude permissões).
+1. `01-mensagens-perguntas.sql` — cria `ixc.mensagens`, `ixc.mensagens_hist`, `ixc.perguntas`, `ixc.apelidos` e (0.5.0) `ixc.painel_auditoria` (idempotente; não sobrescreve texto editado).
+2. `02-usuario-painel.sql` — cria/atualiza o usuário `painel_glpi` (leitura sem `empresas.auth`; grava em mensagens, perguntas, apelidos e, desde a 0.3.0, em `locais`, `escala_base`, `tecnicos` e `contatos_setor`; desde a 0.5.0 no `valor` de `parametros`, nas colunas editáveis de `empresas` — inclusive gravar `auth`, sem ler — e na auditoria; nunca cria/apaga parâmetros e bases, nem mexe em eventos e no último evento lido). Rodar com `-v senha="'...'"` (rodar de novo a cada versão que mude permissões).
 
 `catalogo-mensagens.json` é a fonte do 01; regere com `python3 sql/gerar-sql.py sql/catalogo-mensagens.json sql/01-mensagens-perguntas.sql`.
 

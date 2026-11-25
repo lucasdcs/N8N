@@ -31,8 +31,8 @@ final class Direito
         self::PERGUNTAS => ['Perguntas', 'frases que acionam o bot (algum n2?, financeiro?…)', READ | UPDATE | DELETE],
         self::ESCALA    => ['Shoppings e escala', 'apelidos, horários, exceções de férias/folga', READ | UPDATE | DELETE],
         self::CADASTROS => ['Técnicos e contatos de setor', 'nomes, telefones, N2/financeiro/comercial…', READ | UPDATE | DELETE],
-        self::AVISOS    => ['Avisos automáticos', 'ligar/desligar, modo, tempos, filtros · avisos novos', READ | UPDATE | DELETE],
-        self::CONFIG    => ['Parâmetros e conexão', 'modo de envio, grupos, sessão WAHA, banco do bot', READ | UPDATE],
+        self::AVISOS    => ['Operação e avisos automáticos', 'aba Operação: workflows (pausar/retomar), modo de envio, WhatsApp, leitura do IXC · alertas (próxima fase)', READ | UPDATE | DELETE],
+        self::CONFIG    => ['Parâmetros e conexão', 'editar parâmetros e bases do IXC, conexão (banco, n8n, WAHA) · token do IXC só com Configuração > Atualizar do GLPI', READ | UPDATE],
     ];
 
     /** Chave curta usada no Twig/JS → direito. */
@@ -48,6 +48,7 @@ final class Direito
 
     /** Seção da tela → área que precisa de Visualizar. */
     public const SECOES = [
+        'operacao'   => self::AVISOS,   // 0.5.0: o painel opera o bot (primeira aba de quem tem)
         'geral'      => self::GERAL,
         'shoppings'  => self::ESCALA,
         'tecnicos'   => self::CADASTROS,

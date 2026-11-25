@@ -163,7 +163,26 @@ final class Bot
             $out['shoppings_lista'] = $this->listaShoppings();   // 0.4.2 (variável por shopping)
             $out['perguntas'] = Direito::ler(Direito::PERGUNTAS) ? $this->perguntas() : null;
         }
+        if ($tem('operacao')) {   // 0.5.0: o status do n8n/WAHA vem à parte (acao.php operacao_status), aqui só o banco
+            $out['parametros'] = $this->parametros();   // lista completa (modo, número de teste, sessão)
+            $out['empresas'] ??= $this->empresas();
+        }
+        if ($tem('operacao', 'parametros')) {
+            $out['parametros_tipos'] = Parametros::paraTela();
+            $out['auditoria'] = $this->auditoria(40);
+            $out['hora_num'] = (int) $this->q("SELECT extract(hour FROM now())::int AS h")[0]['h'];
+        }
         return $out;
+    }
+
+    /** 0.5.0: últimas alterações feitas pelo painel (vazio se o sql/01 da 0.5.0 ainda não rodou). @return list<array<string,mixed>>|null */
+    public function auditoria(int $limite): ?array
+    {
+        if (!$this->q("SELECT to_regclass('ixc.painel_auditoria') IS NOT NULL AS t")[0]['t']) {
+            return null;
+        }
+        return $this->q("SELECT id, to_char(ts, 'DD/MM/YYYY HH24:MI') AS em, quem, acao, alvo, coalesce(antes, '') AS antes, coalesce(depois, '') AS depois
+                           FROM ixc.painel_auditoria ORDER BY id DESC LIMIT " . max(1, min(200, $limite)));
     }
 
     /** As tabelas novas (sql/01) existem? @return array{mensagens:bool,perguntas:bool} */
@@ -367,12 +386,24 @@ final class Bot
         return $out;
     }
 
+    /** 0.5.0: valor de um parâmetro (null = não existe). */
+    public function parametro(string $chave): ?string
+    {
+        $r = $this->q('SELECT valor FROM ixc.parametros WHERE chave = ?', [$chave]);
+        return $r ? (string) $r[0]['valor'] : null;
+    }
+
     /** IXCs lidos pelo bot (sem o token). @return list<array<string,mixed>> */
     public function empresas(): array
     {
-        return $this->q('SELECT id, nome, ativo, last_evento_id, to_char(atualizado, \'DD/MM HH24:MI\') AS atualizado, semtec_sem_local,
-                                coalesce(array_length(ignorar_assuntos, 1), 0) AS n_ignorar, coalesce(array_length(assuntos_financeiros, 1), 0) AS n_financeiro
-                           FROM ixc.empresas ORDER BY id');
+        // 0.5.0: + endereço, dono do número, listas de assuntos (formulário da aba Operação) e minutos desde o último evento lido
+        return $this->q("SELECT id, nome, ativo, last_evento_id, to_char(atualizado, 'DD/MM HH24:MI') AS atualizado, semtec_sem_local,
+                                coalesce(array_length(ignorar_assuntos, 1), 0) AS n_ignorar, coalesce(array_length(assuntos_financeiros, 1), 0) AS n_financeiro,
+                                coalesce(base_url, '') AS base_url, coalesce(dono_id, '') AS dono_id,
+                                array_to_string(coalesce(ignorar_assuntos, '{}'), ',') AS ignorar_assuntos,
+                                array_to_string(coalesce(assuntos_financeiros, '{}'), ',') AS assuntos_financeiros,
+                                CASE WHEN atualizado IS NULL THEN NULL ELSE floor(extract(epoch FROM now() - atualizado) / 60)::int END AS minutos_evento
+                           FROM ixc.empresas ORDER BY id");
     }
 
     /** Envios e ignorados das últimas 24 h por tipo. @return list<array<string,mixed>> */

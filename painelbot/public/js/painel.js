@@ -1,6 +1,8 @@
-/* Painel do Bot 0.4.0 — leitura do banco do bot (schema ixc): visão geral, shoppings e escala, técnicos,
- * contatos de setor, mensagens (+ perguntas), parâmetros e últimos envios.
+/* Painel do Bot 0.5.0 — o painel OPERA o bot (whatsapp-ixc): aba Operação, parâmetros e bases editáveis, mensagens,
+ * cadastros e leitura do banco do bot (schema ixc).
  * Só existem no HTML as seções que o perfil vê; o JSON também só traz essas.
+ * 0.5.0: aba Operação — modo de envio (REAL pede digitar REAL), workflows do n8n (estado, última execução, último erro,
+ *        pausar/retomar), sessão do WAHA, bases do IXC (editar; trocar token só administrador) e auditoria; parâmetros editáveis.
  * 0.4.2: variável por shopping (um valor para cada shopping + padrão) e variáveis do bot (listar, descrição/exemplo, desativar).
  * 0.4.1: aba Variáveis ({nome} = valor fixo nas mensagens novas) e {shopping} na frase da mensagem nova.
  * 0.4.0: Mensagens — mensagens novas (resposta no grupo a frases escolhidas: criar/editar/excluir) e ativar/desativar qualquer mensagem.
@@ -179,8 +181,14 @@
   function parametros() {
     if (!$('pbot-parametros')) return;
     var lista = arr(dados.parametros).slice().sort(function (a, b) { return (b.principal - a.principal) || (a.chave < b.chave ? -1 : 1); });
-    tabela($('pbot-parametros'), ['Parâmetro', 'Valor', 'Para que serve'],
-      lista.map(function (p) { return [el('code', null, p.chave), p.valor === '' ? '(vazio)' : p.valor, p.descricao]; }));
+    var ed = pode('config', 'editar');   // 0.5.0: editar o valor (validado pelo tipo) com registro em auditoria
+    tabela($('pbot-parametros'), ['Parâmetro', 'Valor', 'Para que serve'].concat(ed ? [''] : []),
+      lista.map(function (p) {
+        var l = [el('code', null, p.chave), p.valor === '' ? '(vazio)' : p.valor, (tipos()[p.chave] || {}).rotulo || p.descricao];
+        if (ed) { var b = botao('ico', 'ti-pencil', null, 'Editar ' + p.chave); b.addEventListener('click', function () { formParametro(p); }); l.push(b); }
+        return l;
+      }));
+    auditoriaEm($('pbot-param-auditoria'), dados.auditoria === null ? null : arr(dados.auditoria).filter(function (a) { return a.acao === 'parametro' || a.acao.indexOf('base') === 0; }));
     tabela($('pbot-feriados'), ['Data', 'Base', 'Shopping', 'Descrição'],
       arr(dados.feriados).map(function (f) { return [String(f.data).split('-').reverse().join('/'), f.empresa || 'todas', f.id_condominio || 'todos', f.descricao]; }), 'Nenhum feriado cadastrado à frente.');
   }
@@ -1375,7 +1383,190 @@
     });
   }
 
-  function render() { aplicarExemplosBot(); geral(); shoppings(); tecnicos(); contatos(); msgLista(); variaveis(); variaveisBot(); parametros(); eventos(); }
+  // ---------------------------------------------------------------- 0.5.0: Operação (o painel opera o bot)
+  var ADMIN = raiz.getAttribute('data-admin') === '1';
+  var MODO_COR = { NENHUM: '#64748b', SIMULAR: '#d97706', REAL: '#16a34a' };
+  var MODO_TXT = { NENHUM: 'não envia nada (só avança a leitura)', SIMULAR: 'tudo vai para o número de teste', REAL: 'envia de verdade aos técnicos e grupos' };
+  var servicos = null, servicosEm = '';
+  function tipos() { return (dados && dados.parametros_tipos) || {}; }
+  function haMin(iso) {
+    if (!iso) return '';
+    var t = Date.parse(iso); if (isNaN(t)) return iso;
+    var m = Math.round((Date.now() - t) / 60000);
+    if (m < 1) return 'agora'; if (m < 60) return 'há ' + m + ' min';
+    if (m < 1440) return 'há ' + Math.floor(m / 60) + ' h ' + (m % 60 ? (m % 60) + ' min' : '');
+    return 'há ' + Math.floor(m / 1440) + ' dia(s)';
+  }
+  function minTxt(m) { if (m === null || m === undefined || m === '') return '—'; m = +m; return m < 60 ? 'há ' + m + ' min' : m < 1440 ? 'há ' + Math.floor(m / 60) + ' h' : 'há ' + Math.floor(m / 1440) + ' dia(s)'; }
+
+  function cartaoModo(chave, titulo) {
+    var atual = String(param(chave) === null ? '' : param(chave)).toUpperCase();
+    var efetivo = chave === 'envio_lembretes' && atual === '' ? String(param('envio') || 'NENHUM').toUpperCase() : (atual || 'NENHUM');
+    var c = el('div', 'pbot-card pbot-op-modo');
+    var h = el('div', 'pbot-card-cab'); h.appendChild(el('i', 'ti ' + (chave === 'envio' ? 'ti-bell-ringing' : 'ti-calendar-time')));
+    var tt = el('div'); tt.appendChild(el('b', null, titulo)); tt.appendChild(el('div', 'pbot-sub', 'parâmetro ' + chave)); h.appendChild(tt); c.appendChild(h);
+    var st = el('div', 'pbot-chips'); st.appendChild(pill(efetivo + (chave === 'envio_lembretes' && atual === '' ? ' (igual aos avisos)' : ''), MODO_COR[efetivo]));
+    if (efetivo === 'SIMULAR') st.appendChild(pill('teste: ' + (fone(param('envio_teste_para')) || '—'), '#d97706'));
+    c.appendChild(st);
+    c.appendChild(el('p', 'pbot-card-desc', MODO_TXT[efetivo] || ''));
+    var ret = el('div', 'pbot-retorno');
+    if (pode('avisos', 'editar')) {
+      var seg = el('div', 'pbot-seg'), ops = (chave === 'envio_lembretes' ? [['', 'Igual aos avisos']] : []).concat([['NENHUM', 'Nenhum'], ['SIMULAR', 'Simular'], ['REAL', 'Real']]);
+      var conf = el('div', 'pbot-op-confirma'); conf.hidden = true;
+      ops.forEach(function (o) {
+        var b = botao(o[0] === atual ? 'pri' : '', null, o[1]); b.setAttribute('data-modo', o[0]);
+        b.addEventListener('click', function () {
+          if (o[0] === atual) return;
+          if (o[0] === 'REAL') { conf.hidden = false; var i = conf.querySelector('input'); i.value = ''; i.focus(); return; }
+          gravarModo(chave, o[0], '', ret);
+        });
+        seg.appendChild(b);
+      });
+      c.appendChild(seg);
+      conf.appendChild(el('div', 'pbot-dica', 'Modo REAL manda mensagens de verdade. Para confirmar, digite REAL:'));
+      var ci = el('input', 'form-control form-control-sm'); ci.setAttribute('aria-label', 'Digite REAL para confirmar'); conf.appendChild(ci);
+      var cb = botao('pri', 'ti-check', 'Ligar REAL'), cx = botao('', null, 'Cancelar');
+      cb.addEventListener('click', function () { gravarModo(chave, 'REAL', ci.value, ret); });
+      cx.addEventListener('click', function () { conf.hidden = true; });
+      conf.appendChild(cb); conf.appendChild(cx); c.appendChild(conf);
+    }
+    c.appendChild(ret);
+    return c;
+  }
+  function gravarModo(chave, valor, confirmar, ret) {
+    aviso(ret, true, 'gravando…');
+    post('modo_envio', { chave: chave, valor: valor, confirmar: confirmar }).then(function (j) {
+      if (!j.ok) { aviso(ret, false, j.erro); return; }
+      avisoTopo(true, 'Modo ' + (chave === 'envio' ? 'dos avisos' : 'dos lembretes') + ': ' + (valor || 'igual aos avisos') + '. O bot usa a partir da próxima rodada.');
+      carregar();
+    });
+  }
+
+  function auditoriaEm(t, lista) {
+    if (!t) return;
+    if (lista === null || lista === undefined) { tabela(t, ['Aviso'], [['Rode o painelbot/sql/01-mensagens-perguntas.sql desta versão para registrar as alterações.']]); return; }
+    var NOME = { parametro: 'parâmetro', base: 'base', base_token: 'token do IXC', workflow_pausar: 'pausou workflow', workflow_retomar: 'retomou workflow' };
+    tabela(t, ['Quando', 'Quem', 'O quê', 'Item', 'Antes', 'Depois'],
+      arr(lista).map(function (a) { return [a.em, a.quem, NOME[a.acao] || a.acao, a.alvo, a.antes, a.depois]; }), 'Nenhuma alteração registrada ainda.');
+  }
+
+  function workflowsTab() {
+    var t = $('pbot-op-workflows'); if (!t) return;
+    var av = $('pbot-op-n8n-aviso');
+    if (!servicos) { aviso(av, true, 'consultando o n8n…'); tabela(t, ['Workflow'], []); return; }
+    var n = servicos.n8n || {};
+    if (!n.ok) { aviso(av, false, n.erro || 'n8n indisponível.'); tabela(t, ['Workflow'], [], 'Sem dados do n8n.'); return; }
+    aviso(av, true, n.execucoes_lidas === false ? 'Não deu para ler as execuções (a chave do n8n precisa do escopo de execuções).' : '');
+    var cor = { success: '#16a34a', error: '#dc2626', crashed: '#dc2626', running: '#2563eb', waiting: '#d97706', canceled: '#64748b' };
+    var txt = { success: 'ok', error: 'erro', crashed: 'erro', running: 'rodando', waiting: 'aguardando', canceled: 'cancelada' };
+    tabela(t, ['Workflow', 'Estado', 'Última execução', 'Último erro', ''],
+      arr(n.workflows).map(function (w) {
+        var nome = el('div'); nome.appendChild(el('b', null, w.apelido || w.nome));
+        if (w.apelido) nome.appendChild(el('div', 'pbot-sub', w.nome)); else if (!w.controlavel) nome.appendChild(el('div', 'pbot-sub', 'fora do bot: só leitura'));
+        var u = w.ultima, ult = u ? bloco(pill(txt[u.status] || u.status || '—', cor[u.status]), haMin(u.inicio)) : '—';
+        var err = w.ultimo_erro ? bloco(pill('erro', '#dc2626'), haMin(w.ultimo_erro.inicio) + ' · execução ' + w.ultimo_erro.id) : 'nenhum recente';
+        var acao = '';
+        if (w.controlavel && pode('avisos', 'editar')) {
+          var b = botao(w.ativo ? 'perigo' : 'pri', w.ativo ? 'ti-player-pause' : 'ti-player-play', w.ativo ? 'Pausar' : 'Retomar');
+          b.addEventListener('click', function () {
+            if (w.ativo && !b.classList.contains('confirmar')) { b.classList.add('confirmar'); b.lastChild.textContent = 'Confirmar pausa?'; return; }
+            b.disabled = true;
+            post('workflow_ligar', { id: w.id, ativo: !w.ativo }).then(function (j) {
+              if (!j.ok) { b.disabled = false; avisoTopo(false, j.erro); return; }
+              avisoTopo(true, '"' + (w.apelido || w.nome) + '" ' + (j.workflow.depois ? 'retomado: volta a rodar.' : 'pausado: não roda até retomar.'));
+              statusServicos(); carregar();
+            });
+          });
+          acao = b;
+        }
+        return [nome, w.ativo ? pill('ativo', '#16a34a') : pill('pausado', '#64748b'), ult, err, acao];
+      }), 'Nenhum workflow no n8n.');
+  }
+  function wahaTab() {
+    var w = $('pbot-op-waha'); if (!w) return;
+    w.textContent = '';
+    if (!servicos) { w.appendChild(el('span', 'pbot-sub', 'consultando o WAHA…')); return; }
+    var x = servicos.waha || {};
+    var cor = { WORKING: '#16a34a', STARTING: '#d97706', SCAN_QR_CODE: '#dc2626', FAILED: '#dc2626', STOPPED: '#dc2626' };
+    var txt = { WORKING: 'conectado', STARTING: 'iniciando', SCAN_QR_CODE: 'desconectado: ler o QR code no WAHA', FAILED: 'falhou', STOPPED: 'parado' };
+    w.appendChild(el('span', 'pbot-sub', 'sessão ' + (x.sessao || '—') + ' '));
+    if (!x.ok) { w.appendChild(pill('sem status', '#64748b')); w.appendChild(el('div', 'pbot-nota', x.erro || '')); return; }
+    w.appendChild(pill(txt[x.status] || x.status, cor[x.status] || '#64748b'));
+    if (x.nome) w.appendChild(el('span', 'pbot-sub', ' · ' + x.nome));
+  }
+  function basesTab() {
+    var t = $('pbot-op-bases'); if (!t) return;
+    var h = +dados.hora_num, comercial = h >= 8 && h < 20;
+    var ed = pode('config', 'editar');
+    tabela(t, ['Base', 'Nome', 'Ativa', 'Último evento lido', 'Assuntos ignorados', 'Financeiros', 'Sem técnico e sem shopping', ''],
+      arr(dados.empresas).map(function (e) {
+        var lento = e.ativo && comercial && e.minutos_evento !== null && +e.minutos_evento > 60;
+        var ult = bloco(lento ? pill(minTxt(e.minutos_evento), '#d97706') : minTxt(e.minutos_evento), lento ? 'sem O.S. nova há mais de 1 h no horário comercial: conferir o IXC/token' : '');
+        var ac = el('div', 'pbot-acoes-linha');
+        if (ed) { var b = botao('ico', 'ti-pencil', null, 'Editar base ' + e.id); b.addEventListener('click', function () { formBase(e); }); ac.appendChild(b); }
+        if (ed && ADMIN) { var k = botao('ico', 'ti-key', null, 'Trocar token do IXC de ' + e.id); k.addEventListener('click', function () { formToken(e); }); ac.appendChild(k); }
+        return [e.id, e.nome, e.ativo ? pill('sim', '#16a34a') : pill('não', '#64748b'), ult, e.ignorar_assuntos || '—', e.assuntos_financeiros || '—', e.semtec_sem_local ? 'avisa' : 'ignora', ac];
+      }), 'Nenhuma base cadastrada.');
+  }
+  function formBase(e) {
+    return formulario('Editar base ' + e.id, [
+      { k: 'nome', rot: 'Nome', tipo: 'text' },
+      { k: 'base_url', rot: 'Endereço do IXC', tipo: 'text', largo: true, dica: 'https://ixc.suaempresa.com.br (sem /webservice)' },
+      { k: 'ativo', rot: 'Ativa', tipo: 'check', texto: 'o bot lê os chamados desta base' },
+      { k: 'semtec_sem_local', rot: 'Chamado sem técnico e sem shopping', tipo: 'check', texto: 'avisa no grupo de chamados sem shopping' },
+      { k: 'dono_id', rot: 'Dono do número (id do colaborador no IXC)', tipo: 'num', dica: 'Chamados atribuídos a ele vão para o grupo do dono. Vazio = nenhum.' },
+      { k: 'ignorar_assuntos', rot: 'Assuntos ignorados (ids do IXC)', tipo: 'text', largo: true, dica: 'Separados por vírgula. Não avisa nem lembra (ex.: projetos de T.I).' },
+      { k: 'assuntos_financeiros', rot: 'Assuntos financeiros (ids do IXC)', tipo: 'text', largo: true, dica: 'Separados por vírgula. Não avisa nem lembra.' },
+    ], { nome: e.nome, base_url: e.base_url, ativo: e.ativo, semtec_sem_local: e.semtec_sem_local, dono_id: e.dono_id, ignorar_assuntos: e.ignorar_assuntos, assuntos_financeiros: e.assuntos_financeiros },
+    function (d) { return post('base_salvar', { id: e.id, dados: d }).then(function (j) { if (j.ok) j.msg = 'Base ' + e.id + ' salva.'; return j; }); });
+  }
+  function formToken(e) {
+    return formulario('Trocar token do IXC — ' + e.id, [
+      { k: 'token', rot: 'Novo token (id:chave do usuário da API no IXC)', tipo: 'text', largo: true,
+        dica: 'O token atual não é mostrado (ninguém no painel consegue ler). Ao salvar, o bot passa a usar o novo na próxima rodada. Fica registrado quem trocou, sem o token.' },
+    ], {}, function (d) { return post('base_token', { id: e.id, token: d.token }).then(function (j) { if (j.ok) j.msg = 'Token do IXC de ' + e.id + ' trocado.'; return j; }); });
+  }
+  function formParametro(p) {
+    var tp = tipos()[p.chave] || { tipo: 'livre', rotulo: p.descricao || p.chave };
+    var c = { k: 'valor', rot: tp.rotulo, tipo: 'text', largo: true };
+    if (tp.tipo === 'simnao') { c.tipo = 'select'; c.opcoes = [['sim', 'sim'], ['nao', 'não']]; }
+    else if (tp.tipo === 'modo' || tp.tipo === 'modo_lemb') { c.tipo = 'select'; c.opcoes = (tp.tipo === 'modo_lemb' ? [['', 'igual aos avisos (vazio)']] : []).concat([['NENHUM', 'NENHUM — não envia'], ['SIMULAR', 'SIMULAR — só para o número de teste'], ['REAL', 'REAL — envia de verdade']]); }
+    else if (tp.tipo === 'int') { c.tipo = 'num'; c.dica = 'de ' + tp.min + ' a ' + tp.max; }
+    else if (tp.tipo === 'hora') { c.tipo = 'num'; c.dica = 'hora cheia, 0 a 23'; }
+    else if (tp.tipo === 'fone' || tp.tipo === 'fone_ou_vazio') c.dica = 'DDD + número' + (tp.tipo === 'fone_ou_vazio' ? ' (vazio = não sai)' : '');
+    else if (tp.tipo === 'jid' || tp.tipo === 'jids') { c.tipo = tp.tipo === 'jid' ? 'grupo' : 'textarea'; c.dica = tp.tipo === 'jids' ? 'ids de grupo (…@g.us) separados por vírgula' : 'id do grupo (…@g.us)'; }
+    else if (tp.tipo === 'livre' || tp.tipo === 'trocas') c.tipo = 'textarea';
+    var campos = [c];
+    if (tp.tipo === 'modo' || tp.tipo === 'modo_lemb') campos.push({ k: 'confirmar', rot: 'Para ligar o modo REAL, digite REAL', tipo: 'text' });
+    var v = { valor: tp.tipo === 'fone' || tp.tipo === 'fone_ou_vazio' ? fone(p.valor) : p.valor };
+    return formulario('Parâmetro ' + p.chave, campos, v, function (d) {
+      return post('parametro_salvar', { chave: p.chave, valor: d.valor, confirmar: d.confirmar || '' }).then(function (j) {
+        if (j.ok) j.msg = j.parametro.valor === j.parametro.antes ? 'Sem mudança em ' + p.chave + '.' : 'Parâmetro ' + p.chave + ' salvo. O bot usa a partir da próxima rodada.';
+        return j;
+      });
+    });
+  }
+  function statusServicos() {
+    if (!$('pbot-op-workflows')) return;
+    post('operacao_status', {}).then(function (j) {
+      servicos = j.ok ? j : { n8n: { ok: false, erro: j.erro }, waha: { ok: false, erro: j.erro } };
+      var d = new Date(); servicosEm = ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+      workflowsTab(); wahaTab(); var hr = $('pbot-op-hora'); if (hr) hr.textContent = '· consultado às ' + servicosEm;
+    });
+  }
+  function operacao() {
+    var m = $('pbot-op-modos'); if (!m) return;
+    m.textContent = '';
+    m.appendChild(cartaoModo('envio', 'Avisos de chamado'));
+    m.appendChild(cartaoModo('envio_lembretes', 'Lembretes de visita'));
+    var b = $('pbot-op-barra');
+    if (b && !b.firstChild) { var at = botao('', 'ti-refresh', 'Atualizar status'); at.addEventListener('click', function () { servicos = null; workflowsTab(); wahaTab(); statusServicos(); }); b.appendChild(at); }
+    workflowsTab(); wahaTab(); basesTab();
+    auditoriaEm($('pbot-op-auditoria'), dados.auditoria === null ? null : arr(dados.auditoria).slice(0, 15));
+    if (!servicos) statusServicos();
+  }
+
+  function render() { aplicarExemplosBot(); operacao(); geral(); shoppings(); tecnicos(); contatos(); msgLista(); variaveis(); variaveisBot(); parametros(); eventos(); }
 
   // ---------------------------------------------------------------- abas e carga
   Array.prototype.forEach.call(raiz.querySelectorAll('.pbot-abas [data-sec]'), function (b) {

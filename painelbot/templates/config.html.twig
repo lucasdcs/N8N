@@ -41,6 +41,45 @@
           {% endif %}
         </div>
       </div>
+
+      <h4 class="mt-4 mb-2"><i class="ti ti-player-play me-1"></i>Operação (0.5.0) — n8n e WhatsApp</h4>
+      <div class="form-hint mb-3" style="max-width: 900px">
+        Endereços <b>vistos do servidor do GLPI</b> (não os internos do Docker). Com eles a aba <b>Operação</b> mostra se cada workflow está publicado,
+        a última execução e o último erro, permite <b>pausar e retomar</b> os workflows do bot e mostra a sessão do WhatsApp.
+        Chave do n8n: Settings &gt; n8n API &gt; Create an API key. As chaves ficam cifradas e não aparecem aqui.
+      </div>
+      <div class="row g-3" style="max-width: 1100px">
+        <div class="col-md-5">
+          <label class="form-label">Endereço do n8n</label>
+          <input type="url" class="form-control" name="n8n_url" maxlength="200" placeholder="https://n8n.suaempresa.com.br" value="{{ cfg.n8n_url }}" {{ pode_editar ? '' : 'readonly' }}>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Chave da API do n8n {% if tem_n8n %}<span class="badge bg-success-lt">gravada</span>{% else %}<span class="badge bg-warning-lt">não gravada</span>{% endif %}</label>
+          {% if pode_editar %}
+            <input type="password" class="form-control" name="n8n_chave" autocomplete="new-password" placeholder="{{ tem_n8n ? 'vazio = mantém a atual' : 'X-N8N-API-KEY' }}">
+            {% if tem_n8n %}<label class="form-check mt-1"><input type="checkbox" class="form-check-input" name="n8n_apagar_chave" value="1"> <span class="form-check-label">apagar a chave</span></label>{% endif %}
+          {% else %}
+            <input type="text" class="form-control" readonly value="{{ tem_n8n ? '••••••••' : '' }}">
+          {% endif %}
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Outros workflows pausáveis (ids)</label>
+          <input type="text" class="form-control" name="n8n_controlaveis" maxlength="400" placeholder="opcional, separados por vírgula" value="{{ cfg.n8n_controlaveis }}" {{ pode_editar ? '' : 'readonly' }}>
+        </div>
+        <div class="col-md-5">
+          <label class="form-label">Endereço do WAHA</label>
+          <input type="url" class="form-control" name="waha_url" maxlength="200" placeholder="https://waha.suaempresa.com.br" value="{{ cfg.waha_url }}" {{ pode_editar ? '' : 'readonly' }}>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Chave do WAHA {% if tem_waha %}<span class="badge bg-success-lt">gravada</span>{% else %}<span class="badge bg-secondary-lt">opcional</span>{% endif %}</label>
+          {% if pode_editar %}
+            <input type="password" class="form-control" name="waha_chave" autocomplete="new-password" placeholder="{{ tem_waha ? 'vazio = mantém a atual' : 'X-Api-Key (se o WAHA pede)' }}">
+            {% if tem_waha %}<label class="form-check mt-1"><input type="checkbox" class="form-check-input" name="waha_apagar_chave" value="1"> <span class="form-check-label">apagar a chave</span></label>{% endif %}
+          {% else %}
+            <input type="text" class="form-control" readonly value="{{ tem_waha ? '••••••••' : '' }}">
+          {% endif %}
+        </div>
+      </div>
     </div>
     <input type="hidden" name="_glpi_csrf_token" value="{{ csrf_token() }}">
     <div class="card-footer d-flex gap-2">

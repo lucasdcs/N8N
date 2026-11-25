@@ -272,3 +272,14 @@ html.pbot-escuro .page-body .pbot[data-tema-ativo="escuro"] { padding: 4px 2px; 
 .pbot-var-shs-l { max-height: 360px; overflow-y: auto; margin-top: 8px; border: 1px solid var(--pbot-borda); border-radius: 8px; padding: 4px 10px; }
 .pbot-var-sh { display: grid; grid-template-columns: 200px 1fr; gap: 10px; align-items: center; padding: 3px 0; }
 .pbot-var-sh > span { font-size: 13px; }
+
+/* 0.5.0: aba Operação */
+.pbot-op-modos { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.pbot-seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.pbot-op-confirma { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px; border: 1px solid #16a34a; border-radius: 8px; }
+.pbot-op-confirma[hidden] { display: none; }
+.pbot-op-confirma .pbot-dica { flex-basis: 100%; }
+.pbot-op-confirma input { max-width: 120px; }
+.pbot-op-hora { font-size: 12px; font-weight: 400; color: var(--pbot-texto-3); }
+.pbot-op-waha { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.pbot-op-waha .pbot-nota { flex-basis: 100%; margin-top: 2px; }

@@ -24,6 +24,7 @@ TemplateRenderer::getInstance()->display('@painelbot/painel.html.twig', [
         'direitos'    => Direito::nav(),
         'secoes'      => Direito::secoes(),
         'pode_config' => Direito::ler(Direito::CONFIG),
+        'admin_glpi'  => (bool) Session::haveRight('config', UPDATE),   // 0.5.0: trocar o token do IXC
         'conexao'     => (new Bot())->conexao(),
     ],
 ]);

@@ -15,3 +15,7 @@ whatsapp-ixc/scripts/valores.json
 whatsapp-ixc/simulador/n8n/
 whatsapp-ixc/simulador/dados/
 whatsapp-ixc/simulador/.senha
+!painelbot/tests/*.sql
+painelbot/tests/direitos.json
+painelbot/tests/n8n-estado.json
+painelbot/tests/n8n-log.txt
