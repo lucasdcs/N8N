@@ -16,6 +16,7 @@ Cópia **limpa** dos workflows que estão **ativos** no n8n de produção. Cada 
 | `painel-ixc-coletor-5-bases.json` | Painel IXC - Coletor (5 bases) | Envia as O.S. ao plugin Painel IXC (`front/ingest.php`) |
 | `painel-ixc-auditoria-5-bases.json` | Painel IXC - Auditoria (5 bases) | Envia as auditorias de ativação ao painel |
 | `painel-ixc-atendimentos-5-bases.json` | Painel IXC - Atendimentos (5 bases) | Envia os atendimentos ao painel |
+| `ixc-ativar-contrato-resolutto-espelho.json` | IXC - Ativar contrato RESOLUTTO (espelho) | Ativação Link Normal finalizada e contrato ativo na 4B/PONTO/CACTA/BUZZ → ativa o único pré-contrato do mesmo CNPJ/CPF na RESOLUTTO. **Gerado** por [`ativar-contrato/gerar.py`](ativar-contrato/README.md), não exportado da produção |
 
 Os workflows inativos, como as versões antigas por base, não foram publicados.
 

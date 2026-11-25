@@ -1,0 +1,1202 @@
+{
+  "name": "IXC - Ativar contrato RESOLUTTO (espelho)",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Executar manualmente",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "id": "51f132ce-9c46-5f15-b906-0ed2f89f4a08",
+      "position": [
+        0,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 10
+            }
+          ]
+        }
+      },
+      "name": "A cada 10 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "id": "ed92d5a9-581a-5ee2-b6f6-ec55fd2db2d8",
+      "position": [
+        0,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============ CONFIG — Ativar contrato na RESOLUTTO (espelho das bases de origem) ============\n// Regra: O.S. de \"Ativação Link Normal\" FINALIZADA numa base de origem + contrato dessa O.S. ATIVO na origem\n//        -> o cliente de mesmo CNPJ/CPF na RESOLUTTO tem o seu ÚNICO pré-contrato (status P) ativado.\nconst cfg = {\n  // NENHUM = não faz nada | SIMULAR = mostra o que faria (padrão) | REAL = ativa de verdade (só no n8n de PRODUÇÃO)\n  MODO: 'SIMULAR',\n\n  // Base de origem -> assuntos que disparam (Ativação Link Normal). A RESOLUTTO é sempre o destino.\n  ORIGENS: {\n    '4B':  [16],\n    PONTO: [4],\n    CACTA: [43],\n    BUZZ:  [45],\n  },\n\n  // Olha as O.S. finalizadas nas últimas N horas (data_fechamento). O que já foi resolvido não é relido (memória do workflow).\n  JANELA_HORAS: 48,\n  MAX_OS_RODADA: 200,          // O.S. lidas por rodada (as mais antigas primeiro)\n  MAX_ATIVACOES_RODADA: 10,    // trava: contratos ativados por rodada\n\n  STATUS_ORIGEM_OK: ['A'],     // status do contrato na origem que libera a ativação\n  STATUS_PRE: ['P'],           // pré-contrato na RESOLUTTO (o único que pode ser ativado)\n  STATUS_ATIVO: ['A'],         // já ativo na RESOLUTTO = nada a fazer\n\n  IGNORAR_DOCS: [],            // CNPJ/CPF (só dígitos) que nunca são ativados automaticamente\n  TZ: 'America/Sao_Paulo',\n};\n\nconst local = (d) => d.toLocaleString('sv-SE', { timeZone: cfg.TZ }).replace('T', ' ');\nconst agora = new Date();\ncfg.agora = local(agora);\ncfg.desde = local(new Date(agora.getTime() - cfg.JANELA_HORAS * 3600000));\n\n// Corpo da leitura das O.S. finalizadas, por base (1 chamada por base).\nconst filtroIds = (tb, ids) => {\n  const v = [...new Set((ids || []).map(String).filter(x => /^\\d+$/.test(x) && x !== '0'))];\n  if (!v.length) return { TB: tb, OP: '=', P: '0' };\n  return v.length === 1 ? { TB: tb, OP: '=', P: v[0] } : { TB: tb, OP: 'IN', P: v.join(',') };\n};\ncfg.corpoOS = {};\nfor (const [b, assuntos] of Object.entries(cfg.ORIGENS)) {\n  const grid = cfg.MODO === 'NENHUM'\n    ? [{ TB: 'su_oss_chamado.id', OP: '=', P: '0' }]\n    : [filtroIds('su_oss_chamado.id_assunto', assuntos),\n       { TB: 'su_oss_chamado.status', OP: '=', P: 'F' },\n       { TB: 'su_oss_chamado.data_fechamento', OP: '>=', P: cfg.desde }];\n  cfg.corpoOS[b] = { qtype: 'su_oss_chamado.id', query: '0', oper: '>', page: '1', rp: '1000',\n    sortname: 'su_oss_chamado.id', sortorder: 'asc', grid_param: JSON.stringify(grid) };\n}\nreturn [{ json: { cfg } }];\n"
+      },
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "id": "1c93974a-6f0c-52eb-915a-4232ae1cd266",
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.4btelecom.com.br/webservice/v1/su_oss_chamado",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Config').first().json.cfg.corpoOS['4B']) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "OS 4B",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Sar2wecxMvwt297d",
+          "name": "IXC API (4BTELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "id": "98b824b6-882f-536e-82f7-527fb185a8d9",
+      "position": [
+        440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.pontotelecom.com/webservice/v1/su_oss_chamado",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Config').first().json.cfg.corpoOS['PONTO']) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "OS PONTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "SQr92hzbZKnat5kl",
+          "name": "IXC API (Ponto telecom)"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "id": "3c8ac2dc-71ec-5796-851c-d4da2438af11",
+      "position": [
+        660,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.cactatelecom.com.br/webservice/v1/su_oss_chamado",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Config').first().json.cfg.corpoOS['CACTA']) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "OS CACTA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "00ORMvXflPQheEJ1",
+          "name": "IXC API (CACTA TELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "id": "1055f4fb-ce00-570b-b9e2-4cd8ef942878",
+      "position": [
+        880,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.buzztelecom.com.br/webservice/v1/su_oss_chamado",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Config').first().json.cfg.corpoOS['BUZZ']) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "OS BUZZ",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "CYZcvcYaydyP88Uu",
+          "name": "IXC API (BUZZ TELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "id": "d9051750-fe1a-5b63-9f8c-1d4466c2d2c2",
+      "position": [
+        1100,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---- comum (inserido no início dos nós de código pelo gerar.py) ----\nfunction parseTolerante(v) {\n  if (v && typeof v === 'object' && v.data === undefined) return v;\n  const txt = v && typeof v === 'object' ? v.data : v;\n  const limpo = String(txt || '').replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]/g, '');\n  try { return JSON.parse(limpo); } catch (e) { return { erro_parse: 'JSON inválido: ' + e.message }; }\n}\nconst msgErro = (e) => typeof e === 'string' ? e : (e && (e.message || e.description)) || JSON.stringify(e);\nfunction falhou(r) {\n  if (!r) return 'sem resposta';\n  if (r.erro_parse) return r.erro_parse;\n  if (r.error) return msgErro(r.error);\n  if (r.type === 'error') return 'IXC recusou: ' + String(r.message || JSON.stringify(r)).slice(0, 300);\n  if (!Number.isFinite(Number(r.total))) return 'resposta inesperada (sem \"total\"): ' + JSON.stringify(r).slice(0, 200);\n  if (Number(r.total) > 0 && !Array.isArray(r.registros)) return 'IXC informou ' + r.total + ' registros mas não mandou a lista';\n  return '';\n}\nconst regs = (r) => Array.isArray(r && r.registros) ? r.registros : [];\nconst digitos = (s) => String(s || '').replace(/\\D/g, '');\nconst formatarDoc = (d) => d.length === 14 ? d.replace(/^(\\d{2})(\\d{3})(\\d{3})(\\d{4})(\\d{2})$/, '$1.$2.$3/$4-$5')\n  : d.length === 11 ? d.replace(/^(\\d{3})(\\d{3})(\\d{3})(\\d{2})$/, '$1.$2.$3-$4') : d;\nconst filtroIds = (tb, ids) => {\n  const v = [...new Set((ids || []).map(String).filter(x => /^\\d+$/.test(x) && x !== '0'))];\n  if (!v.length) return { TB: tb, OP: '=', P: '0' };\n  return v.length === 1 ? { TB: tb, OP: '=', P: v[0] } : { TB: tb, OP: 'IN', P: v.join(',') };\n};\nconst corpoIds = (tab, campo, ids) => ({ qtype: tab + '.id', query: '0', oper: '>', page: '1', rp: '5000',\n  sortname: tab + '.id', sortorder: 'asc', grid_param: JSON.stringify([filtroIds(tab + '.' + campo, ids)]) });\nconst VAZIO = (tab) => ({ qtype: tab + '.id', query: '0', oper: '=', page: '1', rp: '1' });\n// Campo do contrato na O.S.: o IXC usa id_contrato_kit (confirmado no painelixc); id_contrato fica de reserva.\nconst CAMPOS_CONTRATO_OS = ['id_contrato_kit', 'id_contrato'];\n// ---- fim do comum ----\n\n// Junta as O.S. finalizadas das bases de origem, tira as já resolvidas e prepara a leitura de contratos e clientes.\nconst cfg = $('Config').first().json.cfg;\nconst BASES = Object.keys(cfg.ORIGENS);\nconst st = $getWorkflowStaticData('global');\nst.feitos = st.feitos || {};\nconst limite = Date.now() - (cfg.JANELA_HORAS + 24) * 3600000;\nfor (const k of Object.keys(st.feitos)) if (!(st.feitos[k] >= limite)) delete st.feitos[k];\n\nconst lista = [], erros = {}, campos = {};\nlet jaFeitas = 0;\nif (cfg.MODO !== 'NENHUM') for (const b of BASES) {\n  const r = parseTolerante($('OS ' + b).first().json);\n  const e = falhou(r);\n  if (e) { erros[b] = 'leitura das O.S.: ' + e; continue; }\n  const assuntos = cfg.ORIGENS[b].map(String);\n  for (const o of regs(r)) {\n    if (!campos[b]) campos[b] = Object.keys(o).filter(k => /contrato/i.test(k));\n    // Conferência local (a API já filtrou; se algum filtro for ignorado pelo IXC, nada passa errado).\n    if (String(o.status) !== 'F' || !assuntos.includes(String(o.id_assunto))) continue;\n    if (String(o.data_fechamento || '') < cfg.desde) continue;\n    if (st.feitos[b + ':' + o.id]) { jaFeitas++; continue; }\n    const campo = CAMPOS_CONTRATO_OS.find(c => o[c] !== undefined);\n    lista.push({ base: b, id_os: String(o.id), id_assunto: String(o.id_assunto), id_cliente: String(o.id_cliente || ''),\n      id_contrato: campo ? String(o[campo] || '') : '', campo_contrato: campo || '', data_fechamento: String(o.data_fechamento || '') });\n  }\n}\nlista.sort((a, b) => a.data_fechamento < b.data_fechamento ? -1 : a.data_fechamento > b.data_fechamento ? 1 : 0);\nconst cortadas = Math.max(0, lista.length - cfg.MAX_OS_RODADA);\nconst os = lista.slice(0, cfg.MAX_OS_RODADA);\n\nconst corpos = { contratos: {}, clientes: {} };\nfor (const b of BASES) {\n  const da = os.filter(x => x.base === b);\n  corpos.contratos[b] = da.length ? corpoIds('cliente_contrato', 'id', da.map(x => x.id_contrato)) : VAZIO('cliente_contrato');\n  corpos.clientes[b] = da.length ? corpoIds('cliente', 'id', da.map(x => x.id_cliente)) : VAZIO('cliente');\n}\nreturn [{ json: { os, erros, campos, ja_feitas: jaFeitas, cortadas, corpos } }];\n"
+      },
+      "name": "Finalizadas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "id": "f62b7225-757e-5b87-b6e2-ea299fd1449a",
+      "position": [
+        1320,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.4btelecom.com.br/webservice/v1/cliente_contrato",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Finalizadas').first().json.corpos.contratos['4B']) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Contratos 4B",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Sar2wecxMvwt297d",
+          "name": "IXC API (4BTELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "id": "8bf5460a-c9bd-5b0c-8f5b-a81163c06237",
+      "position": [
+        1540,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.pontotelecom.com/webservice/v1/cliente_contrato",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Finalizadas').first().json.corpos.contratos['PONTO']) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Contratos PONTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "SQr92hzbZKnat5kl",
+          "name": "IXC API (Ponto telecom)"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "id": "b7980e37-dbf4-503c-ba24-df0081b418ff",
+      "position": [
+        1760,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.cactatelecom.com.br/webservice/v1/cliente_contrato",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Finalizadas').first().json.corpos.contratos['CACTA']) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Contratos CACTA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "00ORMvXflPQheEJ1",
+          "name": "IXC API (CACTA TELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "id": "a6683b4a-5d23-5a31-93bf-a63695608a66",
+      "position": [
+        1980,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.buzztelecom.com.br/webservice/v1/cliente_contrato",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Finalizadas').first().json.corpos.contratos['BUZZ']) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Contratos BUZZ",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "CYZcvcYaydyP88Uu",
+          "name": "IXC API (BUZZ TELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "id": "58a05064-00c3-56c3-9e52-d32bd834941f",
+      "position": [
+        2200,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.4btelecom.com.br/webservice/v1/cliente",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Finalizadas').first().json.corpos.clientes['4B']) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Clientes 4B",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "Sar2wecxMvwt297d",
+          "name": "IXC API (4BTELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "id": "c4d4489f-b160-51b1-8acc-5d901aeda2ee",
+      "position": [
+        2420,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.pontotelecom.com/webservice/v1/cliente",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Finalizadas').first().json.corpos.clientes['PONTO']) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Clientes PONTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "SQr92hzbZKnat5kl",
+          "name": "IXC API (Ponto telecom)"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "id": "cf8e45f3-9a01-5fdb-867d-db84d469af2e",
+      "position": [
+        2640,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.cactatelecom.com.br/webservice/v1/cliente",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Finalizadas').first().json.corpos.clientes['CACTA']) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Clientes CACTA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "00ORMvXflPQheEJ1",
+          "name": "IXC API (CACTA TELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "id": "53cb18f7-63ae-5caf-94ab-a1b35a4f2c76",
+      "position": [
+        2860,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.buzztelecom.com.br/webservice/v1/cliente",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Finalizadas').first().json.corpos.clientes['BUZZ']) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Clientes BUZZ",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "CYZcvcYaydyP88Uu",
+          "name": "IXC API (BUZZ TELECOM)"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "id": "c1db5bb7-b3cd-547f-adb1-686bbdd632cd",
+      "position": [
+        3080,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---- comum (inserido no início dos nós de código pelo gerar.py) ----\nfunction parseTolerante(v) {\n  if (v && typeof v === 'object' && v.data === undefined) return v;\n  const txt = v && typeof v === 'object' ? v.data : v;\n  const limpo = String(txt || '').replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]/g, '');\n  try { return JSON.parse(limpo); } catch (e) { return { erro_parse: 'JSON inválido: ' + e.message }; }\n}\nconst msgErro = (e) => typeof e === 'string' ? e : (e && (e.message || e.description)) || JSON.stringify(e);\nfunction falhou(r) {\n  if (!r) return 'sem resposta';\n  if (r.erro_parse) return r.erro_parse;\n  if (r.error) return msgErro(r.error);\n  if (r.type === 'error') return 'IXC recusou: ' + String(r.message || JSON.stringify(r)).slice(0, 300);\n  if (!Number.isFinite(Number(r.total))) return 'resposta inesperada (sem \"total\"): ' + JSON.stringify(r).slice(0, 200);\n  if (Number(r.total) > 0 && !Array.isArray(r.registros)) return 'IXC informou ' + r.total + ' registros mas não mandou a lista';\n  return '';\n}\nconst regs = (r) => Array.isArray(r && r.registros) ? r.registros : [];\nconst digitos = (s) => String(s || '').replace(/\\D/g, '');\nconst formatarDoc = (d) => d.length === 14 ? d.replace(/^(\\d{2})(\\d{3})(\\d{3})(\\d{4})(\\d{2})$/, '$1.$2.$3/$4-$5')\n  : d.length === 11 ? d.replace(/^(\\d{3})(\\d{3})(\\d{3})(\\d{2})$/, '$1.$2.$3-$4') : d;\nconst filtroIds = (tb, ids) => {\n  const v = [...new Set((ids || []).map(String).filter(x => /^\\d+$/.test(x) && x !== '0'))];\n  if (!v.length) return { TB: tb, OP: '=', P: '0' };\n  return v.length === 1 ? { TB: tb, OP: '=', P: v[0] } : { TB: tb, OP: 'IN', P: v.join(',') };\n};\nconst corpoIds = (tab, campo, ids) => ({ qtype: tab + '.id', query: '0', oper: '>', page: '1', rp: '5000',\n  sortname: tab + '.id', sortorder: 'asc', grid_param: JSON.stringify([filtroIds(tab + '.' + campo, ids)]) });\nconst VAZIO = (tab) => ({ qtype: tab + '.id', query: '0', oper: '=', page: '1', rp: '1' });\n// Campo do contrato na O.S.: o IXC usa id_contrato_kit (confirmado no painelixc); id_contrato fica de reserva.\nconst CAMPOS_CONTRATO_OS = ['id_contrato_kit', 'id_contrato'];\n// ---- fim do comum ----\n\n// Confere o contrato na origem e o CNPJ/CPF do cliente. Sai 1 item por O.S. (os que não seguem levam o motivo e pular=true).\nconst cfg = $('Config').first().json.cfg;\nconst fin = $('Finalizadas').first().json;\nconst BASES = Object.keys(cfg.ORIGENS);\nconst ler = {};\nfor (const b of BASES) {\n  const rc = parseTolerante($('Contratos ' + b).first().json), rk = parseTolerante($('Clientes ' + b).first().json);\n  ler[b] = { eContr: falhou(rc), eCli: falhou(rk),\n    contratos: new Map(regs(rc).map(x => [String(x.id), x])), clientes: new Map(regs(rk).map(x => [String(x.id), x])) };\n}\nconst ignorar = new Set((cfg.IGNORAR_DOCS || []).map(digitos));\nconst out = [];\nfor (const o of fin.os) {\n  const L = ler[o.base];\n  const it = { ...o, pular: true, motivo: '', situacao: 'aguardando', doc: '', status_origem: '', nome: '' };\n  const cli = L.clientes.get(o.id_cliente);\n  if (cli) it.nome = String(cli.fantasia || cli.razao || '').slice(0, 80);\n  if (L.eContr) it.motivo = 'erro ao ler contratos na ' + o.base + ': ' + L.eContr;\n  else if (L.eCli) it.motivo = 'erro ao ler clientes na ' + o.base + ': ' + L.eCli;\n  else if (!o.id_contrato || o.id_contrato === '0') it.motivo = 'O.S. sem contrato (' + (o.campo_contrato || 'campo do contrato não encontrado') + ' vazio)';\n  else if (!L.contratos.has(o.id_contrato)) it.motivo = 'contrato ' + o.id_contrato + ' não encontrado na ' + o.base;\n  else {\n    const ct = L.contratos.get(o.id_contrato);\n    it.status_origem = String(ct.status || '');\n    if (String(ct.id_cliente || '') && String(ct.id_cliente) !== o.id_cliente) it.motivo = 'contrato ' + o.id_contrato + ' é de outro cliente na ' + o.base;\n    else if (!cfg.STATUS_ORIGEM_OK.includes(it.status_origem)) it.motivo = 'contrato ' + o.id_contrato + ' na ' + o.base + ' está \"' + (it.status_origem || 'vazio') + '\" (aguarda ficar ativo)';\n    else if (!cli) it.motivo = 'cliente ' + o.id_cliente + ' não encontrado na ' + o.base;\n    else {\n      it.doc = digitos(cli.cnpj_cpf);\n      if (it.doc.length !== 11 && it.doc.length !== 14) { it.motivo = 'cliente sem CNPJ/CPF válido na ' + o.base; it.situacao = 'revisar'; }\n      else if (ignorar.has(it.doc)) { it.motivo = 'CNPJ/CPF na lista IGNORAR_DOCS'; it.situacao = 'ignorado'; }\n      else it.pular = false;\n    }\n  }\n  it.corpo_doc_fmt = it.pular ? VAZIO('cliente') : { qtype: 'cliente.cnpj_cpf', query: formatarDoc(it.doc), oper: '=', page: '1', rp: '20' };\n  it.corpo_doc_num = it.pular ? VAZIO('cliente') : { qtype: 'cliente.cnpj_cpf', query: it.doc, oper: '=', page: '1', rp: '20' };\n  out.push({ json: it });\n}\nif (!out.length) out.push({ json: { vazio: true, pular: true, motivo: 'nenhuma O.S. nova', corpo_doc_fmt: VAZIO('cliente'), corpo_doc_num: VAZIO('cliente') } });\nreturn out;\n"
+      },
+      "name": "Candidatos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "id": "01e3adef-f1f5-534b-9a0b-840f0782377b",
+      "position": [
+        3300,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.resolutto.com.br/webservice/v1/cliente",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.corpo_doc_fmt) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Cliente RESOLUTTO (formatado)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "ixcApiAutomacao1",
+          "name": "IXC API (RESOLUTTO)"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "id": "3d663217-0a8b-512a-bc1a-c34fd65b2239",
+      "position": [
+        3520,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.resolutto.com.br/webservice/v1/cliente",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Candidatos').item.json.corpo_doc_num) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Cliente RESOLUTTO (dígitos)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "ixcApiAutomacao1",
+          "name": "IXC API (RESOLUTTO)"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "id": "31ad69a6-f32d-5ddf-bcc2-f50a13e26f95",
+      "position": [
+        3740,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---- comum (inserido no início dos nós de código pelo gerar.py) ----\nfunction parseTolerante(v) {\n  if (v && typeof v === 'object' && v.data === undefined) return v;\n  const txt = v && typeof v === 'object' ? v.data : v;\n  const limpo = String(txt || '').replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]/g, '');\n  try { return JSON.parse(limpo); } catch (e) { return { erro_parse: 'JSON inválido: ' + e.message }; }\n}\nconst msgErro = (e) => typeof e === 'string' ? e : (e && (e.message || e.description)) || JSON.stringify(e);\nfunction falhou(r) {\n  if (!r) return 'sem resposta';\n  if (r.erro_parse) return r.erro_parse;\n  if (r.error) return msgErro(r.error);\n  if (r.type === 'error') return 'IXC recusou: ' + String(r.message || JSON.stringify(r)).slice(0, 300);\n  if (!Number.isFinite(Number(r.total))) return 'resposta inesperada (sem \"total\"): ' + JSON.stringify(r).slice(0, 200);\n  if (Number(r.total) > 0 && !Array.isArray(r.registros)) return 'IXC informou ' + r.total + ' registros mas não mandou a lista';\n  return '';\n}\nconst regs = (r) => Array.isArray(r && r.registros) ? r.registros : [];\nconst digitos = (s) => String(s || '').replace(/\\D/g, '');\nconst formatarDoc = (d) => d.length === 14 ? d.replace(/^(\\d{2})(\\d{3})(\\d{3})(\\d{4})(\\d{2})$/, '$1.$2.$3/$4-$5')\n  : d.length === 11 ? d.replace(/^(\\d{3})(\\d{3})(\\d{3})(\\d{2})$/, '$1.$2.$3-$4') : d;\nconst filtroIds = (tb, ids) => {\n  const v = [...new Set((ids || []).map(String).filter(x => /^\\d+$/.test(x) && x !== '0'))];\n  if (!v.length) return { TB: tb, OP: '=', P: '0' };\n  return v.length === 1 ? { TB: tb, OP: '=', P: v[0] } : { TB: tb, OP: 'IN', P: v.join(',') };\n};\nconst corpoIds = (tab, campo, ids) => ({ qtype: tab + '.id', query: '0', oper: '>', page: '1', rp: '5000',\n  sortname: tab + '.id', sortorder: 'asc', grid_param: JSON.stringify([filtroIds(tab + '.' + campo, ids)]) });\nconst VAZIO = (tab) => ({ qtype: tab + '.id', query: '0', oper: '=', page: '1', rp: '1' });\n// Campo do contrato na O.S.: o IXC usa id_contrato_kit (confirmado no painelixc); id_contrato fica de reserva.\nconst CAMPOS_CONTRATO_OS = ['id_contrato_kit', 'id_contrato'];\n// ---- fim do comum ----\n\n// (1 vez por item) Acha o cliente da RESOLUTTO com o mesmo CNPJ/CPF (compara só os dígitos).\nconst c = $('Candidatos').item.json;\nconst it = { ...c, id_cliente_res: '', corpo_contratos_res: VAZIO('cliente_contrato') };\nif (!c.pular) {\n  const r1 = parseTolerante($('Cliente RESOLUTTO (formatado)').item.json), r2 = parseTolerante($input.item.json);\n  const e = falhou(r1) || falhou(r2);\n  if (e) { it.pular = true; it.motivo = 'erro ao buscar o cliente na RESOLUTTO: ' + e; }\n  else {\n    const achados = new Map();\n    for (const x of [...regs(r1), ...regs(r2)]) if (digitos(x.cnpj_cpf) === c.doc) achados.set(String(x.id), x);\n    if (achados.size === 0) { it.pular = true; it.motivo = 'nenhum cliente com este CNPJ/CPF na RESOLUTTO'; it.situacao = 'revisar'; }\n    else if (achados.size > 1) { it.pular = true; it.motivo = achados.size + ' clientes com este CNPJ/CPF na RESOLUTTO (ids ' + [...achados.keys()].join(', ') + ')'; it.situacao = 'revisar'; }\n    else {\n      it.id_cliente_res = [...achados.keys()][0];\n      it.corpo_contratos_res = corpoIds('cliente_contrato', 'id_cliente', [it.id_cliente_res]);\n    }\n  }\n}\nreturn { json: it };\n",
+        "mode": "runOnceForEachItem"
+      },
+      "name": "Casar cliente",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "id": "f2f504da-f4b7-58a7-a8aa-f8c7e2780696",
+      "position": [
+        3960,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.resolutto.com.br/webservice/v1/cliente_contrato",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.corpo_contratos_res) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Contratos RESOLUTTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "ixcApiAutomacao1",
+          "name": "IXC API (RESOLUTTO)"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "id": "303c3a0a-a297-5593-96d3-2f52eb0c4649",
+      "position": [
+        4180,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---- comum (inserido no início dos nós de código pelo gerar.py) ----\nfunction parseTolerante(v) {\n  if (v && typeof v === 'object' && v.data === undefined) return v;\n  const txt = v && typeof v === 'object' ? v.data : v;\n  const limpo = String(txt || '').replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]/g, '');\n  try { return JSON.parse(limpo); } catch (e) { return { erro_parse: 'JSON inválido: ' + e.message }; }\n}\nconst msgErro = (e) => typeof e === 'string' ? e : (e && (e.message || e.description)) || JSON.stringify(e);\nfunction falhou(r) {\n  if (!r) return 'sem resposta';\n  if (r.erro_parse) return r.erro_parse;\n  if (r.error) return msgErro(r.error);\n  if (r.type === 'error') return 'IXC recusou: ' + String(r.message || JSON.stringify(r)).slice(0, 300);\n  if (!Number.isFinite(Number(r.total))) return 'resposta inesperada (sem \"total\"): ' + JSON.stringify(r).slice(0, 200);\n  if (Number(r.total) > 0 && !Array.isArray(r.registros)) return 'IXC informou ' + r.total + ' registros mas não mandou a lista';\n  return '';\n}\nconst regs = (r) => Array.isArray(r && r.registros) ? r.registros : [];\nconst digitos = (s) => String(s || '').replace(/\\D/g, '');\nconst formatarDoc = (d) => d.length === 14 ? d.replace(/^(\\d{2})(\\d{3})(\\d{3})(\\d{4})(\\d{2})$/, '$1.$2.$3/$4-$5')\n  : d.length === 11 ? d.replace(/^(\\d{3})(\\d{3})(\\d{3})(\\d{2})$/, '$1.$2.$3-$4') : d;\nconst filtroIds = (tb, ids) => {\n  const v = [...new Set((ids || []).map(String).filter(x => /^\\d+$/.test(x) && x !== '0'))];\n  if (!v.length) return { TB: tb, OP: '=', P: '0' };\n  return v.length === 1 ? { TB: tb, OP: '=', P: v[0] } : { TB: tb, OP: 'IN', P: v.join(',') };\n};\nconst corpoIds = (tab, campo, ids) => ({ qtype: tab + '.id', query: '0', oper: '>', page: '1', rp: '5000',\n  sortname: tab + '.id', sortorder: 'asc', grid_param: JSON.stringify([filtroIds(tab + '.' + campo, ids)]) });\nconst VAZIO = (tab) => ({ qtype: tab + '.id', query: '0', oper: '=', page: '1', rp: '1' });\n// Campo do contrato na O.S.: o IXC usa id_contrato_kit (confirmado no painelixc); id_contrato fica de reserva.\nconst CAMPOS_CONTRATO_OS = ['id_contrato_kit', 'id_contrato'];\n// ---- fim do comum ----\n\n// Decide, por O.S., se ativa o único pré-contrato do cliente na RESOLUTTO.\nconst cfg = $('Config').first().json.cfg;\nconst base = $('Casar cliente').all();\nconst resp = $input.all();\nconst usados = new Set();\nlet ativacoes = 0;\nconst out = [];\nresp.forEach((r, i) => {\n  const it = { ...base[i].json, acao: 'nada', id_contrato_res: '' };\n  delete it.corpo_doc_fmt; delete it.corpo_doc_num; delete it.corpo_contratos_res;\n  if (!it.pular && !it.vazio) {\n    const rc = parseTolerante(r.json), e = falhou(rc);\n    const cts = e ? [] : regs(rc).filter(x => String(x.id_cliente) === it.id_cliente_res);\n    const pre = cts.filter(x => cfg.STATUS_PRE.includes(String(x.status)));\n    const ativos = cts.filter(x => cfg.STATUS_ATIVO.includes(String(x.status)));\n    if (e) it.motivo = 'erro ao ler os contratos na RESOLUTTO: ' + e;\n    else if (pre.length > 1) { it.motivo = pre.length + ' pré-contratos na RESOLUTTO (ids ' + pre.map(x => x.id).join(', ') + '): decidir manualmente'; it.situacao = 'revisar'; }\n    else if (pre.length === 0 && ativos.length) { it.motivo = 'já ativo na RESOLUTTO (contrato ' + ativos.map(x => x.id).join(', ') + ')'; it.situacao = 'ja_ativo'; }\n    else if (pre.length === 0) { it.motivo = 'nenhum pré-contrato na RESOLUTTO (contratos: ' + (cts.map(x => x.id + '=' + x.status).join(', ') || 'nenhum') + ')'; it.situacao = 'revisar'; }\n    else {\n      const ct = pre[0];\n      it.id_contrato_res = String(ct.id);\n      if (usados.has(it.id_contrato_res)) { it.motivo = 'contrato ' + ct.id + ' já entra nesta rodada por outra O.S.'; it.situacao = 'duplicada'; }\n      else if (ativacoes >= cfg.MAX_ATIVACOES_RODADA) it.motivo = 'limite de ' + cfg.MAX_ATIVACOES_RODADA + ' ativações por rodada (fica para a próxima)';\n      else {\n        usados.add(it.id_contrato_res); ativacoes++;\n        it.acao = cfg.MODO === 'REAL' ? 'ativar' : 'simular';\n        it.situacao = it.acao === 'ativar' ? 'ativando' : 'simulado';\n        it.motivo = (it.acao === 'ativar' ? 'ativar' : 'SIMULAR: ativaria') + ' o contrato ' + ct.id + ' do cliente ' + it.id_cliente_res + ' na RESOLUTTO';\n        it.payload = { qtype: 'cliente_contrato_ativar_cliente.id', id_contrato: it.id_contrato_res };\n        it.corpo_reler = corpoIds('cliente_contrato', 'id', [it.id_contrato_res]);\n      }\n    }\n  }\n  out.push({ json: it });\n});\nreturn out;\n"
+      },
+      "name": "Decidir",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "id": "80a3120d-c9f2-5581-8f9f-2d2863942166",
+      "position": [
+        4400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ada274d2-2f82-509b-819d-792c8a85734c",
+              "leftValue": "={{ $json.acao }}",
+              "rightValue": "ativar",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Ativar?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "id": "82e90abe-d0b6-581d-a652-f9b0163722bd",
+      "position": [
+        4620,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.resolutto.com.br/webservice/v1/cliente_contrato_ativar_cliente",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Ativar RESOLUTTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "ixcApiAutomacao1",
+          "name": "IXC API (RESOLUTTO)"
+        }
+      },
+      "id": "7eb59875-109e-5822-b024-7ec54eb36037",
+      "position": [
+        4840,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ixc.resolutto.com.br/webservice/v1/cliente_contrato",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ixcsoft",
+              "value": "listar"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Ativar?').item.json.corpo_reler) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "name": "Reler contrato RESOLUTTO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "ixcApiAutomacao1",
+          "name": "IXC API (RESOLUTTO)"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "id": "0aa4c3af-3abd-566f-8611-4caf59fcba49",
+      "position": [
+        5060,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---- comum (inserido no início dos nós de código pelo gerar.py) ----\nfunction parseTolerante(v) {\n  if (v && typeof v === 'object' && v.data === undefined) return v;\n  const txt = v && typeof v === 'object' ? v.data : v;\n  const limpo = String(txt || '').replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]/g, '');\n  try { return JSON.parse(limpo); } catch (e) { return { erro_parse: 'JSON inválido: ' + e.message }; }\n}\nconst msgErro = (e) => typeof e === 'string' ? e : (e && (e.message || e.description)) || JSON.stringify(e);\nfunction falhou(r) {\n  if (!r) return 'sem resposta';\n  if (r.erro_parse) return r.erro_parse;\n  if (r.error) return msgErro(r.error);\n  if (r.type === 'error') return 'IXC recusou: ' + String(r.message || JSON.stringify(r)).slice(0, 300);\n  if (!Number.isFinite(Number(r.total))) return 'resposta inesperada (sem \"total\"): ' + JSON.stringify(r).slice(0, 200);\n  if (Number(r.total) > 0 && !Array.isArray(r.registros)) return 'IXC informou ' + r.total + ' registros mas não mandou a lista';\n  return '';\n}\nconst regs = (r) => Array.isArray(r && r.registros) ? r.registros : [];\nconst digitos = (s) => String(s || '').replace(/\\D/g, '');\nconst formatarDoc = (d) => d.length === 14 ? d.replace(/^(\\d{2})(\\d{3})(\\d{3})(\\d{4})(\\d{2})$/, '$1.$2.$3/$4-$5')\n  : d.length === 11 ? d.replace(/^(\\d{3})(\\d{3})(\\d{3})(\\d{2})$/, '$1.$2.$3-$4') : d;\nconst filtroIds = (tb, ids) => {\n  const v = [...new Set((ids || []).map(String).filter(x => /^\\d+$/.test(x) && x !== '0'))];\n  if (!v.length) return { TB: tb, OP: '=', P: '0' };\n  return v.length === 1 ? { TB: tb, OP: '=', P: v[0] } : { TB: tb, OP: 'IN', P: v.join(',') };\n};\nconst corpoIds = (tab, campo, ids) => ({ qtype: tab + '.id', query: '0', oper: '>', page: '1', rp: '5000',\n  sortname: tab + '.id', sortorder: 'asc', grid_param: JSON.stringify([filtroIds(tab + '.' + campo, ids)]) });\nconst VAZIO = (tab) => ({ qtype: tab + '.id', query: '0', oper: '=', page: '1', rp: '1' });\n// Campo do contrato na O.S.: o IXC usa id_contrato_kit (confirmado no painelixc); id_contrato fica de reserva.\nconst CAMPOS_CONTRATO_OS = ['id_contrato_kit', 'id_contrato'];\n// ---- fim do comum ----\n\n// Confere cada ativação relendo o contrato. Só marca a O.S. como resolvida quando o contrato ficou ativo.\nconst cfg = $('Config').first().json.cfg;\nconst st = $getWorkflowStaticData('global'); st.feitos = st.feitos || {};\nconst dec = $('Ativar?').all(0), atv = $('Ativar RESOLUTTO').all(), rel = $input.all();\nreturn rel.map((r, i) => {\n  const it = { ...dec[i].json };\n  const ra = parseTolerante(atv[i].json), rr = parseTolerante(r.json);\n  const ea = (ra && ra.type === 'error') ? String(ra.message || 'erro') : (ra && ra.erro_parse) ? ra.erro_parse : '';\n  const ct = regs(rr)[0];\n  const st2 = ct ? String(ct.status) : '?';\n  it.resposta_ixc = ra && ra.message ? String(ra.message).slice(0, 300) : '';\n  if (cfg.STATUS_ATIVO.includes(st2)) {\n    it.situacao = 'ativado'; it.motivo = 'contrato ' + it.id_contrato_res + ' ativado na RESOLUTTO';\n    st.feitos[it.base + ':' + it.id_os] = Date.now();\n  } else {\n    it.situacao = 'erro'; it.motivo = 'contrato ' + it.id_contrato_res + ' continua \"' + st2 + '\"' + (ea ? ' — IXC: ' + ea : '');\n  }\n  delete it.payload; delete it.corpo_reler;\n  return { json: it };\n});\n"
+      },
+      "name": "Conferir ativação",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "id": "5f96553f-84ec-5619-902f-abbfd5777412",
+      "position": [
+        5280,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---- comum (inserido no início dos nós de código pelo gerar.py) ----\nfunction parseTolerante(v) {\n  if (v && typeof v === 'object' && v.data === undefined) return v;\n  const txt = v && typeof v === 'object' ? v.data : v;\n  const limpo = String(txt || '').replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]/g, '');\n  try { return JSON.parse(limpo); } catch (e) { return { erro_parse: 'JSON inválido: ' + e.message }; }\n}\nconst msgErro = (e) => typeof e === 'string' ? e : (e && (e.message || e.description)) || JSON.stringify(e);\nfunction falhou(r) {\n  if (!r) return 'sem resposta';\n  if (r.erro_parse) return r.erro_parse;\n  if (r.error) return msgErro(r.error);\n  if (r.type === 'error') return 'IXC recusou: ' + String(r.message || JSON.stringify(r)).slice(0, 300);\n  if (!Number.isFinite(Number(r.total))) return 'resposta inesperada (sem \"total\"): ' + JSON.stringify(r).slice(0, 200);\n  if (Number(r.total) > 0 && !Array.isArray(r.registros)) return 'IXC informou ' + r.total + ' registros mas não mandou a lista';\n  return '';\n}\nconst regs = (r) => Array.isArray(r && r.registros) ? r.registros : [];\nconst digitos = (s) => String(s || '').replace(/\\D/g, '');\nconst formatarDoc = (d) => d.length === 14 ? d.replace(/^(\\d{2})(\\d{3})(\\d{3})(\\d{4})(\\d{2})$/, '$1.$2.$3/$4-$5')\n  : d.length === 11 ? d.replace(/^(\\d{3})(\\d{3})(\\d{3})(\\d{2})$/, '$1.$2.$3-$4') : d;\nconst filtroIds = (tb, ids) => {\n  const v = [...new Set((ids || []).map(String).filter(x => /^\\d+$/.test(x) && x !== '0'))];\n  if (!v.length) return { TB: tb, OP: '=', P: '0' };\n  return v.length === 1 ? { TB: tb, OP: '=', P: v[0] } : { TB: tb, OP: 'IN', P: v.join(',') };\n};\nconst corpoIds = (tab, campo, ids) => ({ qtype: tab + '.id', query: '0', oper: '>', page: '1', rp: '5000',\n  sortname: tab + '.id', sortorder: 'asc', grid_param: JSON.stringify([filtroIds(tab + '.' + campo, ids)]) });\nconst VAZIO = (tab) => ({ qtype: tab + '.id', query: '0', oper: '=', page: '1', rp: '1' });\n// Campo do contrato na O.S.: o IXC usa id_contrato_kit (confirmado no painelixc); id_contrato fica de reserva.\nconst CAMPOS_CONTRATO_OS = ['id_contrato_kit', 'id_contrato'];\n// ---- fim do comum ----\n\n// Resumo da rodada (O.S. que não foram ativadas). Em REAL, as já ativas na RESOLUTTO não são relidas nas próximas rodadas.\nconst cfg = $('Config').first().json.cfg;\nconst fin = $('Finalizadas').first().json;\nconst st = $getWorkflowStaticData('global'); st.feitos = st.feitos || {};\nconst itens = $input.all().map(x => x.json).filter(x => !x.vazio);\nif (cfg.MODO === 'REAL') for (const x of itens) if (x.situacao === 'ja_ativo') st.feitos[x.base + ':' + x.id_os] = Date.now();\nconst cont = {};\nfor (const x of itens) cont[x.situacao] = (cont[x.situacao] || 0) + 1;\nconst resumo = { resumo: true, modo: cfg.MODO, janela_desde: cfg.desde, os_lidas: fin.os.length, ja_resolvidas: fin.ja_feitas,\n  cortadas_pelo_limite: fin.cortadas, por_situacao: cont, erros_leitura: fin.erros, campos_contrato_vistos: fin.campos };\nconst linhas = itens.map(x => ({ json: { base: x.base, os: x.id_os, cliente: x.nome, doc: x.doc ? x.doc.slice(0, 4) + '…' : '',\n  situacao: x.situacao, motivo: x.motivo, contrato_resolutto: x.id_contrato_res || '' } }));\nreturn [{ json: resumo }, ...linhas];\n"
+      },
+      "name": "Relatório",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "id": "bfa580f7-506d-56c5-b9e6-40286c5d4d82",
+      "position": [
+        4840,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## IXC - Ativar contrato RESOLUTTO (espelho) v0.1.0\nO.S. \"Ativação Link Normal\" FINALIZADA na 4B/PONTO/CACTA/BUZZ + contrato da O.S. ATIVO na origem -> ativa o ÚNICO pré-contrato (P) do cliente de mesmo CNPJ/CPF na RESOLUTTO.\n\nModo no nó Config (MODO): NENHUM / SIMULAR / REAL. REAL só no n8n de PRODUÇÃO.\nFonte: github.com/lucasdcs/N8N, pasta n8n/ativar-contrato (gerar.py). Não edite os nós de código aqui: mude o js/ e gere de novo.",
+        "height": 220,
+        "width": 520
+      },
+      "name": "Nota",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "id": "78a75742-c0f8-5c88-ae4e-9e8a8ad6241c",
+      "position": [
+        0,
+        -420
+      ]
+    }
+  ],
+  "connections": {
+    "Executar manualmente": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "A cada 10 min": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "OS 4B",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OS 4B": {
+      "main": [
+        [
+          {
+            "node": "OS PONTO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OS PONTO": {
+      "main": [
+        [
+          {
+            "node": "OS CACTA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OS CACTA": {
+      "main": [
+        [
+          {
+            "node": "OS BUZZ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OS BUZZ": {
+      "main": [
+        [
+          {
+            "node": "Finalizadas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finalizadas": {
+      "main": [
+        [
+          {
+            "node": "Contratos 4B",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contratos 4B": {
+      "main": [
+        [
+          {
+            "node": "Contratos PONTO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contratos PONTO": {
+      "main": [
+        [
+          {
+            "node": "Contratos CACTA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contratos CACTA": {
+      "main": [
+        [
+          {
+            "node": "Contratos BUZZ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contratos BUZZ": {
+      "main": [
+        [
+          {
+            "node": "Clientes 4B",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clientes 4B": {
+      "main": [
+        [
+          {
+            "node": "Clientes PONTO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clientes PONTO": {
+      "main": [
+        [
+          {
+            "node": "Clientes CACTA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clientes CACTA": {
+      "main": [
+        [
+          {
+            "node": "Clientes BUZZ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clientes BUZZ": {
+      "main": [
+        [
+          {
+            "node": "Candidatos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Candidatos": {
+      "main": [
+        [
+          {
+            "node": "Cliente RESOLUTTO (formatado)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cliente RESOLUTTO (formatado)": {
+      "main": [
+        [
+          {
+            "node": "Cliente RESOLUTTO (dígitos)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cliente RESOLUTTO (dígitos)": {
+      "main": [
+        [
+          {
+            "node": "Casar cliente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Casar cliente": {
+      "main": [
+        [
+          {
+            "node": "Contratos RESOLUTTO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contratos RESOLUTTO": {
+      "main": [
+        [
+          {
+            "node": "Decidir",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decidir": {
+      "main": [
+        [
+          {
+            "node": "Ativar?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ativar?": {
+      "main": [
+        [
+          {
+            "node": "Ativar RESOLUTTO",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Relatório",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ativar RESOLUTTO": {
+      "main": [
+        [
+          {
+            "node": "Reler contrato RESOLUTTO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reler contrato RESOLUTTO": {
+      "main": [
+        [
+          {
+            "node": "Conferir ativação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true
+  },
+  "id": "ixcAtivContrEsp01",
+  "meta": {
+    "versao": "0.1.0"
+  },
+  "tags": []
+}
