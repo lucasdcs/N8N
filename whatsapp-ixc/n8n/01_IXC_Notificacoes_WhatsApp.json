@@ -26,7 +26,7 @@
    "typeVersion": 2.7,
    "executeOnce": true,
    "position": [
-    200,
+    650,
     300
    ],
    "parameters": {
@@ -45,7 +45,7 @@
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
    "position": [
-    400,
+    850,
     300
    ],
    "parameters": {
@@ -61,7 +61,7 @@
    "waitBetweenTries": 3000,
    "onError": "continueRegularOutput",
    "position": [
-    600,
+    1050,
     300
    ],
    "parameters": {
@@ -99,7 +99,7 @@
    "waitBetweenTries": 3000,
    "onError": "continueRegularOutput",
    "position": [
-    800,
+    1250,
     300
    ],
    "parameters": {
@@ -133,7 +133,7 @@
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
    "position": [
-    1000,
+    1450,
     300
    ],
    "parameters": {
@@ -145,7 +145,7 @@
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
    "position": [
-    1000,
+    1450,
     100
    ],
    "parameters": {
@@ -157,7 +157,7 @@
    "type": "n8n-nodes-base.postgres",
    "typeVersion": 2.7,
    "position": [
-    1200,
+    1650,
     100
    ],
    "parameters": {
@@ -180,7 +180,7 @@
    "waitBetweenTries": 3000,
    "onError": "continueRegularOutput",
    "position": [
-    1200,
+    1650,
     300
    ],
    "parameters": {
@@ -218,7 +218,7 @@
    "waitBetweenTries": 3000,
    "onError": "continueRegularOutput",
    "position": [
-    1400,
+    1850,
     300
    ],
    "parameters": {
@@ -252,7 +252,7 @@
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
    "position": [
-    1600,
+    2050,
     300
    ],
    "parameters": {
@@ -264,7 +264,7 @@
    "type": "n8n-nodes-base.if",
    "typeVersion": 2,
    "position": [
-    2000,
+    2450,
     300
    ],
    "parameters": {
@@ -296,7 +296,7 @@
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
    "position": [
-    2200,
+    2650,
     150
    ],
    "parameters": {
@@ -308,7 +308,7 @@
    "type": "n8n-nodes-base.postgres",
    "typeVersion": 2.7,
    "position": [
-    2400,
+    2850,
     150
    ],
    "parameters": {
@@ -331,7 +331,7 @@
    "waitBetweenTries": 3000,
    "onError": "continueRegularOutput",
    "position": [
-    2200,
+    2650,
     400
    ],
    "parameters": {
@@ -365,7 +365,7 @@
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
    "position": [
-    2400,
+    2850,
     400
    ],
    "parameters": {
@@ -381,7 +381,7 @@
    "waitBetweenTries": 5000,
    "onError": "continueRegularOutput",
    "position": [
-    3000,
+    3450,
     400
    ],
    "parameters": {
@@ -423,7 +423,7 @@
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
    "position": [
-    3200,
+    3650,
     400
    ],
    "parameters": {
@@ -435,7 +435,7 @@
    "type": "n8n-nodes-base.postgres",
    "typeVersion": 2.7,
    "position": [
-    3400,
+    3850,
     400
    ],
    "parameters": {
@@ -454,7 +454,7 @@
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
    "position": [
-    600,
+    1050,
     600
    ],
    "parameters": {
@@ -470,7 +470,7 @@
    "waitBetweenTries": 5000,
    "onError": "continueRegularOutput",
    "position": [
-    800,
+    1250,
     600
    ],
    "parameters": {
@@ -512,7 +512,7 @@
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
    "position": [
-    1000,
+    1450,
     600
    ],
    "parameters": {
@@ -524,7 +524,7 @@
    "type": "n8n-nodes-base.postgres",
    "typeVersion": 2.7,
    "position": [
-    1200,
+    1650,
     600
    ],
    "parameters": {
@@ -545,7 +545,7 @@
    "alwaysOutputData": true,
    "onError": "continueRegularOutput",
    "position": [
-    2600,
+    3050,
     400
    ],
    "parameters": {
@@ -564,12 +564,104 @@
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
    "position": [
-    2800,
+    3250,
     400
    ],
    "parameters": {
     "jsCode": "// 0.3.0 (Painel do Bot): textos editaveis em ixc.mensagens; sem texto editado usa o padrao embutido na chamada.\nconst MSG_ = (() => { try { let c = $('Carregar Config').first().json.cfg; if (typeof c === 'string') c = JSON.parse(c); return (c && c.mensagens) || {}; } catch (e) { return {}; } })();\nconst OFF_ = Object.keys(MSG_).some(k => MSG_[k] === null);  // 0.5.0: alguma mensagem desativada no Painel do Bot\nfunction M(chave, padrao, v) {\n  if (MSG_[chave] === null) return '';  // 0.5.0: desativada no Painel do Bot\n  // 0.6.3: variavel do bot desativada no painel (vsys.<nome>) = vazia em todas as mensagens\n  if (v) { const v2_ = {}; for (const k of Object.keys(v)) v2_[k] = MSG_['vsys.' + k] === null ? '' : v[k]; v = v2_; }\n  const t = typeof MSG_[chave] === 'string' && MSG_[chave].trim() ? MSG_[chave] : padrao;\n  if (!v) return t;\n  const vazio = k => v[k] === null || v[k] === undefined || String(v[k]) === '';\n  return t.split('\\n').map(l => {\n    const ks = [...l.matchAll(/\\{([a-z_]+)\\}/g)].map(m => m[1]).filter(k => k in v);\n    const vz = ks.filter(vazio);\n    // linha so com variaveis vazias (e emoji/pontuacao): some\n    if (ks.length && vz.length === ks.length && !/[\\p{L}\\p{N}]/u.test(l.replace(/\\{[a-z_]+\\}/g, ''))) return null;\n    const s = l.replace(/\\{([a-z_]+)\\}/g, (x, k) => (k in v ? (vazio(k) ? '' : String(v[k])) : x));\n    return vz.length ? s.replace(/[\\s—·:-]+$/u, '') : s;\n  }).filter(l => l !== null).join('\\n');\n}\nfunction unwrap(x) {\n  if (x && typeof x === 'object' && typeof x.data === 'string') {\n    try { return JSON.parse(x.data); } catch (e) { return x; }\n  }\n  return x || {};\n}\nfunction paraData(s) { // 'YYYY-MM-DD HH:MM:SS' (horario de Brasilia) -> ms (tratado como UTC, so pra comparar)\n  const [d, h] = s.split(' '); const [Y, M, D] = d.split('-').map(Number); const [hh, mm, ss] = (h || '0:0:0').split(':').map(Number);\n  return Date.UTC(Y, M - 1, D, hh, mm, ss || 0);\n}\nfunction agoraBRT() { return new Date().toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' }); }\nfunction carregarConfig() {\n  let c = $('Carregar Config').first().json.cfg;\n  if (typeof c === 'string') c = JSON.parse(c);\n  const idx = (lst, f) => Object.fromEntries((lst || []).map(x => [x.empresa + ':' + x[f], x]));\n  return {\n    empresas: Object.fromEntries((c.empresas || []).map(e => [e.id, e])),\n    tec: idx(c.tecnicos, 'id_func'), loc: idx(c.locais, 'id_condominio'), func: idx(c.funcionarios, 'id_func'),\n    param: c.param || {}, pendentes: c.pendentes || [], lembretes: c.lembretes || [],\n  };\n}\n// Regras de roteamento (iguais para todas as empresas; mapas no Postgres, schema ixc)\nfunction localDe(C, emp, chamado, cliente) {\n  const id = String(chamado.id_condominio || '0') !== '0' ? String(chamado.id_condominio) : String((cliente || {}).id_condominio || '0');\n  return C.loc[emp + ':' + id] || null;\n}\nfunction nomePessoa(C, emp, pid) {\n  const t = C.tec[emp + ':' + pid]; if (t) return t.nome;\n  const f = C.func[emp + ':' + pid]; return f ? f.nome : ('técnico id ' + pid);\n}\n// Sem ninguem atribuido: grupo do shopping marcando quem esta em marcar_sem_tec (+ coordenacao se escalar)\nfunction rotaSemTecnico(C, emp, loc, escalar) {\n  const P = C.param, E = C.empresas[emp] || {};\n  if (loc) {\n    const marcar = [...(loc.marcar_sem_tec || [])];\n    if (escalar) for (const f of (loc.marcar_escalar || [])) if (!marcar.includes(f)) marcar.push(f);\n    return { grupo: loc.grupo, marcar, shopping: loc.nome };\n  }\n  if (!E.semtec_sem_local) return null;\n  const marcar = [P.supervisor_fone];\n  if (escalar && P.coordenador_fone && !marcar.includes(P.coordenador_fone)) marcar.push(P.coordenador_fone);\n  return { grupo: P.grupo_sem_local, marcar, shopping: 'Local não identificado' };\n}\n// Pessoa atribuida (pid): dono do numero -> grupo dele; senao grupo do shopping (ou do tecnico) marcando a pessoa\nfunction rotaPessoa(C, emp, loc, pid) {\n  const P = C.param, E = C.empresas[emp] || {};\n  if (E.dono_id && pid === String(E.dono_id)) return { grupo: P.grupo_dono, marcar: [], nome: P.dono_nome, shopping: loc ? loc.nome : null };\n  const t = C.tec[emp + ':' + pid];\n  const grupo = loc ? loc.grupo : (t ? t.grupo : null);\n  if (!grupo) return null;\n  return { grupo, marcar: t && t.fone ? [t.fone] : [], nome: nomePessoa(C, emp, pid), shopping: null };\n}\n// Planta da loja: com imagem -> /api/sendImage (foto + mensagem na legenda); sem -> /api/sendText. WAHA, 27/10/2026.\n// Mencoes: WAHA quer 'mentions' como [telefone + '@c.us'] e o texto com '@' + telefone (ja vem assim do Montar Mensagem).\nconst C = carregarConfig();\nconst base = String(C.param.waha_url || 'http://waha:3000').replace(/\\/+$/, '');\nconst sessao = C.param.waha_session;\nconst paraMentions = (lst) => (lst || []).map(f => String(f).replace(/\\D/g, '') + '@c.us');\n// Modo de envio (ixc.parametros.envio): NENHUM = nao manda nada (o estado ja avancou: serve para consumir o historico na 1a ativacao);\n// SIMULAR = manda tudo para envio_teste_para, com o grupo de destino no cabecalho; REAL = manda para os grupos.\nconst ENVIO = String(C.param.envio || 'NENHUM').trim().toUpperCase();\nconst TESTE = String(C.param.envio_teste_para || '').replace(/\\D/g, '');\nif (ENVIO === 'NENHUM') return [];\nif (ENVIO !== 'REAL' && !TESTE) throw new Error('parametro envio=' + ENVIO + ' exige envio_teste_para');\nreturn $input.all().map((it, i) => {\n  const m = $('Montar Mensagem').itemMatching(i).json;\n  const p = unwrap(it.json) || {};\n  const com = !!(m.planta && p.ok && p.imagem);\n  const simular = ENVIO !== 'REAL';\n  const chatId = simular ? TESTE + '@c.us' : m.grupo_jid;\n  if (!String(m.texto || '').trim()) return null;  // 0.5.0: mensagem inteira desativada no Painel do Bot: nao envia\n  const cabSim = simular ? M('envio.simulacao', '🧪 SIMULAÇÃO → {grupo}', { grupo: m.grupo_jid }) : '';\n  const texto = simular ? (cabSim ? cabSim + '\\n' : '') + m.texto : m.texto;\n  const corpo = com\n    ? { session: sessao, chatId, file: { mimetype: 'image/png', filename: 'planta-loja.png', data: p.imagem }, caption: texto }\n    : { session: sessao, chatId, text: texto, linkPreview: false };\n  if (m.mentioned && m.mentioned.length) corpo.mentions = paraMentions(m.mentioned);\n  const info = !m.planta ? null : com ? 'com planta: ' + (p.piso || '') + ' loja ' + (p.lojas || []).join('/') : 'sem planta: ' + (p.motivo || (p.error && p.error.message) || 'erro ao gerar');\n  return { pairedItem: { item: i }, json: { endpoint: base + (com ? '/api/sendImage' : '/api/sendText'), corpo, planta_info: (simular ? 'SIMULADO' + (info ? ' · ' + info : '') : info), simulado: simular } };\n}).filter(Boolean);\n"
    }
+  },
+  {
+   "parameters": {
+    "httpMethod": "POST",
+    "path": "painelbot-rodar-01",
+    "responseMode": "onReceived",
+    "options": {}
+   },
+   "name": "Rodar agora (painel)",
+   "type": "n8n-nodes-base.webhook",
+   "typeVersion": 2,
+   "position": [
+    0,
+    100
+   ],
+   "webhookId": "painelbot-rodar-01",
+   "id": "ab7b95f8-f1c7-586b-83c1-8904afa8c944"
+  },
+  {
+   "parameters": {
+    "operation": "executeQuery",
+    "query": "-- 0.6.5: trava de rodada (nunca duas juntas) \nWITH t AS (\n  INSERT INTO ixc.parametros (chave, valor, descricao)\n  SELECT 'rodada_wf01', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"'), '0.6.5: inicio da ultima rodada do WF 01 (trava; nao editar)'\n  ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor\n  WHERE CASE WHEN ixc.parametros.valor ~ '^\\d{4}-\\d{2}-\\d{2}T' THEN ixc.parametros.valor::timestamptz ELSE '-infinity'::timestamptz END\n        < now() - interval '2 minutes'\n  RETURNING 1\n)\nSELECT (SELECT count(*) FROM t) > 0 AS ok, 'horario' AS origem",
+    "options": {}
+   },
+   "name": "Trava da rodada",
+   "type": "n8n-nodes-base.postgres",
+   "typeVersion": 2.7,
+   "position": [
+    200,
+    300
+   ],
+   "credentials": {
+    "postgres": {
+     "name": "Postgres IXC State"
+    }
+   },
+   "id": "3368dfa9-3196-51f9-9a6a-92c02b6729b1"
+  },
+  {
+   "parameters": {
+    "operation": "executeQuery",
+    "query": "-- 0.6.5: trava de rodada (nunca duas juntas) + chave do painel\nWITH t AS (\n  INSERT INTO ixc.parametros (chave, valor, descricao)\n  SELECT 'rodada_wf01', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"'), '0.6.5: inicio da ultima rodada do WF 01 (trava; nao editar)'\n  WHERE EXISTS (SELECT 1 FROM ixc.parametros WHERE chave = 'painel_rodar_chave' AND valor <> '' AND valor = $1)\n  ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor\n  WHERE CASE WHEN ixc.parametros.valor ~ '^\\d{4}-\\d{2}-\\d{2}T' THEN ixc.parametros.valor::timestamptz ELSE '-infinity'::timestamptz END\n        < now() - interval '2 minutes'\n  RETURNING 1\n)\nSELECT (SELECT count(*) FROM t) > 0 AS ok, 'painel' AS origem",
+    "options": {
+     "queryReplacement": "={{ String(($json.headers || {})['x-painelbot-chave'] || '-') }}"
+    }
+   },
+   "name": "Trava da rodada (painel)",
+   "type": "n8n-nodes-base.postgres",
+   "typeVersion": 2.7,
+   "position": [
+    200,
+    100
+   ],
+   "credentials": {
+    "postgres": {
+     "name": "Postgres IXC State"
+    }
+   },
+   "id": "37af2faf-000e-5a5c-980a-71d3bd729ff4"
+  },
+  {
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "loose"
+     },
+     "conditions": [
+      {
+       "id": "978e404e-756f-54ae-92a2-0a463e2724e3",
+       "leftValue": "={{ $json.ok }}",
+       "rightValue": "",
+       "operator": {
+        "type": "boolean",
+        "operation": "true",
+        "singleValue": true
+       }
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {}
+   },
+   "name": "Pode rodar?",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2,
+   "position": [
+    400,
+    200
+   ],
+   "id": "e30b9682-a349-5300-9892-5617c7df4c21"
   }
  ],
  "connections": {
@@ -577,7 +669,7 @@
    "main": [
     [
      {
-      "node": "Carregar Config",
+      "node": "Trava da rodada",
       "type": "main",
       "index": 0
      }
@@ -819,6 +911,51 @@
       "index": 0
      }
     ]
+   ]
+  },
+  "Rodar agora (painel)": {
+   "main": [
+    [
+     {
+      "node": "Trava da rodada (painel)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Trava da rodada": {
+   "main": [
+    [
+     {
+      "node": "Pode rodar?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Trava da rodada (painel)": {
+   "main": [
+    [
+     {
+      "node": "Pode rodar?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Pode rodar?": {
+   "main": [
+    [
+     {
+      "node": "Carregar Config",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    []
    ]
   }
  },

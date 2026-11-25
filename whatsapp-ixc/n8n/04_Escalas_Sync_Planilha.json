@@ -29,7 +29,7 @@
    "waitBetweenTries": 5000,
    "onError": "continueRegularOutput",
    "position": [
-    220,
+    670,
     0
    ],
    "parameters": {
@@ -51,7 +51,7 @@
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
    "position": [
-    440,
+    890,
     0
    ],
    "parameters": {
@@ -64,7 +64,7 @@
    "typeVersion": 2.6,
    "alwaysOutputData": true,
    "position": [
-    660,
+    1110,
     0
    ],
    "parameters": {
@@ -83,7 +83,7 @@
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
    "position": [
-    880,
+    1330,
     0
    ],
    "parameters": {
@@ -95,7 +95,7 @@
    "type": "n8n-nodes-base.httpRequest",
    "typeVersion": 4.2,
    "position": [
-    1100,
+    1550,
     0
    ],
    "parameters": {
@@ -136,7 +136,7 @@
    "type": "n8n-nodes-base.postgres",
    "typeVersion": 2.6,
    "position": [
-    1100,
+    1550,
     0
    ],
    "credentials": {
@@ -155,7 +155,7 @@
    "type": "n8n-nodes-base.postgres",
    "typeVersion": 2.6,
    "position": [
-    420,
+    870,
     160
    ],
    "alwaysOutputData": true,
@@ -164,6 +164,98 @@
      "name": "Postgres IXC State"
     }
    }
+  },
+  {
+   "parameters": {
+    "httpMethod": "POST",
+    "path": "painelbot-rodar-04",
+    "responseMode": "onReceived",
+    "options": {}
+   },
+   "name": "Rodar agora (painel)",
+   "type": "n8n-nodes-base.webhook",
+   "typeVersion": 2,
+   "position": [
+    0,
+    -200
+   ],
+   "webhookId": "painelbot-rodar-04",
+   "id": "607ef279-8b5b-5c36-9cf2-ac26d9431e83"
+  },
+  {
+   "parameters": {
+    "operation": "executeQuery",
+    "query": "-- 0.6.5: trava de rodada (nunca duas juntas) \nWITH t AS (\n  INSERT INTO ixc.parametros (chave, valor, descricao)\n  SELECT 'rodada_wf04', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"'), '0.6.5: inicio da ultima rodada do WF 04 (trava; nao editar)'\n  ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor\n  WHERE CASE WHEN ixc.parametros.valor ~ '^\\d{4}-\\d{2}-\\d{2}T' THEN ixc.parametros.valor::timestamptz ELSE '-infinity'::timestamptz END\n        < now() - interval '5 minutes'\n  RETURNING 1\n)\nSELECT (SELECT count(*) FROM t) > 0 AS ok, 'horario' AS origem",
+    "options": {}
+   },
+   "name": "Trava da rodada",
+   "type": "n8n-nodes-base.postgres",
+   "typeVersion": 2.6,
+   "position": [
+    200,
+    0
+   ],
+   "credentials": {
+    "postgres": {
+     "name": "Postgres IXC State"
+    }
+   },
+   "id": "3d90aa41-34c3-559c-a856-c3aeb5738d99"
+  },
+  {
+   "parameters": {
+    "operation": "executeQuery",
+    "query": "-- 0.6.5: trava de rodada (nunca duas juntas) + chave do painel\nWITH t AS (\n  INSERT INTO ixc.parametros (chave, valor, descricao)\n  SELECT 'rodada_wf04', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"'), '0.6.5: inicio da ultima rodada do WF 04 (trava; nao editar)'\n  WHERE EXISTS (SELECT 1 FROM ixc.parametros WHERE chave = 'painel_rodar_chave' AND valor <> '' AND valor = $1)\n  ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor\n  WHERE CASE WHEN ixc.parametros.valor ~ '^\\d{4}-\\d{2}-\\d{2}T' THEN ixc.parametros.valor::timestamptz ELSE '-infinity'::timestamptz END\n        < now() - interval '5 minutes'\n  RETURNING 1\n)\nSELECT (SELECT count(*) FROM t) > 0 AS ok, 'painel' AS origem",
+    "options": {
+     "queryReplacement": "={{ String(($json.headers || {})['x-painelbot-chave'] || '-') }}"
+    }
+   },
+   "name": "Trava da rodada (painel)",
+   "type": "n8n-nodes-base.postgres",
+   "typeVersion": 2.6,
+   "position": [
+    200,
+    -200
+   ],
+   "credentials": {
+    "postgres": {
+     "name": "Postgres IXC State"
+    }
+   },
+   "id": "0f4beba7-d7d8-5341-bc58-640138c932ed"
+  },
+  {
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "loose"
+     },
+     "conditions": [
+      {
+       "id": "343ff814-b70c-5c45-8df4-f4becb50b0c0",
+       "leftValue": "={{ $json.ok }}",
+       "rightValue": "",
+       "operator": {
+        "type": "boolean",
+        "operation": "true",
+        "singleValue": true
+       }
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {}
+   },
+   "name": "Pode rodar?",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2,
+   "position": [
+    400,
+    -100
+   ],
+   "id": "5c1179ca-0324-5bc5-8816-2f18c22ee8d7"
   }
  ],
  "connections": {
@@ -171,7 +263,7 @@
    "main": [
     [
      {
-      "node": "Baixar aba HOJE",
+      "node": "Trava da rodada",
       "type": "main",
       "index": 0
      }
@@ -242,6 +334,51 @@
       "index": 0
      }
     ]
+   ]
+  },
+  "Rodar agora (painel)": {
+   "main": [
+    [
+     {
+      "node": "Trava da rodada (painel)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Trava da rodada": {
+   "main": [
+    [
+     {
+      "node": "Pode rodar?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Trava da rodada (painel)": {
+   "main": [
+    [
+     {
+      "node": "Pode rodar?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Pode rodar?": {
+   "main": [
+    [
+     {
+      "node": "Baixar aba HOJE",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    []
    ]
   }
  },

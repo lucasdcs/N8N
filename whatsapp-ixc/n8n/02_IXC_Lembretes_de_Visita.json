@@ -26,7 +26,7 @@
    "typeVersion": 2.7,
    "executeOnce": true,
    "position": [
-    200,
+    650,
     300
    ],
    "parameters": {
@@ -45,7 +45,7 @@
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
    "position": [
-    400,
+    850,
     300
    ],
    "parameters": {
@@ -61,7 +61,7 @@
    "waitBetweenTries": 3000,
    "onError": "continueRegularOutput",
    "position": [
-    600,
+    1050,
     300
    ],
    "parameters": {
@@ -95,7 +95,7 @@
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
    "position": [
-    800,
+    1250,
     300
    ],
    "parameters": {
@@ -111,7 +111,7 @@
    "waitBetweenTries": 3000,
    "onError": "continueRegularOutput",
    "position": [
-    1000,
+    1450,
     300
    ],
    "parameters": {
@@ -145,7 +145,7 @@
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
    "position": [
-    1200,
+    1650,
     300
    ],
    "parameters": {
@@ -161,7 +161,7 @@
    "waitBetweenTries": 3000,
    "onError": "continueRegularOutput",
    "position": [
-    1400,
+    1850,
     300
    ],
    "parameters": {
@@ -195,7 +195,7 @@
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
    "position": [
-    1600,
+    2050,
     300
    ],
    "parameters": {
@@ -211,7 +211,7 @@
    "waitBetweenTries": 5000,
    "onError": "continueRegularOutput",
    "position": [
-    2200,
+    2650,
     300
    ],
    "parameters": {
@@ -253,7 +253,7 @@
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
    "position": [
-    2400,
+    2850,
     300
    ],
    "parameters": {
@@ -265,7 +265,7 @@
    "type": "n8n-nodes-base.postgres",
    "typeVersion": 2.7,
    "position": [
-    2600,
+    3050,
     300
    ],
    "parameters": {
@@ -296,7 +296,7 @@
    "alwaysOutputData": true,
    "onError": "continueRegularOutput",
    "position": [
-    1800,
+    2250,
     300
    ]
   },
@@ -308,9 +308,101 @@
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
    "position": [
-    2000,
+    2450,
     300
    ]
+  },
+  {
+   "parameters": {
+    "httpMethod": "POST",
+    "path": "painelbot-rodar-02",
+    "responseMode": "onReceived",
+    "options": {}
+   },
+   "name": "Rodar agora (painel)",
+   "type": "n8n-nodes-base.webhook",
+   "typeVersion": 2,
+   "position": [
+    0,
+    100
+   ],
+   "webhookId": "painelbot-rodar-02",
+   "id": "2ae8654e-9ca1-5484-bfec-431d8cf6314d"
+  },
+  {
+   "parameters": {
+    "operation": "executeQuery",
+    "query": "-- 0.6.5: trava de rodada (nunca duas juntas) \nWITH t AS (\n  INSERT INTO ixc.parametros (chave, valor, descricao)\n  SELECT 'rodada_wf02', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"'), '0.6.5: inicio da ultima rodada do WF 02 (trava; nao editar)'\n  ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor\n  WHERE CASE WHEN ixc.parametros.valor ~ '^\\d{4}-\\d{2}-\\d{2}T' THEN ixc.parametros.valor::timestamptz ELSE '-infinity'::timestamptz END\n        < now() - interval '4 minutes'\n  RETURNING 1\n)\nSELECT (SELECT count(*) FROM t) > 0 AS ok, 'horario' AS origem",
+    "options": {}
+   },
+   "name": "Trava da rodada",
+   "type": "n8n-nodes-base.postgres",
+   "typeVersion": 2.7,
+   "position": [
+    200,
+    300
+   ],
+   "credentials": {
+    "postgres": {
+     "name": "Postgres IXC State"
+    }
+   },
+   "id": "26750470-7981-55e5-8559-957de2224628"
+  },
+  {
+   "parameters": {
+    "operation": "executeQuery",
+    "query": "-- 0.6.5: trava de rodada (nunca duas juntas) + chave do painel\nWITH t AS (\n  INSERT INTO ixc.parametros (chave, valor, descricao)\n  SELECT 'rodada_wf02', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"'), '0.6.5: inicio da ultima rodada do WF 02 (trava; nao editar)'\n  WHERE EXISTS (SELECT 1 FROM ixc.parametros WHERE chave = 'painel_rodar_chave' AND valor <> '' AND valor = $1)\n  ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor\n  WHERE CASE WHEN ixc.parametros.valor ~ '^\\d{4}-\\d{2}-\\d{2}T' THEN ixc.parametros.valor::timestamptz ELSE '-infinity'::timestamptz END\n        < now() - interval '4 minutes'\n  RETURNING 1\n)\nSELECT (SELECT count(*) FROM t) > 0 AS ok, 'painel' AS origem",
+    "options": {
+     "queryReplacement": "={{ String(($json.headers || {})['x-painelbot-chave'] || '-') }}"
+    }
+   },
+   "name": "Trava da rodada (painel)",
+   "type": "n8n-nodes-base.postgres",
+   "typeVersion": 2.7,
+   "position": [
+    200,
+    100
+   ],
+   "credentials": {
+    "postgres": {
+     "name": "Postgres IXC State"
+    }
+   },
+   "id": "dc566d12-99a6-5102-bf27-fcc4bad7c434"
+  },
+  {
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "loose"
+     },
+     "conditions": [
+      {
+       "id": "1989ac71-e9ce-54ed-827c-6bb4c0e823b0",
+       "leftValue": "={{ $json.ok }}",
+       "rightValue": "",
+       "operator": {
+        "type": "boolean",
+        "operation": "true",
+        "singleValue": true
+       }
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {}
+   },
+   "name": "Pode rodar?",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2,
+   "position": [
+    400,
+    200
+   ],
+   "id": "7ed9f4de-490d-5c36-bbb0-8335703418c8"
   }
  ],
  "connections": {
@@ -318,7 +410,7 @@
    "main": [
     [
      {
-      "node": "Carregar Config",
+      "node": "Trava da rodada",
       "type": "main",
       "index": 0
      }
@@ -455,6 +547,51 @@
       "index": 0
      }
     ]
+   ]
+  },
+  "Rodar agora (painel)": {
+   "main": [
+    [
+     {
+      "node": "Trava da rodada (painel)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Trava da rodada": {
+   "main": [
+    [
+     {
+      "node": "Pode rodar?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Trava da rodada (painel)": {
+   "main": [
+    [
+     {
+      "node": "Pode rodar?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Pode rodar?": {
+   "main": [
+    [
+     {
+      "node": "Carregar Config",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    []
    ]
   }
  },
