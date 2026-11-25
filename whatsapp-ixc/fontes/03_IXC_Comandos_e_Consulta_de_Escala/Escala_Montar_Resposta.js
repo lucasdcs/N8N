@@ -291,7 +291,9 @@ if (P0.resposta_fixa !== undefined) {
     }
     let locs_ = ach.map(k => LOC.find(l => l.empresa + ':' + l.id_condominio === k)).filter(Boolean);
     if (!locs_.length) locs_ = LOC.slice().sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));   // nenhum reconhecido: todos
-    const partes_ = locs_.map(l => M('__resp__', corpo0_, Object.assign(varsDe_(l), { shopping: l.nome }))).filter(x => x.trim());
+    const partes_ = locs_.map(l => M('__resp__', corpo0_, Object.assign(varsDe_(l), { shopping: l.nome }))).filter(x => x.trim())
+      // 0.6.4: ordem do texto montado (o que vem primeiro agrupa: "{holding} - {shopping}" = por holding)
+      .sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base', numeric: true }));
     corpo_ = partes_.join(corpo0_.includes('\n') ? '\n\n' : '\n');
   }
   if (!corpo_.trim()) return [];
