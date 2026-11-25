@@ -1,4 +1,4 @@
-# Simulador do whatsapp-ixc (ambiente de teste) — 0.1.1
+# Simulador do whatsapp-ixc (ambiente de teste) — 0.1.2
 
 WhatsApp e IXC **de mentira** para testar o bot e os avisos no servidor de teste antes da produção.
 Nada sai para o WhatsApp real nem chega ao IXC real.
@@ -19,6 +19,8 @@ navegador ──► ixc-simulador:3999 (tela de grupos + IXC simulado)
 | `banco-sim.sql` / `banco-desfazer.sql` | Aponta o banco de teste para o simulador (`base_url`, `auth` fictício, `waha_url`, `envio = REAL`) guardando os valores antigos em `ixc.sim_antes`; o desfazer devolve. |
 | `instalar.sh` / `remover.sh` | Instala/atualiza tudo no servidor de teste (recusa rodar na produção) / remove. |
 | `check/` | `teste_api.js` (26), `teste_e2e.js` (15, com n8n de verdade), `teste_painel.js` (texto editado no painel vale no aviso), `teste_12x36.js` (5: nome do cadastro no 12x36, resumo do botão). |
+
+**0.1.2** — `/api/sessions/<nome>` responde a sessão (não a lista), como o WAHA, e com "WAHA fora do ar" ligado na tela a sessão aparece `FAILED` (a aba Operação do painelbot 0.5.1 mostra). `gerar_sim.py` aceita a whatsapp-ixc 0.6.5 (o "Rodar agora (painel)" vira `/webhook/sim-painelbot-rodar-0N`; os botões ▶ do simulador continuam sem a trava de rodada).
 
 **0.1.1** — os botões ▶ esperam a rodada terminar e mostram um resumo (empresas consultadas, eventos novos, chamados sem técnico, visitas, mensagens enviadas e, quando não sai nada, o porquê). Workflows [SIM] gerados da whatsapp-ixc 0.4.1.
 

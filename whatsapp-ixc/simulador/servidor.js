@@ -8,7 +8,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { Client } = require('pg');
 
-const VERSAO = '0.1.1';
+const VERSAO = '0.1.2';
 const PORTA = +process.env.PORTA || 3999;
 const SENHA = process.env.SIM_SENHA || '';
 const N8N = String(process.env.N8N_URL || 'http://n8n-compose-n8n-1:5678').replace(/\/+$/, '');
@@ -309,7 +309,12 @@ const srv = http.createServer(async (req, res) => {
       log('waha', `consulta número ${f}: ${existe ? 'tem' : 'não tem'} WhatsApp`);
       return enviar(res, 200, { numberExists: existe, chatId: existe ? f + '@c.us' : null });
     }
-    if (p.startsWith('/api/sessions')) return enviar(res, 200, [{ name: 'default', status: 'WORKING', me: { id: BOT.fone + '@c.us', pushName: 'Simulador' } }]);
+    // 0.1.2: /api/sessions = lista; /api/sessions/<nome> = a sessão (como o WAHA). "WAHA fora do ar" na tela = FAILED (painelbot 0.5.1 mostra)
+    if (p.startsWith('/api/sessions')) {
+      const nome = decodeURIComponent(p.slice('/api/sessions'.length).replace(/^\/+|\/+$/g, ''));
+      const sessao = n => ({ name: n, status: E.wahaFora ? 'FAILED' : 'WORKING', me: E.wahaFora ? null : { id: BOT.fone + '@c.us', pushName: 'Simulador' } });
+      return enviar(res, 200, nome ? sessao(nome) : [sessao('default')]);
+    }
     let m = p.match(/^\/ixc\/([^/]+)\/webservice\/v1\/([a-z_]+)$/);
     if (m && req.method === 'POST') {
       const b = await lerCorpo(req); const empresa = decodeURIComponent(m[1]);

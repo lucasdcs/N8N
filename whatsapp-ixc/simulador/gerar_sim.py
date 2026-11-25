@@ -10,7 +10,9 @@ O que muda em relacao a producao (o resto do codigo e o mesmo, para testar de ve
   - planta da loja: http://ixc-simulador:3999/planta (imagem de exemplo);
   - sem credencial do WAHA (o simulador nao pede chave); Postgres = credencial "Postgres SIMULADOR" (banco de teste);
   - webhook do WF 03 em /webhook/sim-ixc-whatsapp (nao conflita com o da producao/teste);
-  - WF 01, 02 e 04 ganham um webhook "Rodar agora (simulador)" (/webhook/sim-rodar-0N), alem do horario normal.
+  - WF 01, 02 e 04 ganham um webhook "Rodar agora (simulador)" (/webhook/sim-rodar-0N), alem do horario normal
+    (vai direto ao "Carregar Config"/"Baixar aba HOJE": os botoes do simulador nao passam pela trava de rodada da 0.6.5);
+  - 0.6.5: o "Rodar agora (painel)" vira /webhook/sim-painelbot-rodar-0N.
 No fim confere que NENHUM no HTTP aponta para fora do simulador (exceto a planilha do Google no WF 04, so leitura).
 """
 import json, os, re, sys
@@ -64,6 +66,9 @@ def converter(k, wf):
             if u.startswith("={{ '" + SIM + "' }}"):
                 u = "=" + SIM + u[len("={{ '" + SIM + "' }}"):]
             p["url"] = u
+        if n["type"].endswith("webhook") and p.get("path", "").startswith("painelbot-rodar-"):   # whatsapp-ixc 0.6.5: "Rodar agora" do painel
+            p["path"] = "sim-" + p["path"]
+            n["webhookId"] = p["path"]
         if n["type"].endswith("webhook") and p.get("path") == "ixc-whatsapp":
             p["path"] = "sim-ixc-whatsapp"
             n["webhookId"] = "sim-ixc-whatsapp"
