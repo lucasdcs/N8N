@@ -8,7 +8,7 @@ Postgres de teste (socket/porta em `PGH`/`PGP`, padrão `/tmp/pg` e `5499`), usu
 | `teste-migracao.php` | `Install::migrar` (Excluir em Mensagens para quem tem Configuração > Atualizar; uma vez só) |
 | `teste-operacao.php` | 0.5.0: `Parametros` (validação por tipo), `Operacao` (parâmetros, bases, token, auditoria, o que o painel_glpi NÃO pode) e `Servicos` (n8n/WAHA com HTTP falso). Usa `semente-operacao.sql` |
 | `teste-config.php` | 0.5.0: campos novos da Configuração (endereço e chave do n8n e do WAHA, ids pausáveis) |
-| `tela-operacao.js` | 0.5.0: aba Operação e Parâmetros no jsdom, gravando pelo `acao.php` real; n8n e WAHA falsos em `n8n-falso.php` (porta 8766) |
+| `tela-operacao.js` | 0.5.0: aba Operação e Parâmetros no jsdom, gravando pelo `acao.php` real; n8n, WAHA e IXC falsos em `n8n-falso.php` (porta 8766); 0.5.1: Rodar agora e Nova base |
 | `tela-mensagens.js` | `public/js/painel.js` no jsdom, gravando pelo `front/acao.php` real (GLPI simulado em `glpi-simulado.php`, servido por `servidor-teste.php`) |
 
 ```

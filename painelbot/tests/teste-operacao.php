@@ -1,5 +1,5 @@
 <?php
-// Testes da painelbot 0.5.0 (Operação): Parametros (regras puras), Operacao (parâmetros, bases, token, auditoria) contra o
+// Testes da painelbot 0.5.0/0.5.1 (Operação): Parametros (regras puras), Operacao (parâmetros, bases, token, auditoria) contra o
 // Postgres de teste como painel_glpi, e Servicos (n8n/WAHA) com HTTP falso.
 // Uso: tests/reset-banco.sh && php tests/teste-operacao.php [pasta do plugin]
 define('READ', 1); define('UPDATE', 2); define('DELETE', 4);
@@ -79,7 +79,8 @@ check('auditoria da base só o que mudou', $a['acao'] === 'base' && $a['alvo'] =
 $n = count($op->auditoria(200));
 $op->salvarBase('AAA', ['nome' => 'Base A', 'base_url' => 'https://ixc.teste-a.com.br', 'ativo' => true, 'semtec_sem_local' => false, 'dono_id' => '52', 'ignorar_assuntos' => '12,30']);
 check('base sem mudança não audita', count($op->auditoria(200)) === $n);
-check('base url http', erro(fn() => $op->salvarBase('AAA', ['nome' => 'A', 'base_url' => 'http://ixc.a.com.br'])) !== null);
+check('base url com /webservice', str_contains((string) erro(fn() => $op->salvarBase('AAA', ['nome' => 'A', 'base_url' => 'https://ixc.a.com.br/webservice/v1'])), 'sem o /webservice'));
+check('base url ftp', erro(fn() => $op->salvarBase('AAA', ['nome' => 'A', 'base_url' => 'ftp://ixc.a.com.br'])) !== null);
 check('base assunto com letra', str_contains((string) erro(fn() => $op->salvarBase('AAA', ['nome' => 'A', 'base_url' => 'https://ixc.a.com.br', 'ignorar_assuntos' => '12,abc'])), '"abc"'));
 check('base dono inválido', erro(fn() => $op->salvarBase('AAA', ['nome' => 'A', 'base_url' => 'https://ixc.a.com.br', 'dono_id' => 'x'])) !== null);
 check('base inexistente', str_contains((string) erro(fn() => $op->salvarBase('ZZZ', ['nome' => 'A', 'base_url' => 'https://ixc.a.com.br'])), 'não cria'));
@@ -147,6 +148,72 @@ check('sem configuração', !(new Servicos(['n8n_url' => ''] + $cfgS, $fake))->w
 check('WAHA status', $sv->waha('sessao_teste') === ['ok' => true, 'status' => 'SCAN_QR_CODE', 'nome' => ''] && !$sv->waha('a b')['ok']);
 check('n8n fora do ar', str_contains((new Servicos($cfgS, fn() => [0, 'Connection refused']))->workflows()['erro'], 'não respondeu'));
 check('curl de verdade sem servidor', Servicos::curl('GET', 'http://127.0.0.1:9/', [], null)[0] === 0);
+
+// ================= 0.5.1
+// ---- parâmetros internos (chave do Rodar agora, travas)
+$chaveBanco = $bot->parametro('painel_rodar_chave');
+check('sql/01 criou a chave do Rodar agora (64 hex)', is_string($chaveBanco) && preg_match('/^[0-9a-f]{64}$/', $chaveBanco) === 1);
+$dono->exec("INSERT INTO ixc.parametros VALUES ('rodada_wf01', '2026-11-25T10:00:00Z', 'trava')");
+$chaves = array_column($bot->parametros(), 'chave');
+check('internos fora da tela', !in_array('painel_rodar_chave', $chaves, true) && !in_array('rodada_wf01', $chaves, true) && in_array('semtec_min', $chaves, true));
+check('internos não se editam', erro(fn() => $op->salvarParametro('painel_rodar_chave', 'x')) === 'Parâmetro inválido.' && erro(fn() => $op->salvarParametro('rodada_wf01', 'x')) === 'Parâmetro inválido.');
+check('dados não vazam a chave', !str_contains(json_encode($bot->dados(['operacao', 'parametros'])), $chaveBanco));
+// ---- Rodar agora
+$log = []; $estado = ['w1' => true, 'w2' => true]; $rodando = [];
+$fake2 = function ($m, $url, $cab, $corpo) use (&$log, &$estado, &$rodando) {
+    $log[] = "$m $url " . json_encode($cab);
+    $nos = ['w1' => [['name' => 'Rodar agora (painel)', 'type' => 'n8n-nodes-base.webhook', 'parameters' => ['path' => 'painelbot-rodar-01']]], 'w2' => []];
+    if (preg_match('#/workflows/(\w+)$#', $url, $x)) return [200, json_encode(['id' => $x[1], 'name' => $x[1] === 'w1' ? 'WhatsApp - Notificacoes de chamados IXC (WAHA)' : 'WhatsApp - Lembretes de visita IXC (WAHA)', 'active' => $estado[$x[1]], 'nodes' => $nos[$x[1]]])];
+    if (str_contains($url, 'status=running')) return [200, json_encode(['data' => $rodando])];
+    if (str_contains($url, '/webhook/')) return [200, '{"message":"Workflow was started"}'];
+    return [500, ''];
+};
+$sv2 = new Servicos($cfgS, $fake2);
+$r = $sv2->rodar('w1', 'chave123');
+$ult = end($log);
+check('rodar chama o webhook com a chave no cabeçalho', $r['nome'] === 'WhatsApp - Notificacoes de chamados IXC (WAHA)' && str_starts_with($ult, 'POST https://n8n.teste/webhook/painelbot-rodar-01 ') && str_contains($ult, '"x-painelbot-chave":"chave123"'), $ult);
+check('rodar: chave não vai na URL', !str_contains(implode("\n", array_map(fn($l) => explode(' ', $l)[1], $log)), 'chave123'));
+check('rodar sem chave no banco', str_contains((string) erro(fn() => $sv2->rodar('w1', '')), 'sql/01'));
+check('rodar bot antigo (sem webhook)', str_contains((string) erro(fn() => $sv2->rodar('w2', 'k')), '0.6.5'));
+$estado['w1'] = false;
+check('rodar pausado', str_contains((string) erro(fn() => $sv2->rodar('w1', 'k')), 'retome antes'));
+$estado['w1'] = true; $rodando = [['id' => '9']]; $n = count($log);
+check('rodar já rodando', str_contains((string) erro(fn() => $sv2->rodar('w1', 'k')), 'já está rodando') && !str_contains(implode('', array_slice($log, $n)), '/webhook/'));
+check('rodar fora do bot', str_contains((string) erro(fn() => $sv->rodar('w9', 'k')), 'não é um workflow do bot'));
+check('caminhoRodar ignora caminho estranho', Servicos::caminhoRodar(['nodes' => [['name' => 'Rodar agora (painel)', 'type' => 'n8n-nodes-base.webhook', 'parameters' => ['path' => '../x']]]]) === null);
+check('workflows marca quem tem Rodar agora', (new Servicos($cfgS, function ($m, $u) use ($fake) { if (str_contains($u, '/workflows?')) return [200, json_encode(['data' => [['id' => 'w1', 'name' => 'WhatsApp - Notificacoes de chamados IXC (WAHA)', 'active' => true, 'nodes' => [['name' => 'Rodar agora (painel)', 'type' => 'n8n-nodes-base.webhook', 'parameters' => ['path' => 'painelbot-rodar-01']]]]]])]; return $fake($m, $u, [], null); }))->workflows()['workflows'][0]['rodar'] === true);
+// ---- WAHA que devolve lista (simulador 0.1.1)
+$lista = new Servicos($cfgS, fn() => [200, json_encode([['name' => 'outra', 'status' => 'STOPPED'], ['name' => 'sessao_teste', 'status' => 'WORKING', 'me' => ['pushName' => 'Bot']]])]);
+check('WAHA lista: acha a sessão pelo nome', $lista->waha('sessao_teste') === ['ok' => true, 'status' => 'WORKING', 'nome' => 'Bot']);
+check('WAHA lista vazia', !(new Servicos($cfgS, fn() => [200, '[]']))->waha('s')['ok']);
+check('WAHA sem me', (new Servicos($cfgS, fn() => [200, '{"status":"FAILED","me":null}']))->waha('s') === ['ok' => true, 'status' => 'FAILED', 'nome' => '']);
+// ---- último evento do IXC
+$ixc = function ($m, $url, $cab, $corpo) { $b = json_decode($corpo, true);
+    if ($cab['Authorization'] !== 'Basic ' . base64_encode('u:segredo')) return [200, '{"type":"error","message":"Token inválido"}'];
+    if (str_contains($url, 'VAZIA')) return [200, '{"page":"1","total":0}'];
+    return [200, json_encode(['total' => 3, 'registros' => [['id' => $b['sortorder'] === 'desc' && $b['rp'] === '1' ? '4321' : '1']]])]; };
+$si = new Servicos($cfgS, $ixc);
+check('IXC: último evento', $si->ultimoEventoIxc('https://ixc.x/', 'Basic ' . base64_encode('u:segredo')) === 4321);
+check('IXC: base sem eventos = 0', $si->ultimoEventoIxc('https://ixc.x/VAZIA', 'Basic ' . base64_encode('u:segredo')) === 0);
+check('IXC: token recusado', str_contains((string) erro(fn() => $si->ultimoEventoIxc('https://ixc.x', 'Basic eA==')), 'Token inválido'));
+check('IXC fora do ar', str_contains((string) erro(fn() => (new Servicos($cfgS, fn() => [0, 'timeout']))->ultimoEventoIxc('https://ixc.x', 'Basic a')), 'IXC não respondeu'));
+check('IXC resposta estranha', str_contains((string) erro(fn() => (new Servicos($cfgS, fn() => [200, '{"ok":1}']))->ultimoEventoIxc('https://ixc.x', 'Basic a')), 'sem "total"'));
+// ---- criar base
+$ue = fn($u, $a) => $si->ultimoEventoIxc($u, $a);
+$nb = ['id' => 'nova', 'nome' => 'Base Nova', 'base_url' => 'http://127.0.0.1:3999/ixc/NOVA/', 'token' => 'u:segredo', 'ignorar_assuntos' => '5,3'];
+$r = $op->criarBase($nb, $ue);
+$l = $dono->query("SELECT id, ativo, last_evento_id, auth, base_url, ignorar_assuntos::text AS ig, atualizado FROM ixc.empresas WHERE id = 'NOVA'")->fetch(PDO::FETCH_ASSOC);
+check('base criada inativa no último evento', $r['id'] === 'NOVA' && $l['ativo'] === false && (int) $l['last_evento_id'] === 4321 && $l['auth'] === 'Basic ' . base64_encode('u:segredo') && $l['base_url'] === 'http://127.0.0.1:3999/ixc/NOVA' && $l['ig'] === '{3,5}' && $l['atualizado'] === null, json_encode($l));
+$a = $op->auditoria(1)[0];
+check('auditoria da base nova sem token', $a['acao'] === 'base_criar' && $a['alvo'] === 'NOVA' && str_contains($a['depois'], '4321') && !str_contains($a['depois'], 'dTpz'));
+check('base repetida', str_contains((string) erro(fn() => $op->criarBase($nb, $ue)), 'Já existe'));
+$antes = (int) $dono->query('SELECT count(*) FROM ixc.empresas')->fetchColumn();
+check('IXC recusou: nada criado', erro(fn() => $op->criarBase(['id' => 'X2', 'token' => 'u:errado'] + $nb, $ue)) !== null && (int) $dono->query('SELECT count(*) FROM ixc.empresas')->fetchColumn() === $antes);
+check('sigla inválida', str_contains((string) erro(fn() => $op->criarBase(['id' => 'a b'] + $nb, $ue)), 'Sigla'));
+check('url com /webservice', str_contains((string) erro(fn() => $op->criarBase(['id' => 'X3', 'base_url' => 'https://ixc.x/webservice/v1'] + $nb, $ue)), '/webservice'));
+check('token com espaço não chama o IXC', erro(fn() => $op->criarBase(['id' => 'X4', 'token' => 'a b c d e f'] + $nb, function () { throw new \LogicException('chamou'); })) !== null);
+$le = null; try { $bot->pdo()->exec("DELETE FROM ixc.empresas WHERE id = 'NOVA'"); } catch (\PDOException $e) { $le = $e->getCode(); }
+check('painel_glpi não apaga base', $le === '42501');
 
 echo "ok: $ok falhas: " . json_encode($falhas, JSON_UNESCAPED_UNICODE) . "\n";
 exit($falhas ? 1 : 0);

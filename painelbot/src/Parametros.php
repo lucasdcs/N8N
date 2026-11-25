@@ -50,6 +50,15 @@ final class Parametros
         'escala_trocar_nomes'   => ['trocas', 'Trocas na planilha ESCALAS: Quem Saiu=Quem Cobre;Outro=Substituto@AAAA-MM-DD'],
     ];
 
+    /**
+     * 0.5.1: parâmetros internos (chave do "Rodar agora" e travas de rodada do whatsapp-ixc 0.6.5):
+     * não aparecem na tela e não se editam pelo painel.
+     */
+    public static function interno(string $chave): bool
+    {
+        return $chave === 'painel_rodar_chave' || str_starts_with($chave, 'rodada_');
+    }
+
     public static function tipo(string $chave): string
     {
         return self::CATALOGO[$chave][0] ?? 'livre';

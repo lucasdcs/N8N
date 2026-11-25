@@ -1,4 +1,4 @@
--- Painel do Bot 0.5.0 — tabelas de MENSAGENS, PERGUNTAS, APELIDOS e AUDITORIA do painel (schema ixc, Postgres do whatsapp-ixc).
+-- Painel do Bot 0.5.1 — tabelas de MENSAGENS, PERGUNTAS, APELIDOS e AUDITORIA do painel (schema ixc, Postgres do whatsapp-ixc).
 -- Rodar como o dono do banco (usuário ixc). Idempotente: pode rodar de novo; NÃO sobrescreve textos já editados.
 --   docker exec -i n8n-compose-postgres-ixc-1 psql -U ixc -d ixc -v ON_ERROR_STOP=1 < 01-mensagens-perguntas.sql
 -- O whatsapp-ixc 0.3.0 em diante lê estas tabelas (texto editado, perguntas, apelidos; 0.5.0: mensagens desativadas e novas). Rodar ANTES de importar os workflows.
@@ -423,8 +423,16 @@ DO $$ BEGIN
     GRANT USAGE ON SEQUENCE ixc.painel_auditoria_id_seq TO painel_glpi;
     GRANT UPDATE (valor) ON ixc.parametros TO painel_glpi;
     GRANT UPDATE (nome, base_url, ativo, ignorar_assuntos, assuntos_financeiros, semtec_sem_local, dono_id, auth) ON ixc.empresas TO painel_glpi;
+    -- 0.5.1: nova base (nasce inativa, com o ultimo evento do IXC)
+    GRANT INSERT (id, nome, base_url, auth, last_evento_id, dono_id, ignorar_assuntos, semtec_sem_local, ativo, assuntos_financeiros) ON ixc.empresas TO painel_glpi;
   END IF;
 END $$;
+-- 0.5.1: chave do "Rodar agora" (whatsapp-ixc 0.6.5: webhook "Rodar agora (painel)" so roda com ela). Gerada uma vez, aleatoria;
+-- o painel le do banco e nunca mostra. Trocar: UPDATE ixc.parametros SET valor = md5(random()::text) WHERE chave = 'painel_rodar_chave';
+INSERT INTO ixc.parametros (chave, valor, descricao)
+VALUES ('painel_rodar_chave', md5(random()::text || clock_timestamp()::text) || md5(random()::text || clock_timestamp()::text),
+        'painelbot 0.5.1: chave do Rodar agora do painel (nao mostrar, nao editar)')
+ON CONFLICT (chave) DO NOTHING;
 
 COMMIT;
 

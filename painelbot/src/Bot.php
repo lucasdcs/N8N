@@ -376,6 +376,9 @@ final class Bot
     {
         $out = [];
         foreach ($this->q('SELECT chave, valor, coalesce(descricao, \'\') AS descricao FROM ixc.parametros ORDER BY chave') as $r) {
+            if (Parametros::interno((string) $r['chave'])) {
+                continue;   // 0.5.1: chave do Rodar agora e travas de rodada nunca vão para a tela
+            }
             $out[] = [
                 'chave'     => (string) $r['chave'],
                 'valor'     => (string) $r['valor'],

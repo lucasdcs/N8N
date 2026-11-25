@@ -82,6 +82,23 @@ const campo = (w, k) => $(w, '.pbot-modal [data-k="' + k + '"] input, .pbot-moda
   check('auditoria do workflow', await ate(() => sql("SELECT acao || '|' || antes || '|' || depois FROM ixc.painel_auditoria WHERE acao LIKE 'workflow%'") === 'workflow_pausar|ativo|pausado'));
   bt(w, 'Retomar', $$(w, '#pbot-op-workflows tbody tr')[0]).click();
   check('retomar sem confirmação', await ate(() => estadoN8n().w1 === true));
+  // 0.5.1: Rodar agora
+  try { fs.unlinkSync(path.join(__dirname, 'n8n-rodou.txt')); } catch (e) {}
+  await ate(() => bt(w, 'Rodar agora', $$(w, '#pbot-op-workflows tbody tr')[0]));
+  check('Rodar agora só onde tem o webhook', bt(w, 'Rodar agora', $$(w, '#pbot-op-workflows tbody tr')[0]) && !bt(w, 'Rodar agora', $$(w, '#pbot-op-workflows tbody tr')[1]) &&
+    $$(w, '#pbot-op-workflows tbody tr')[1].textContent.includes('atualizar o bot para a 0.6.5'));
+  bt(w, 'Rodar agora', $$(w, '#pbot-op-workflows tbody tr')[0]).click();
+  const chave = sql("SELECT valor FROM ixc.parametros WHERE chave='painel_rodar_chave'");
+  check('Rodar agora chamou o webhook com a chave do banco', await ate(() => { try { return fs.readFileSync(path.join(__dirname, 'n8n-rodou.txt'), 'utf8').trim() === 'painelbot-rodar-01 ' + chave; } catch (e) { return false; } }));
+  check('aviso da trava', await ate(() => $(w, '#pbot-retorno-topo').textContent.includes('pedido enviado') && $(w, '#pbot-retorno-topo').textContent.includes('2 min')));
+  check('auditoria do rodar', await ate(() => sql("SELECT count(*) FROM ixc.painel_auditoria WHERE acao='workflow_rodar'") === '1'));
+  const sim = () => $$(w, '#pbot-op-workflows tbody tr')[2];
+  check('[SIM] pausado sem Rodar agora', !bt(w, 'Rodar agora', sim()));
+  bt(w, 'Retomar', sim()).click();
+  check('[SIM] retomado ganha Rodar agora', await ate(() => bt(w, 'Rodar agora', sim())));
+  bt(w, 'Rodar agora', sim()).click();
+  check('já rodando: recusa', await ate(() => $(w, '#pbot-retorno-topo').textContent.includes('já está rodando')));
+  check('não chamou o webhook do [SIM]', !fs.readFileSync(path.join(__dirname, 'n8n-rodou.txt'), 'utf8').includes('sim-painelbot'));
   check('WAHA conectado', await ate(() => $(w, '#pbot-op-waha').textContent.includes('conectado') && $(w, '#pbot-op-waha').textContent.includes('Bot Teste') && $(w, '#pbot-op-waha').textContent.includes('sessao_teste')));
 
   // bases
@@ -100,6 +117,20 @@ const campo = (w, k) => $(w, '.pbot-modal [data-k="' + k + '"] input, .pbot-moda
   bt(w, 'Salvar', $(w, '.pbot-modal')).click();
   check('token trocado', await ate(() => sql("SELECT auth FROM ixc.empresas WHERE id='AAA'") === 'Basic ' + Buffer.from('usuario:segredo99').toString('base64')));
   check('auditoria na aba sem o token', await ate(() => $(w, '#pbot-op-auditoria').textContent.includes('token do IXC') && !$(w, '#pbot-op-auditoria').textContent.includes('segredo')));
+
+  // 0.5.1: nova base
+  check('administrador vê Nova base', bt(w, 'Nova base') !== undefined);
+  bt(w, 'Nova base').click();
+  await ate(() => campo(w, 'id'));
+  campo(w, 'id').value = 'nova'; campo(w, 'nome').value = 'Base Nova'; campo(w, 'base_url').value = 'http://127.0.0.1:8766/ixc/NOVA';
+  campo(w, 'token').value = 'u:errado';
+  bt(w, 'Salvar', $(w, '.pbot-modal')).click();
+  check('token errado: IXC recusa, nada criado', await ate(() => $(w, '.pbot-modal .pbot-retorno.erro') && $(w, '.pbot-modal .pbot-retorno').textContent.includes('Token inválido')) && sql("SELECT count(*) FROM ixc.empresas WHERE id='NOVA'") === '0');
+  campo(w, 'token').value = 'u:segredo';
+  bt(w, 'Salvar', $(w, '.pbot-modal')).click();
+  check('base nova criada inativa no último evento', await ate(() => sql("SELECT ativo || '|' || last_evento_id FROM ixc.empresas WHERE id='NOVA'") === 'false|7777'));
+  check('aviso explica o próximo passo', await ate(() => $(w, '#pbot-retorno-topo').textContent.includes('INATIVA') && $(w, '#pbot-retorno-topo').textContent.includes('7777')));
+  check('base nova na tabela', await ate(() => linha(w, 'pbot-op-bases', 'Base Nova')));
 
   // parâmetros
   const sem = linha(w, 'pbot-parametros', 'semtec_min');
@@ -132,6 +163,7 @@ const campo = (w, k) => $(w, '.pbot-modal [data-k="' + k + '"] input, .pbot-moda
   check('leitura: sem botões de modo', !modo(w, 0).querySelector('.pbot-seg'));
   check('leitura: sem pausar/retomar', !$$(w, '#pbot-op-workflows button').length);
   check('leitura: sem editar base nem token', !$$(w, '#pbot-op-bases button').length && !$$(w, '#pbot-parametros button').length);
+  check('leitura: sem Nova base nem Rodar agora', !bt(w, 'Nova base') && !bt(w, 'Rodar agora'));
   const r1 = await (await fetch(BASE + '/acao', { method: 'POST', body: JSON.stringify({ acao: 'workflow_ligar', id: 'w1', ativo: false }) })).json();
   check('leitura: acao recusa pausar', !r1.ok && r1.erro.includes('Operação e avisos automáticos > Editar') && estadoN8n().w1 === true, JSON.stringify(r1));
   fs.writeFileSync(path.join(__dirname, 'direitos.json'), JSON.stringify({ plugin_painelbot_avisos: 3, plugin_painelbot_config: 3, config: 1 }));
@@ -139,6 +171,10 @@ const campo = (w, k) => $(w, '.pbot-modal [data-k="' + k + '"] input, .pbot-moda
   check('sem ser administrador: token recusado', !r2.ok && r2.erro.includes('administrador'), JSON.stringify(r2));
   const r3 = await (await fetch(BASE + '/acao', { method: 'POST', body: JSON.stringify({ acao: 'modo_envio', chave: 'semtec_min', valor: '5' }) })).json();
   check('modo_envio só mexe em envio', !r3.ok && r3.erro.includes('só envio'));
+  const r5 = await (await fetch(BASE + '/acao', { method: 'POST', body: JSON.stringify({ acao: 'base_criar', dados: { id: 'OUTRA' } }) })).json();
+  check('sem ser administrador: nova base recusada', !r5.ok && r5.erro.includes('Criar base'), JSON.stringify(r5));
+  const r6 = await (await fetch(BASE + '/acao', { method: 'POST', body: JSON.stringify({ acao: 'parametro_salvar', chave: 'painel_rodar_chave', valor: 'x' }) })).json();
+  check('chave do Rodar agora não se edita', !r6.ok && sql("SELECT length(valor) FROM ixc.parametros WHERE chave='painel_rodar_chave'") === '64');
   const r4 = await (await fetch(BASE + '/acao', { method: 'POST', body: JSON.stringify({ acao: 'workflow_ligar', id: 'w9', ativo: false }) })).json();
   check('acao recusa pausar workflow fora do bot', !r4.ok && r4.erro.includes('não é um workflow do bot') && estadoN8n().w9 === true);
 

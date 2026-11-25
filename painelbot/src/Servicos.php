@@ -167,6 +167,7 @@ final class Servicos
                 'ativo'       => (bool) ($w['active'] ?? false),
                 'atualizado'  => (string) ($w['updatedAt'] ?? ''),
                 'controlavel' => $this->controlavel($id, $nome),
+                'rodar'       => self::caminhoRodar($w) !== null,   // 0.5.1: tem o webhook "Rodar agora (painel)" (whatsapp-ixc 0.6.5)
                 'ultima'      => $u ? ['status' => (string) ($u['status'] ?? ($u['finished'] ?? false ? 'success' : '')), 'inicio' => (string) ($u['startedAt'] ?? ''), 'fim' => (string) ($u['stoppedAt'] ?? '')] : null,
                 'ultimo_erro' => $e ? ['id' => (string) ($e['id'] ?? ''), 'inicio' => (string) ($e['startedAt'] ?? '')] : null,
             ];
@@ -206,6 +207,84 @@ final class Servicos
         return ['nome' => $nome, 'antes' => $antes, 'depois' => $ativar];   // 200 = o n8n aplicou
     }
 
+    /** 0.5.1: caminho do webhook "Rodar agora (painel)" do workflow (whatsapp-ixc 0.6.5), ou null. */
+    public static function caminhoRodar(array $w): ?string
+    {
+        foreach (is_array($w['nodes'] ?? null) ? $w['nodes'] : [] as $n) {
+            if (($n['name'] ?? '') === 'Rodar agora (painel)' && str_ends_with((string) ($n['type'] ?? ''), '.webhook')) {
+                $p = (string) ($n['parameters']['path'] ?? '');
+                return preg_match('/^[A-Za-z0-9_-]{1,80}$/', $p) ? $p : null;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 0.5.1: roda agora um workflow do bot, pelo webhook "Rodar agora (painel)" com a chave do banco (painel_rodar_chave).
+     * Recusa se estiver pausado ou já rodando. O workflow tem a trava de rodada (0.6.5): se a última começou há pouco,
+     * ele mesmo não faz nada (o painel avisa).
+     * @return array{nome:string}
+     */
+    public function rodar(string $id, string $chave): array
+    {
+        if (!$this->temN8n()) {
+            throw new ErroDeUso('n8n não configurado: preencha o endereço e a chave da API em Configurar > Geral > Painel do Bot.');
+        }
+        if (!preg_match('/^[A-Za-z0-9_-]{1,40}$/', $id)) {
+            throw new ErroDeUso('Workflow inválido.');
+        }
+        if ($chave === '') {
+            throw new ErroDeUso('Falta a chave do Rodar agora no banco do bot: rode o painelbot/sql/01 desta versão.');
+        }
+        [$st, $w] = $this->n8n('GET', '/api/v1/workflows/' . $id);
+        if ($st !== 200 || !is_array($w)) {
+            throw new ErroDeUso(self::erroHttp($st, $w, 'n8n'));
+        }
+        $nome = (string) ($w['name'] ?? '');
+        if (!$this->controlavel($id, $nome)) {
+            throw new ErroDeUso('"' . $nome . '" não é um workflow do bot: o painel não roda este.');
+        }
+        if (empty($w['active'])) {
+            throw new ErroDeUso('"' . $nome . '" está pausado: retome antes de rodar.');
+        }
+        $caminho = self::caminhoRodar($w);
+        if ($caminho === null) {
+            throw new ErroDeUso('"' . $nome . '" ainda não tem o "Rodar agora": atualize o bot para a whatsapp-ixc 0.6.5.');
+        }
+        [$s2, $e] = $this->n8n('GET', '/api/v1/executions?workflowId=' . rawurlencode($id) . '&status=running&limit=1');
+        if ($s2 === 200 && is_array($e['data'] ?? null) && $e['data'] !== []) {
+            throw new ErroDeUso('"' . $nome . '" já está rodando agora: aguarde terminar.');
+        }
+        [$s3, $r] = ($this->http)('POST', rtrim($this->cfg['n8n_url'], '/') . '/webhook/' . $caminho, ['x-painelbot-chave' => $chave], '{"origem":"painel"}');
+        if ($s3 !== 200) {
+            throw new ErroDeUso($s3 === 404 ? 'O n8n não achou o webhook /webhook/' . $caminho . ' (workflow publicado com a versão 0.6.5?).' : self::erroHttp($s3, $r, 'n8n'));
+        }
+        return ['nome' => $nome];
+    }
+
+    /**
+     * 0.5.1: id do último evento (su_oss_chamado_mensagem) do IXC, para a base nova começar dali (sem ler o histórico).
+     * $auth = valor do cabeçalho Authorization ("Basic ..."). @return int
+     */
+    public function ultimoEventoIxc(string $baseUrl, string $auth): int
+    {
+        $corpo = json_encode(['qtype' => 'su_oss_chamado_mensagem.id', 'query' => '0', 'oper' => '>', 'page' => '1', 'rp' => '1',
+                              'sortname' => 'su_oss_chamado_mensagem.id', 'sortorder' => 'desc']);
+        [$st, $txt] = ($this->http)('POST', rtrim($baseUrl, '/') . '/webservice/v1/su_oss_chamado_mensagem', ['Authorization' => $auth, 'ixcsoft' => 'listar'], $corpo);
+        $j = json_decode($txt, true);
+        if ($st !== 200 || !is_array($j)) {
+            throw new ErroDeUso(self::erroHttp($st, $j ?? $txt, 'IXC'));
+        }
+        if (($j['type'] ?? '') === 'error') {
+            throw new ErroDeUso('O IXC recusou: ' . mb_substr((string) ($j['message'] ?? ''), 0, 150) . ' (token sem permissão em su_oss_chamado_mensagem?).');
+        }
+        if (!array_key_exists('total', $j)) {
+            throw new ErroDeUso('Resposta inesperada do IXC (sem "total"): confira o endereço.');
+        }
+        $id = (int) ($j['registros'][0]['id'] ?? 0);
+        return max(0, $id);
+    }
+
     /** Sessão do WhatsApp no WAHA. @return array{ok:bool, erro?:string, status?:string, nome?:string} */
     public function waha(string $sessao): array
     {
@@ -219,6 +298,12 @@ final class Servicos
         if ($st !== 200 || !is_array($r)) {
             return ['ok' => false, 'erro' => self::erroHttp($st, $r, 'WAHA')];
         }
-        return ['ok' => true, 'status' => (string) ($r['status'] ?? ''), 'nome' => (string) ($r['me']['pushName'] ?? '')];
+        if (array_is_list($r)) {   // 0.5.1: WAHA/simulador que devolve a lista de sessões
+            $r = array_values(array_filter($r, fn($x) => is_array($x) && ($x['name'] ?? '') === $sessao))[0] ?? ($r[0] ?? []);
+        }
+        if (($r['status'] ?? '') === '') {
+            return ['ok' => false, 'erro' => 'O WAHA não informou o status da sessão ' . $sessao . '.'];
+        }
+        return ['ok' => true, 'status' => (string) $r['status'], 'nome' => (string) (($r['me'] ?? [])['pushName'] ?? '')];
     }
 }

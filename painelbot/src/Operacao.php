@@ -7,7 +7,7 @@ use PDO;
 /**
  * 0.5.0 — gravações de operação no Postgres do bot: valor dos parâmetros, dados das bases (ixc.empresas),
  * troca do token do IXC (só grava; o usuário do painel não lê a coluna auth) e a auditoria (ixc.painel_auditoria).
- * Direitos conferidos em front/acao.php. Parâmetros e bases não são criados nem apagados pelo painel.
+ * Direitos conferidos em front/acao.php. Parâmetros não são criados nem apagados; bases são criadas (0.5.1, inativas), nunca apagadas.
  */
 final class Operacao
 {
@@ -57,7 +57,7 @@ final class Operacao
      */
     public function salvarParametro(string $chave, string $valor, string $confirmar = ''): array
     {
-        if (!preg_match('/^[a-z0-9_]{1,60}$/', $chave)) {
+        if (!preg_match('/^[a-z0-9_]{1,60}$/', $chave) || Parametros::interno($chave)) {
             throw new ErroDeUso('Parâmetro inválido.');
         }
         $st = $this->pdo()->prepare('SELECT valor FROM ixc.parametros WHERE chave = ?');
@@ -132,10 +132,7 @@ final class Operacao
         if ($nome === '' || mb_strlen($nome) > 80) {
             throw new ErroDeUso('Nome da base: de 1 a 80 caracteres.');
         }
-        $url = rtrim(trim((string) ($d['base_url'] ?? '')), '/');
-        if (!preg_match('#^https://[A-Za-z0-9._-]{3,120}(:\d{2,5})?(/[A-Za-z0-9._~/-]*)?$#', $url)) {
-            throw new ErroDeUso('Endereço do IXC: https://… (ex.: https://ixc.suaempresa.com.br).');
-        }
+        $url = self::urlIxc((string) ($d['base_url'] ?? ''));
         $dono = trim((string) ($d['dono_id'] ?? ''));
         if ($dono !== '' && !preg_match('/^\d{1,9}$/', $dono)) {
             throw new ErroDeUso('Dono do número: o id do colaborador no IXC (só números) ou vazio.');
@@ -164,16 +161,73 @@ final class Operacao
         return $depois;
     }
 
-    /** Troca o token do IXC da base (o painel grava a coluna auth, mas não lê). Na auditoria fica só "(token trocado)". */
-    public function trocarToken(string $id, string $token): void
+    /** Endereço do IXC: https (http só para o simulador / rede interna), sem barra no fim e sem o /webservice. */
+    public static function urlIxc(string $u): string
     {
-        $this->base($id);
+        $url = rtrim(trim($u), '/');
+        if (!preg_match('#^https?://[A-Za-z0-9._-]{3,120}(:\d{2,5})?(/[A-Za-z0-9._~%/-]*)?$#', $url) || str_contains($url, '/webservice')) {
+            throw new ErroDeUso('Endereço do IXC: https://… sem o /webservice (ex.: https://ixc.suaempresa.com.br).');
+        }
+        return $url;
+    }
+
+    /** "id:chave", o base64 ou "Basic ..." → valor do cabeçalho Authorization que o bot manda ao IXC. */
+    public static function auth(string $token): string
+    {
         $t = trim((string) preg_replace('/^Basic\s+/i', '', trim($token)));
         if (!preg_match('/^[A-Za-z0-9:+\/=._-]{8,300}$/', $t)) {
             throw new ErroDeUso('Token: cole o token do usuário da API do IXC (formato id:chave), sem espaços.');
         }
-        // o bot manda o campo como está no cabeçalho Authorization ("Basic <base64(id:chave)>"): aceita id:chave, o base64 ou "Basic ..."
-        $auth = 'Basic ' . (str_contains($t, ':') ? base64_encode($t) : $t);
+        return 'Basic ' . (str_contains($t, ':') ? base64_encode($t) : $t);
+    }
+
+    /**
+     * 0.5.1: base nova. Nasce INATIVA e começando do último evento que já existe no IXC (pergunta ao IXC com o token digitado):
+     * assim o bot não lê o histórico inteiro quando ela for ativada. Se o IXC não responder, nada é criado.
+     * @param array<string,mixed> $d id, nome, base_url, token, dono_id, ignorar_assuntos, assuntos_financeiros, semtec_sem_local
+     * @param callable(string,string):int $ultimoEvento (url, Authorization) → último id de su_oss_chamado_mensagem
+     * @return array<string,mixed>
+     */
+    public function criarBase(array $d, callable $ultimoEvento): array
+    {
+        $id = strtoupper(trim((string) ($d['id'] ?? '')));
+        if (!preg_match('/^[A-Z0-9_]{2,20}$/', $id)) {
+            throw new ErroDeUso('Sigla da base: 2 a 20 letras maiúsculas, números ou _ (ex.: 4B, PONTO). É a usada nos shoppings e técnicos.');
+        }
+        $st = $this->pdo()->prepare('SELECT 1 FROM ixc.empresas WHERE id = ?');
+        $st->execute([$id]);
+        if ($st->fetchColumn()) {
+            throw new ErroDeUso('Já existe a base ' . $id . '.');
+        }
+        $nome = trim((string) ($d['nome'] ?? ''));
+        if ($nome === '' || mb_strlen($nome) > 80) {
+            throw new ErroDeUso('Nome da base: de 1 a 80 caracteres.');
+        }
+        $url = self::urlIxc((string) ($d['base_url'] ?? ''));
+        $auth = self::auth((string) ($d['token'] ?? ''));
+        $dono = trim((string) ($d['dono_id'] ?? ''));
+        if ($dono !== '' && !preg_match('/^\d{1,9}$/', $dono)) {
+            throw new ErroDeUso('Dono do número: o id do colaborador no IXC (só números) ou vazio.');
+        }
+        $ign = self::idsAssunto($d['ignorar_assuntos'] ?? '');
+        $fin = self::idsAssunto($d['assuntos_financeiros'] ?? '');
+        $semLocal = !empty($d['semtec_sem_local']);
+        $ultimo = $ultimoEvento($url, $auth);   // ErroDeUso se o IXC não responder: nada é criado
+        $this->emTransacao(function (PDO $pdo) use ($id, $nome, $url, $auth, $ultimo, $dono, $ign, $fin, $semLocal) {
+            $pdo->prepare('INSERT INTO ixc.empresas (id, nome, base_url, auth, last_evento_id, dono_id, ignorar_assuntos, semtec_sem_local, ativo, assuntos_financeiros)
+                           VALUES (?, ?, ?, ?, ?, ?, ?::text[], ?, false, ?::text[])')
+                ->execute([$id, $nome, $url, $auth, $ultimo, $dono === '' ? null : $dono, self::pgArr($ign), $semLocal ? 't' : 'f', self::pgArr($fin)]);
+            $this->registrar('base_criar', $id, null, json_encode(['nome' => $nome, 'base_url' => $url, 'ultimo_evento' => $ultimo, 'ativo' => false],
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        });
+        return ['id' => $id, 'nome' => $nome, 'ultimo_evento' => $ultimo, 'ativo' => false];
+    }
+
+    /** Troca o token do IXC da base (o painel grava a coluna auth, mas não lê). Na auditoria fica só "(token trocado)". */
+    public function trocarToken(string $id, string $token): void
+    {
+        $this->base($id);
+        $auth = self::auth($token);
         $this->emTransacao(function (PDO $pdo) use ($id, $auth) {
             $pdo->prepare('UPDATE ixc.empresas SET auth = ? WHERE id = ?')->execute([$auth, $id]);
             $this->registrar('base_token', $id, null, '(token trocado)');

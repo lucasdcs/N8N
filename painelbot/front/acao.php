@@ -36,6 +36,9 @@
  *   base_salvar       {id, dados}                 Parâmetros > Editar    (ixc.empresas, sem token)
  *   base_token        {id, token}                 Parâmetros > Editar + Configuração > Atualizar do GLPI (só grava; ninguém lê)
  *   auditoria         {alvo}                      Parâmetros > Visualizar
+ * 0.5.1:
+ *   workflow_rodar    {id}                        Operação > Editar      (webhook "Rodar agora (painel)" do whatsapp-ixc 0.6.5)
+ *   base_criar        {dados}                     Parâmetros > Editar + Configuração > Atualizar do GLPI (nasce inativa)
  */
 
 use GlpiPlugin\Painelbot\Bot;
@@ -98,6 +101,8 @@ $exige = [
     'base_salvar'         => [Direito::CONFIG, UPDATE],
     'base_token'          => [Direito::CONFIG, UPDATE],
     'auditoria'           => [Direito::CONFIG, READ],
+    'workflow_rodar'      => [Direito::AVISOS, UPDATE],
+    'base_criar'          => [Direito::CONFIG, UPDATE],
 ];
 if (!isset($exige[$acao])) {
     $saida(['ok' => false, 'erro' => 'Ação desconhecida.'], 400);
@@ -108,8 +113,8 @@ if (!Direito::pode($area, $bit)) {
     $saida(['ok' => false, 'erro' => 'Seu perfil não tem "' . Direito::AREAS[$area][0] . ' > ' . $nomes[$bit] . '" (Administração > Perfis > Painel do Bot).'], 403);
 }
 
-if ($acao === 'base_token' && !Session::haveRight('config', UPDATE)) {   // 0.5.0: token do IXC só para administrador do GLPI
-    $saida(['ok' => false, 'erro' => 'Trocar o token do IXC é só para quem tem Configuração > Atualizar no GLPI (administrador).'], 403);
+if (in_array($acao, ['base_token', 'base_criar'], true) && !Session::haveRight('config', UPDATE)) {   // token do IXC só para administrador do GLPI
+    $saida(['ok' => false, 'erro' => ($acao === 'base_criar' ? 'Criar base' : 'Trocar o token do IXC') . ' é só para quem tem Configuração > Atualizar no GLPI (administrador).'], 403);
 }
 
 $quem = trim((string) ($_SESSION['glpifriendlyname'] ?? $_SESSION['glpiname'] ?? ''));
@@ -171,6 +176,18 @@ try {
         'parametro_salvar'    => ['parametro' => (new Operacao(new Bot(), mb_substr($quem, 0, 100)))->salvarParametro((string) ($corpo['chave'] ?? ''), (string) ($corpo['valor'] ?? ''), (string) ($corpo['confirmar'] ?? ''))],
         'base_salvar'         => ['base' => (new Operacao(new Bot(), mb_substr($quem, 0, 100)))->salvarBase((string) ($corpo['id'] ?? ''), is_array($corpo['dados'] ?? null) ? $corpo['dados'] : [])],
         'base_token'          => (function () use ($quem, $corpo) { (new Operacao(new Bot(), mb_substr($quem, 0, 100)))->trocarToken((string) ($corpo['id'] ?? ''), (string) ($corpo['token'] ?? '')); return ['trocado' => true]; })(),
+        'workflow_rodar'      => (function () use ($quem, $corpo) {
+            $bot = new Bot();
+            $id = (string) ($corpo['id'] ?? '');
+            $r = Servicos::daConfig()->rodar($id, (string) ($bot->parametro('painel_rodar_chave') ?? ''));
+            (new Operacao($bot, mb_substr($quem, 0, 100)))->registrar('workflow_rodar', $id . ' ' . $r['nome'], null, 'pedido');
+            return ['workflow' => $r];
+        })(),
+        'base_criar'          => (function () use ($quem, $corpo) {
+            $sv = Servicos::daConfig();
+            return ['base' => (new Operacao(new Bot(), mb_substr($quem, 0, 100)))->criarBase(is_array($corpo['dados'] ?? null) ? $corpo['dados'] : [],
+                fn(string $url, string $auth) => $sv->ultimoEventoIxc($url, $auth))];
+        })(),
         'auditoria'           => ['auditoria' => (new Operacao(new Bot(), mb_substr($quem, 0, 100)))->auditoria(60, (string) ($corpo['alvo'] ?? ''))],
     };
     $saida(['ok' => true] + $r);

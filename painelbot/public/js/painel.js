@@ -1,6 +1,7 @@
 /* Painel do Bot 0.5.0 — o painel OPERA o bot (whatsapp-ixc): aba Operação, parâmetros e bases editáveis, mensagens,
  * cadastros e leitura do banco do bot (schema ixc).
  * Só existem no HTML as seções que o perfil vê; o JSON também só traz essas.
+ * 0.5.1: Rodar agora (webhook do whatsapp-ixc 0.6.5) e Nova base (administrador; nasce inativa a partir do último evento do IXC).
  * 0.5.0: aba Operação — modo de envio (REAL pede digitar REAL), workflows do n8n (estado, última execução, último erro,
  *        pausar/retomar), sessão do WAHA, bases do IXC (editar; trocar token só administrador) e auditoria; parâmetros editáveis.
  * 0.4.2: variável por shopping (um valor para cada shopping + padrão) e variáveis do bot (listar, descrição/exemplo, desativar).
@@ -1445,7 +1446,7 @@
   function auditoriaEm(t, lista) {
     if (!t) return;
     if (lista === null || lista === undefined) { tabela(t, ['Aviso'], [['Rode o painelbot/sql/01-mensagens-perguntas.sql desta versão para registrar as alterações.']]); return; }
-    var NOME = { parametro: 'parâmetro', base: 'base', base_token: 'token do IXC', workflow_pausar: 'pausou workflow', workflow_retomar: 'retomou workflow' };
+    var NOME = { parametro: 'parâmetro', base: 'base', base_token: 'token do IXC', base_criar: 'criou base', workflow_pausar: 'pausou workflow', workflow_retomar: 'retomou workflow', workflow_rodar: 'rodou agora' };
     tabela(t, ['Quando', 'Quem', 'O quê', 'Item', 'Antes', 'Depois'],
       arr(lista).map(function (a) { return [a.em, a.quem, NOME[a.acao] || a.acao, a.alvo, a.antes, a.depois]; }), 'Nenhuma alteração registrada ainda.');
   }
@@ -1477,7 +1478,24 @@
               statusServicos(); carregar();
             });
           });
-          acao = b;
+          acao = el('div', 'pbot-acoes-linha'); acao.appendChild(b);
+          // 0.5.1: Rodar agora (webhook do whatsapp-ixc 0.6.5; o próprio workflow ignora se a última rodada começou há pouco)
+          if (w.ativo && w.rodar) {
+            var rr = botao('', 'ti-player-track-next', 'Rodar agora');
+            rr.addEventListener('click', function () {
+              rr.disabled = true;
+              post('workflow_rodar', { id: w.id }).then(function (j) {
+                rr.disabled = false;
+                if (!j.ok) { avisoTopo(false, j.erro); return; }
+                avisoTopo(true, '"' + (w.apelido || w.nome) + '": pedido enviado. Se a última rodada começou há menos de ' + ({ '01': 2, '02': 4, '04': 5 }[(String(w.apelido).match(/\((\d\d)\)/) || [])[1]] || 2) +
+                  ' min, o bot não roda de novo (trava contra aviso em dobro). A última execução atualiza em alguns segundos.');
+                setTimeout(function () { statusServicos(); carregar(); }, 5000);
+              });
+            });
+            acao.appendChild(rr);
+          } else if (w.ativo && !w.rodar) {
+            acao.appendChild(el('div', 'pbot-sub', 'Rodar agora: atualizar o bot para a 0.6.5'));
+          }
         }
         return [nome, w.ativo ? pill('ativo', '#16a34a') : pill('pausado', '#64748b'), ult, err, acao];
       }), 'Nenhum workflow no n8n.');
@@ -1496,6 +1514,7 @@
   }
   function basesTab() {
     var t = $('pbot-op-bases'); if (!t) return;
+    if (ADMIN && pode('config', 'editar')) barra('pbot-op-bases', 'Nova base', function () { formNovaBase(); });   // 0.5.1
     var h = +dados.hora_num, comercial = h >= 8 && h < 20;
     var ed = pode('config', 'editar');
     tabela(t, ['Base', 'Nome', 'Ativa', 'Último evento lido', 'Assuntos ignorados', 'Financeiros', 'Sem técnico e sem shopping', ''],
@@ -1519,6 +1538,23 @@
       { k: 'assuntos_financeiros', rot: 'Assuntos financeiros (ids do IXC)', tipo: 'text', largo: true, dica: 'Separados por vírgula. Não avisa nem lembra.' },
     ], { nome: e.nome, base_url: e.base_url, ativo: e.ativo, semtec_sem_local: e.semtec_sem_local, dono_id: e.dono_id, ignorar_assuntos: e.ignorar_assuntos, assuntos_financeiros: e.assuntos_financeiros },
     function (d) { return post('base_salvar', { id: e.id, dados: d }).then(function (j) { if (j.ok) j.msg = 'Base ' + e.id + ' salva.'; return j; }); });
+  }
+  function formNovaBase() {   // 0.5.1: só administrador; nasce inativa, começando do último evento do IXC
+    return formulario('Nova base do IXC', [
+      { k: 'id', rot: 'Sigla da base', tipo: 'text', dica: 'Letras maiúsculas/números, ex.: 4B, PONTO. É a usada nos shoppings e técnicos (não muda depois).' },
+      { k: 'nome', rot: 'Nome', tipo: 'text' },
+      { k: 'base_url', rot: 'Endereço do IXC', tipo: 'text', largo: true, dica: 'https://ixc.suaempresa.com.br (sem /webservice). O painel testa o token aqui antes de criar.' },
+      { k: 'token', rot: 'Token da API (id:chave)', tipo: 'text', largo: true, dica: 'Não aparece de novo depois de salvo.' },
+      { k: 'dono_id', rot: 'Dono do número (id do colaborador no IXC)', tipo: 'num' },
+      { k: 'ignorar_assuntos', rot: 'Assuntos ignorados (ids do IXC)', tipo: 'text', largo: true },
+      { k: 'assuntos_financeiros', rot: 'Assuntos financeiros (ids do IXC)', tipo: 'text', largo: true },
+      { k: 'semtec_sem_local', rot: 'Chamado sem técnico e sem shopping', tipo: 'check', texto: 'avisa no grupo de chamados sem shopping' },
+    ], {}, function (d) {
+      return post('base_criar', { dados: d }).then(function (j) {
+        if (j.ok) j.msg = 'Base ' + j.base.id + ' criada INATIVA, começando do evento ' + j.base.ultimo_evento + ' do IXC (não lê o histórico). Cadastre shoppings e técnicos e depois ative no lápis.';
+        return j;
+      });
+    });
   }
   function formToken(e) {
     return formulario('Trocar token do IXC — ' + e.id, [
