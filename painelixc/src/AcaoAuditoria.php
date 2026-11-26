@@ -20,6 +20,12 @@ use Toolbox;
  *               Tudo que pode faltar é conferido ANTES de finalizar; se só a O.S. nova falhar, a Auditoria fica finalizada
  *               e a mensagem diz para abrir a O.S. pelo IXC (não tenta de novo, para não duplicar).
  * Se reabrir falhar, a Auditoria NÃO é finalizada. Tudo fica registrado em glpi_plugin_painelixc_auditoria_acoes.
+ *
+ * 0.16.0 (P16-1) — Retorno de Garantia: na base com o assunto RG configurado (bases.retorno_assunto_id), reprovar NÃO
+ * reabre mais a Ativação. Na 1ª reprovação abre uma O.S. de Retorno de Garantia (sem atendimento, cópia da Ativação,
+ * mesmo técnico e setor); nas reprovações seguintes da mesma Auditoria reabre esse mesmo RG. A Reauditoria vigia o RG.
+ * O RG é gravado na reauditoria ANTES de finalizar a Auditoria: se finalizar falhar, o 2º clique não abre outro RG.
+ * Base sem o assunto = fluxo antigo (reabre a Ativação).
  */
 final class AcaoAuditoria
 {
@@ -110,8 +116,25 @@ final class AcaoAuditoria
         }
         $osAud = (int) $a['ixc_id'];
         $osAtiv = (int) ($a['origem_ixc_id'] ?? 0);
-        if ($def['reabre'] && $osAtiv <= 0) {
-            return ['ok' => false, 'http' => 422, 'mensagem' => 'Esta auditoria não tem O.S. de Ativação finalizada para reabrir.'];
+        $baseId = (int) $a['plugin_painelixc_bases_id'];
+        // 0.16.0: modo da reprovação — ativacao (antigo) | rg_novo | rg_reabrir | rg_pendente (RG já aberto por um clique que não finalizou)
+        $modo = 'ativacao';
+        $retAnt = null;
+        $assuntoRg = 0;
+        if ($def['reabre']) {
+            $retAnt = (new Reauditoria($this->db, null, $this->agora))->retornoDaAuditoria($baseId, $osAud);
+            $assuntoRg = self::assuntoRetorno($this->db, $baseId);
+            if ($retAnt !== null) {
+                $modo = $retAnt['estado'] === 'aguardando' ? 'rg_pendente' : 'rg_reabrir';
+                $osAtiv = $osAtiv ?: (int) $retAnt['ativacao_ixc_id'];
+            } elseif ($assuntoRg > 0) {
+                $modo = 'rg_novo';
+            }
+        }
+        if ($def['reabre'] && in_array($modo, ['ativacao', 'rg_novo'], true) && $osAtiv <= 0) {
+            return ['ok' => false, 'http' => 422, 'mensagem' => $modo === 'rg_novo'
+                ? 'Esta auditoria não tem O.S. de Ativação: sem ela não há cliente, técnico e setor para o Retorno de Garantia.'
+                : 'Esta auditoria não tem O.S. de Ativação finalizada para reabrir.'];
         }
         $os = ['resposta' => 0, 'assunto' => 0];
         if ($def['abre_os']) {
@@ -189,6 +212,21 @@ final class AcaoAuditoria
             $extras = array_slice($acoes, 1);
             $avisos = [];
 
+            // 1c) rg_novo: lê a Ativação e monta o Retorno de Garantia — antes de mexer em qualquer coisa
+            $corpoRg = null;
+            if ($modo === 'rg_novo') {
+                $ra = $chamar('su_oss_chamado', ['qtype' => 'su_oss_chamado.id', 'query' => (string) $osAtiv, 'oper' => '=',
+                    'page' => '1', 'rp' => '1', 'sortname' => 'su_oss_chamado.id', 'sortorder' => 'asc'], true);
+                $ativ = $ra['registros'][0] ?? null;
+                $corpoRg = is_array($ativ) ? self::corpoNovaOs($ativ, $a, $assuntoRg, '', $osAud) : null;
+                if ($corpoRg === null) {
+                    $msg = "Não consegui ler a Ativação O.S. $osAtiv no IXC, ou ela está sem cliente, técnico ou setor ("
+                        . (is_array($ativ) ? 'campos vazios' : self::erroIxc($ra)) . '). Nada foi feito.';
+                    $log(false, 'ativacao', $msg);
+                    return ['ok' => false, 'http' => 502, 'etapa' => 'ativacao', 'mensagem' => $msg];
+                }
+            }
+
             // vários motivos: evento "mensagem" do IXC para registrar os motivos seguintes; sem ele, vão juntos na reabertura
             $evento = $extras ? $this->eventoMensagem((int) $a['plugin_painelixc_bases_id'], $chamar) : 0;
             $textoReabrir = $texto;
@@ -197,35 +235,67 @@ final class AcaoAuditoria
                 $avisos[] = 'não achei o evento de mensagem do IXC; os ' . count($acoes) . ' motivos foram juntos na mensagem da reabertura';
             }
 
-            // 2) reabrir a Ativação (reprovação)
-            if ($def['reabre']) {
-                $r2 = $chamar('su_oss_chamado_reabrir', ['id_chamado' => (string) $osAtiv, 'status' => 'EN',
+            // 2) reprovação: reabre a Ativação (antigo), abre o Retorno de Garantia ou reabre o RG desta Auditoria
+            $alvo = $osAtiv;
+            $nomeAlvo = 'a Ativação';
+            if ($modo !== 'ativacao') {
+                $nomeAlvo = 'o Retorno de Garantia';
+                $alvo = $modo === 'rg_novo' ? 0 : (int) $retAnt['retorno_ixc_id'];
+            }
+            if ($def['reabre'] && $modo === 'rg_novo') {
+                $corpoRg['mensagem'] = $textoReabrir . "\n\n(Retorno de Garantia aberto pelo Painel IXC: a Auditoria O.S. $osAud reprovou a Ativação O.S. $osAtiv.)";
+                $r2 = $chamar('su_oss_chamado', $corpoRg);
+                if (($r2['type'] ?? '') !== 'success') {
+                    $msg = 'O IXC não abriu o Retorno de Garantia: ' . self::erroIxc($r2) . '. Nada foi feito; a Auditoria NÃO foi finalizada.';
+                    $log(false, 'retorno', $msg);
+                    return ['ok' => false, 'http' => 502, 'etapa' => 'retorno', 'mensagem' => $msg];
+                }
+                $alvo = (int) ($r2['id'] ?? 0) ?: $this->acharRetorno($chamar, (int) $corpoRg['id_cliente'], $assuntoRg);
+                if ($alvo <= 0) {
+                    $msg = 'O IXC aceitou o Retorno de Garantia mas não devolveu o número dele (cliente ' . $corpoRg['id_cliente'] . ', assunto '
+                        . $assuntoRg . '). A Auditoria NÃO foi finalizada: confira o RG no IXC antes de clicar de novo, para não abrir outro.';
+                    $log(false, 'retorno_sem_id', $msg);
+                    return ['ok' => false, 'http' => 502, 'etapa' => 'retorno_sem_id', 'mensagem' => $msg];
+                }
+                // grava já: se finalizar a Auditoria falhar, o próximo clique encontra este RG (rg_pendente) e não abre outro
+                (new Reauditoria($this->db, null, $this->agora))->marcar($baseId, $osAtiv, $osAud, $acao, $usersId, $usuario, $alvo);
+            } elseif ($def['reabre'] && $modo !== 'rg_pendente') {
+                $r2 = $chamar('su_oss_chamado_reabrir', ['id_chamado' => (string) $alvo, 'status' => 'EN',
                     'mensagem' => $textoReabrir, 'id_resposta' => (string) $respId]);
                 if (($r2['type'] ?? '') !== 'success') {
-                    $msg = "O IXC não reabriu a Ativação O.S. $osAtiv: " . self::erroIxc($r2) . '. A Auditoria NÃO foi finalizada.';
+                    $msg = "O IXC não reabriu $nomeAlvo O.S. $alvo: " . self::erroIxc($r2) . '. A Auditoria NÃO foi finalizada.';
                     $log(false, 'reabrir', $msg);
                     return ['ok' => false, 'http' => 502, 'etapa' => 'reabrir', 'mensagem' => $msg];
                 }
-                // 2b) um registro por motivo seguinte (falha aqui não desfaz nada: o motivo vai na mensagem da Auditoria)
-                if ($evento > 0) {
-                    foreach ($extras as $k) {
-                        $rm = $chamar('su_oss_chamado_mensagem', ['id_chamado' => (string) $osAtiv, 'status' => 'EN',
-                            'id_evento' => (string) $evento, 'mensagem' => $textos[$k], 'id_resposta' => (string) $respIds[$k]]);
-                        if (($rm['type'] ?? '') !== 'success') {
-                            $avisos[] = 'motivo #' . $ACOES[$k]['n'] . ' não foi registrado como mensagem na Ativação (' . self::erroIxc($rm) . ')';
-                        }
+            }
+            // 2b) um registro por motivo seguinte (falha aqui não desfaz nada: o motivo vai na mensagem da Auditoria)
+            if ($def['reabre'] && $modo !== 'rg_pendente' && $evento > 0) {
+                foreach ($extras as $k) {
+                    $rm = $chamar('su_oss_chamado_mensagem', ['id_chamado' => (string) $alvo, 'status' => 'EN',
+                        'id_evento' => (string) $evento, 'mensagem' => $textos[$k], 'id_resposta' => (string) $respIds[$k]]);
+                    if (($rm['type'] ?? '') !== 'success') {
+                        $avisos[] = 'motivo #' . $ACOES[$k]['n'] . " não foi registrado como mensagem n$nomeAlvo (" . self::erroIxc($rm) . ')';
                     }
                 }
             }
+            if ($modo === 'rg_pendente') {
+                $avisos[] = "o Retorno de Garantia O.S. $alvo já tinha sido aberto por um clique anterior que não finalizou a Auditoria; não foi aberto outro";
+            }
+            $feito = match ($modo) {
+                'rg_novo' => "Retorno de Garantia O.S. $alvo aberto para o técnico (Ativação O.S. $osAtiv)",
+                'rg_reabrir' => "Retorno de Garantia O.S. $alvo reaberto para o técnico",
+                'rg_pendente' => "Retorno de Garantia O.S. $alvo já aberto para o técnico",
+                default => "Ativação O.S. $osAtiv reaberta para o técnico",
+            };
 
             // 3) finalizar a Auditoria
             $agora = $this->agora ?? date('Y-m-d H:i:s');
             if (!$def['reabre']) {
                 $msgAud = $texto;
             } elseif (!$extras) {
-                $msgAud = "Auditoria reprovada — Ativação O.S. $osAtiv reaberta para o técnico.\n\n" . $texto;
+                $msgAud = "Auditoria reprovada — $feito.\n\n" . $texto;
             } else {
-                $msgAud = "Auditoria reprovada — Ativação O.S. $osAtiv reaberta para o técnico. Motivos (" . count($acoes) . "):";
+                $msgAud = "Auditoria reprovada — $feito. Motivos (" . count($acoes) . "):";
                 foreach (array_values($acoes) as $i => $k) {
                     $msgAud .= "\n\n" . ($i + 1) . '. ' . $textos[$k];
                 }
@@ -234,13 +304,13 @@ final class AcaoAuditoria
                 'data_inicio' => $agora, 'data_final' => $agora, 'mensagem' => $msgAud, 'id_resposta' => (string) $respId]);
             if (($r3['type'] ?? '') !== 'success') {
                 $msg = "O IXC não finalizou a Auditoria O.S. $osAud: " . self::erroIxc($r3)
-                    . ($def['reabre'] ? " (a Ativação O.S. $osAtiv JÁ FOI reaberta — finalize a Auditoria pelo IXC)." : '.');
+                    . ($def['reabre'] ? " ($feito — JÁ FEITO; finalize a Auditoria pelo IXC" . ($modo === 'ativacao' ? '' : ' ou clique de novo: o RG não é aberto outra vez') . ').' : '.');
                 $log(false, 'finalizar', $msg);
                 return ['ok' => false, 'http' => 502, 'etapa' => 'finalizar', 'mensagem' => $msg];
             }
 
             $msg = $def['reabre']
-                ? "Ativação O.S. $osAtiv reaberta para o técnico" . ($extras ? ' com ' . count($acoes) . ' motivos' : '') . " e Auditoria O.S. $osAud finalizada."
+                ? $feito . ($extras ? ' com ' . count($acoes) . ' motivos' : '') . " e Auditoria O.S. $osAud finalizada."
                 : "Auditoria O.S. $osAud finalizada como dentro do padrão.";
             $etapaFim = 'concluida';
 
@@ -262,9 +332,13 @@ final class AcaoAuditoria
             }
             $log(true, $etapaFim, $msg);
             if ($def['reabre']) {
-                // vigia a Ativação: quando for finalizada de novo, o painel abre a reauditoria
-                (new Reauditoria($this->db, null, $agora))->marcar((int) $a['plugin_painelixc_bases_id'], $osAtiv, $osAud, $acao, $usersId, $usuario);
-                $msg .= ' Quando o técnico finalizar a Ativação, a Auditoria nova do processo vira a reauditoria e vai para o mesmo auditor.';
+                // vigia a Ativação (antigo) ou o RG: quando for finalizado de novo, o painel abre a reauditoria
+                if ($modo === 'ativacao' || $modo === 'rg_reabrir') {
+                    (new Reauditoria($this->db, null, $agora))->marcar($baseId, $osAtiv, $osAud, $acao, $usersId, $usuario, $modo === 'ativacao' ? null : $alvo);
+                }
+                $msg .= $modo === 'ativacao'
+                    ? ' Quando o técnico finalizar a Ativação, a Auditoria nova do processo vira a reauditoria e vai para o mesmo auditor.'
+                    : ' Quando o técnico finalizar o Retorno de Garantia, o painel reabre esta Auditoria como reauditoria, para o mesmo auditor.';
             }
             // some da lista na hora (o coletor confirmaria em até 10 min)
             $this->db->doQuery('UPDATE `glpi_plugin_painelixc_auditorias` SET `is_active` = 0, `status` = \'F\', `saiu_em` = '
@@ -333,6 +407,29 @@ final class AcaoAuditoria
             'id_tecnico' => (string) $tecnico, 'status' => 'EN', 'id_ticket' => '',
             'mensagem' => $texto . "\n\n(Aberta pelo Painel IXC ao aprovar a Auditoria O.S. $osAud.)",
         ]);
+    }
+
+    /** 0.16.0: assunto do Retorno de Garantia da base (0 = não configurado → reprovar reabre a Ativação, como antes). */
+    public static function assuntoRetorno(DBmysql $db, int $baseId): int
+    {
+        if (!$db->fieldExists('glpi_plugin_painelixc_bases', 'retorno_assunto_id')) {
+            return 0;   // plugin atualizado sem plugin:install
+        }
+        $r = $db->doQuery("SELECT `retorno_assunto_id` v FROM `glpi_plugin_painelixc_bases` WHERE `id` = $baseId");
+        return max(0, (int) (($r ? $r->fetch_assoc() : [])['v'] ?? 0));
+    }
+
+    /** RG que o IXC criou sem devolver o id: o mais novo do cliente, no assunto RG, ainda aberto. 0 = não achou. */
+    private function acharRetorno(callable $chamar, int $cliente, int $assunto): int
+    {
+        $r = $chamar('su_oss_chamado', ['qtype' => 'su_oss_chamado.id_cliente', 'query' => (string) $cliente, 'oper' => '=',
+            'page' => '1', 'rp' => '20', 'sortname' => 'su_oss_chamado.id', 'sortorder' => 'desc'], true);
+        foreach ((array) ($r['registros'] ?? []) as $o) {
+            if ((int) ($o['id_assunto'] ?? 0) === $assunto && !in_array(strtoupper((string) ($o['status'] ?? '')), ['F', 'C'], true)) {
+                return (int) ($o['id'] ?? 0);
+            }
+        }
+        return 0;
     }
 
     /** @return array<string,mixed>|null */

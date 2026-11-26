@@ -51,7 +51,7 @@
 
       <h4 class="mt-4">Ações de auditoria (botões da aba Auditoria)</h4>
       <h5 class="mt-3">Botões</h5>
-      <div class="form-hint mb-2">O <b>#número</b> é fixo e liga o botão à coluna de resposta padrão na tabela das bases abaixo. <b>Aprova</b> = finaliza a Auditoria; <b>Reprova</b> = reabre a Ativação e finaliza a Auditoria (os de reprova aparecem no painel como caixas de seleção, podendo marcar vários); <b>Aprova/Abrir Chamado</b> = finaliza a Auditoria e abre uma O.S. nova, sem atendimento, para o mesmo cliente, com o técnico e o setor da Ativação — o assunto dela, por base, fica na <i class="ti ti-settings"></i> engrenagem ao lado do Tipo. Clique no ícone para trocar e no <i class="ti ti-info-circle"></i> para ver ou editar o que o botão faz. Use as setas para mudar a ordem.</div>
+      <div class="form-hint mb-2">O <b>#número</b> é fixo e liga o botão à coluna de resposta padrão na tabela das bases abaixo. <b>Aprova</b> = finaliza a Auditoria; <b>Reprova</b> = abre o Retorno de Garantia (ou reabre a Ativação, na base sem o assunto RG — tabela Bases) e finaliza a Auditoria (os de reprova aparecem no painel como caixas de seleção, podendo marcar vários); <b>Aprova/Abrir Chamado</b> = finaliza a Auditoria e abre uma O.S. nova, sem atendimento, para o mesmo cliente, com o técnico e o setor da Ativação — o assunto dela, por base, fica na <i class="ti ti-settings"></i> engrenagem ao lado do Tipo. Clique no ícone para trocar e no <i class="ti ti-info-circle"></i> para ver ou editar o que o botão faz. Use as setas para mudar a ordem.</div>
       <div class="table-responsive">
       <table class="table table-sm align-middle pixc-bt-tab" id="pixc-bt-tab" data-proximo="{{ proximo_botao }}" data-editavel="{{ pode_editar ? 1 : 0 }}">
         <thead><tr><th style="width: 52px">#</th><th style="min-width: 260px">Ação</th><th style="min-width: 170px">Nome no botão</th><th style="width: 220px">Tipo</th><th style="width: 90px" class="text-center">O que faz</th>{% if pode_editar %}<th style="width: 110px"></th>{% endif %}</tr></thead>
@@ -153,7 +153,7 @@
 
       <h4 class="mt-4">Bases</h4>
       <table class="table table-sm align-middle">
-        <thead><tr><th>Código</th><th>Nome</th><th>Cor</th><th>URL do IXC (para o botão "Abrir no IXC")</th><th>Ativa</th><th title="Parâmetros gerais do IXC da base > aba Suporte > SLA apenas em dias úteis">SLA só dias úteis</th><th>Última sincronização</th></tr></thead>
+        <thead><tr><th>Código</th><th>Nome</th><th>Cor</th><th>URL do IXC (para o botão "Abrir no IXC")</th><th>Ativa</th><th title="Parâmetros gerais do IXC da base > aba Suporte > SLA apenas em dias úteis">SLA só dias úteis</th><th title="Assunto da O.S. que a reprovação abre (vazio = reabre a Ativação, como antes)">Retorno de Garantia (assunto)</th><th>Última sincronização</th></tr></thead>
         <tbody>
         {% for b in bases %}
           <tr>
@@ -163,12 +163,14 @@
             <td><input type="url" class="form-control form-control-sm" name="base[{{ b.id }}][ixc_url]" value="{{ b.ixc_url ?? '' }}" placeholder="https://ixc.exemplo.com.br" {{ pode_editar ? '' : 'readonly' }}></td>
             <td><input type="checkbox" class="form-check-input" name="base[{{ b.id }}][is_active]" value="1" {{ b.is_active ? 'checked' : '' }} {{ pode_editar ? '' : 'disabled' }}></td>
             <td><input type="checkbox" class="form-check-input" name="sla_uteis[]" value="{{ b.codigo }}" {{ b.codigo in (cfg.sla_uteis_bases|split(',')) ? 'checked' : '' }} {{ pode_editar ? '' : 'disabled' }}></td>
+            <td>{% if b.retorno_assunto_id is defined %}<input type="number" min="0" class="form-control form-control-sm text-center" style="min-width: 90px" name="base[{{ b.id }}][retorno_assunto_id]" value="{{ b.retorno_assunto_id ?: '' }}" list="pixc-ass-{{ b.id }}" placeholder="—" title="id do assunto Retorno de Garantia no IXC desta base" {{ pode_editar ? '' : 'readonly' }}>{% else %}<span class="text-muted small">rode o plugin:install</span>{% endif %}</td>
             <td class="text-muted">{{ b.ultima_sync ?? '—' }}{% if b.ultimo_erro %}<br><span class="text-danger">{{ b.ultimo_erro|slice(0, 120) }}</span>{% endif %}</td>
           </tr>
         {% endfor %}
         </tbody>
       </table>
       <div class="form-hint">A URL do IXC é preenchida automaticamente pelo coletor no primeiro retrato; só edite se precisar trocar.</div>
+      <div class="form-hint"><b>Retorno de Garantia (0.16.0):</b> com o assunto preenchido, reprovar uma Auditoria abre uma O.S. de Retorno de Garantia (sem atendimento, mesmo cliente, técnico e setor da Ativação) em vez de reabrir a Ativação. Quando o técnico finaliza o RG, o painel reabre a mesma Auditoria como reauditoria; reprovar de novo reabre o mesmo RG. Vazio = fluxo antigo. Reprovações que já aguardam a Ativação terminam no fluxo antigo.</div>
       <div class="form-hint"><b>SLA só dias úteis:</b> marque igual ao IXC de cada base (Configurações &gt; Parâmetros &gt; Parâmetros gerais &gt; aba Suporte &gt; "SLA apenas em dias úteis"). Vale para os assuntos com SLA no padrão; o assunto que diz "Sim"/"Não" na própria aba SLA segue o que está no assunto.</div>
     </div>
     {% if pode_editar %}

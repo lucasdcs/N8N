@@ -13,7 +13,7 @@ use GlpiPlugin\Painelixc\Config;
 use GlpiPlugin\Painelixc\Menu;
 use GlpiPlugin\Painelixc\Profile;
 
-define('PLUGIN_PAINELIXC_VERSION', '0.14.1');
+define('PLUGIN_PAINELIXC_VERSION', '0.16.0');
 define('PLUGIN_PAINELIXC_ASSETS', '0.14.0.1');   // carimbo do JS/CSS (cache do navegador); muda a cada entrega de tela
 define('PLUGIN_PAINELIXC_MIN_GLPI', '11.0.0');
 define('PLUGIN_PAINELIXC_MAX_GLPI', '11.0.99');

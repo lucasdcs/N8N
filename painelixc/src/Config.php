@@ -264,6 +264,10 @@ final class Config extends CommonDBTM
                 'ixc_url'   => $url !== '' && preg_match('#^https?://#i', $url) ? mb_substr(rtrim($url, '/'), 0, 255) : null,
                 'is_active' => !empty($b['is_active']) ? 1 : 0,
             ];
+            // 0.16.0: assunto do Retorno de Garantia (vazio/0 = reprovar reabre a Ativação, como antes)
+            if (array_key_exists('retorno_assunto_id', $b) && $DB->fieldExists('glpi_plugin_painelixc_bases', 'retorno_assunto_id')) {
+                $dados['retorno_assunto_id'] = max(0, (int) $b['retorno_assunto_id']);
+            }
             // assunto da O.S. nova (0.14.0) vem da engrenagem de cada botão: botao[<id>|novo<k>][assunto][<baseId>]
             $assunto = [];
             foreach ((array) ($post['botao'] ?? []) as $chave => $bot) {

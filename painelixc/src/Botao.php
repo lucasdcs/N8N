@@ -86,7 +86,7 @@ final class Botao
         return match ($tipo) {
             'aprova'    => 'Finaliza a Auditoria (aprovada)',
             'aprova_os' => 'Finaliza a Auditoria (aprovada) e abre uma O.S. nova para o técnico da Ativação',
-            default     => 'Reabre a Ativação e finaliza a Auditoria (reprovada)',
+            default     => 'Abre (ou reabre) o Retorno de Garantia — ou reabre a Ativação, na base sem o assunto RG — e finaliza a Auditoria (reprovada)',
         };
     }
 

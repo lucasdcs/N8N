@@ -19,6 +19,10 @@ use Toolbox;
  * Reauditoria = a própria Auditoria anterior REABERTA (EN, mesmo auditor, mesmo atendimento/processo) — o IXC não
  * deixa criar 2ª O.S. no atendimento fora do processo (0.7.1).
  * Prazo: 30 dias (PRAZO_DIAS); Ativação cancelada → encerra sem abrir.
+ *
+ * 0.16.0 (P16-1) — Retorno de Garantia: com retorno_ixc_id preenchido, a O.S. vigiada é o RG (não a Ativação). Quando o
+ * RG é finalizado, o painel reabre a MESMA Auditoria na hora (o processo do IXC não abre Auditoria para o RG: sem a
+ * espera de 2 h). Reprovar de novo essa Auditoria reabre o mesmo RG (AcaoAuditoria), e a rodada sobe: 3ª, 4ª…
  */
 final class Reauditoria
 {
@@ -44,9 +48,10 @@ final class Reauditoria
     }
 
     /** Chamado pela ação de reprovação que reabriu a Ativação. */
-    public function marcar(int $baseId, int $osAtiv, int $osAud, string $acao, int $usersId, string $usuario): void
+    public function marcar(int $baseId, int $osAtiv, int $osAud, string $acao, int $usersId, string $usuario, ?int $osRetorno = null): void
     {
         $q = fn($v) => $this->db::quoteValue($v);
+        $comRg = $osRetorno !== null && $osRetorno > 0 && $this->db->fieldExists(self::TABELA, 'retorno_ixc_id');
         // rodada: a Auditoria reprovada era ela mesma uma reauditoria? então esta é a próxima
         $ant = $this->linha('SELECT `rodada` FROM `' . self::TABELA . "` WHERE `plugin_painelixc_bases_id` = $baseId
             AND `nova_auditoria_ixc_id` = $osAud ORDER BY `id` DESC LIMIT 1");
@@ -58,7 +63,23 @@ final class Reauditoria
             'plugin_painelixc_bases_id' => $baseId, 'ativacao_ixc_id' => $osAtiv, 'auditoria_ixc_id' => $osAud,
             'rodada' => $rodada, 'acao' => $acao, 'users_id' => $usersId, 'usuario' => mb_substr($usuario, 0, 255),
             'reaberta_em' => $this->agora(), 'estado' => 'aguardando', 'tentativas' => 0, 'atualizado_em' => $this->agora(),
-        ]);
+        ] + ($comRg ? ['retorno_ixc_id' => $osRetorno] : []));
+    }
+
+    /**
+     * 0.16.0: Retorno de Garantia desta Auditoria, se houver — a última espera (aguardando) ou reauditoria aberta (criada)
+     * ligada a ela com RG. aguardando = RG aberto por um clique que não chegou a finalizar a Auditoria.
+     * @return array{retorno_ixc_id:int, ativacao_ixc_id:int, estado:string}|null
+     */
+    public function retornoDaAuditoria(int $baseId, int $osAud): ?array
+    {
+        if (!$this->db->fieldExists(self::TABELA, 'retorno_ixc_id')) {
+            return null;
+        }
+        $l = $this->linha('SELECT `retorno_ixc_id`, `ativacao_ixc_id`, `estado` FROM `' . self::TABELA . "` WHERE `plugin_painelixc_bases_id` = $baseId
+            AND (`auditoria_ixc_id` = $osAud OR `nova_auditoria_ixc_id` = $osAud) AND `retorno_ixc_id` > 0
+            AND `estado` IN ('aguardando', 'criada') ORDER BY `id` DESC LIMIT 1");
+        return $l === null ? null : ['retorno_ixc_id' => (int) $l['retorno_ixc_id'], 'ativacao_ixc_id' => (int) $l['ativacao_ixc_id'], 'estado' => (string) $l['estado']];
     }
 
     /**
@@ -90,14 +111,17 @@ final class Reauditoria
                     $res['expiradas']++;
                     continue;
                 }
-                $ativ = $this->os($chamar, (int) $p['ativacao_ixc_id']);
+                $rg = (int) ($p['retorno_ixc_id'] ?? 0);
+                $vigiada = $rg > 0 ? $rg : (int) $p['ativacao_ixc_id'];
+                $nome = $rg > 0 ? 'Retorno de Garantia' : 'Ativação';
+                $ativ = $this->os($chamar, $vigiada);
                 if ($ativ === null) {
-                    $this->falha($p, 'não consegui ler a Ativação O.S. ' . $p['ativacao_ixc_id'], $res);
+                    $this->falha($p, "não consegui ler $nome O.S. " . $vigiada, $res);
                     continue;
                 }
                 $st = strtoupper((string) ($ativ['status'] ?? ''));
                 if ($st === 'C') {
-                    $this->estado((int) $p['id'], 'cancelada', 'Ativação cancelada; reauditoria não aberta.');
+                    $this->estado((int) $p['id'], 'cancelada', "$nome cancelado(a); reauditoria não aberta.");
                     $res['canceladas']++;
                     continue;
                 }
@@ -107,13 +131,14 @@ final class Reauditoria
                 if ($st !== 'F' || $fech === '' || str_starts_with($fech, '0000') || $fech < $folga) {
                     continue;   // ainda em correção
                 }
-                // P10-5: a Auditoria nova aberta pelo processo do IXC é a reauditoria
-                $doProcesso = $this->auditoriaDoProcesso($baseId, $p, $ativ);
+                // P10-5: a Auditoria nova aberta pelo processo do IXC é a reauditoria (só no fluxo da Ativação;
+                // 0.16.0: o RG não tem processo — reabre a mesma Auditoria na hora)
+                $doProcesso = $rg > 0 ? null : $this->auditoriaDoProcesso($baseId, $p, $ativ);
                 if ($doProcesso !== null) {
                     $res['criadas'][] = $this->vincular($chamar, $p, $ativ, $doProcesso);
                     continue;
                 }
-                if (strtotime($this->agora()) - strtotime($fech) < $this->esperaMin * 60) {
+                if ($rg <= 0 && strtotime($this->agora()) - strtotime($fech) < $this->esperaMin * 60) {
                     continue;   // dá tempo ao processo do IXC abrir a Auditoria nova
                 }
                 $nova = $this->abrir($chamar, $p, $ativ);
@@ -146,7 +171,10 @@ final class Reauditoria
         }
         $st = strtoupper((string) ($ant['status'] ?? ''));
         $rotAcao = AcaoAuditoria::descrever((string) $p['acao']);
-        $msg = sprintf("Reauditoria (%dª) — a Ativação O.S. %d foi reprovada nesta Auditoria (%s, por %s em %s), reaberta para o técnico e finalizada novamente em %s. Verificar se a correção foi feita.",
+        $rg = (int) ($p['retorno_ixc_id'] ?? 0);
+        $msg = $rg > 0 ? sprintf("Reauditoria (%dª) — a Ativação O.S. %d foi reprovada nesta Auditoria (%s, por %s em %s) e o Retorno de Garantia O.S. %d foi finalizado em %s. Verificar se a correção foi feita.",
+            (int) $p['rodada'], (int) $p['ativacao_ixc_id'], $rotAcao, (string) $p['usuario'],
+            date('d/m/Y H:i', strtotime((string) $p['reaberta_em'])), $rg, date('d/m/Y H:i', strtotime((string) $ativ['data_fechamento']))) : sprintf("Reauditoria (%dª) — a Ativação O.S. %d foi reprovada nesta Auditoria (%s, por %s em %s), reaberta para o técnico e finalizada novamente em %s. Verificar se a correção foi feita.",
             (int) $p['rodada'], (int) $p['ativacao_ixc_id'], $rotAcao, (string) $p['usuario'],
             date('d/m/Y H:i', strtotime((string) $p['reaberta_em'])), date('d/m/Y H:i', strtotime((string) $ativ['data_fechamento'])));
         if ($st !== 'F') {

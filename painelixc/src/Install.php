@@ -294,6 +294,14 @@ final class Install
             }
         }
 
+        // 0.16.0 (P16-1) — Retorno de Garantia: assunto por base (0 = fluxo antigo, reabre a Ativação) e O.S. vigiada na reauditoria
+        if (!$DB->fieldExists('glpi_plugin_painelixc_bases', 'retorno_assunto_id')) {
+            $DB->doQuery("ALTER TABLE `glpi_plugin_painelixc_bases` ADD `retorno_assunto_id` int NOT NULL DEFAULT 0");
+        }
+        if (!$DB->fieldExists('glpi_plugin_painelixc_reauditorias', 'retorno_ixc_id')) {
+            $DB->doQuery("ALTER TABLE `glpi_plugin_painelixc_reauditorias` ADD `retorno_ixc_id` int {$sign} DEFAULT NULL AFTER `ativacao_ixc_id`");
+        }
+
         // 0.11.0 — Atendimentos do IXC (su_ticket), abertos e finalizados, com a lista de O.S. (JSON em os_lista)
         if (!$DB->tableExists('glpi_plugin_painelixc_atendimentos')) {
             $DB->doQuery("CREATE TABLE `glpi_plugin_painelixc_atendimentos` (
