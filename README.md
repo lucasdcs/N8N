@@ -4,12 +4,16 @@ Repositório da verdade das automações sobre a API do IXC em 5 bases (Resolutt
 
 | Pasta | Conteúdo | Versões |
 |---|---|---|
-| `painelixc/` | Plugin **Painel IXC** para GLPI 11 (autor SCDell, GPLv3+). Copie para `glpi/plugins/painelixc` | tags `painelixc-vX.Y.Z` + Release com o zip |
+| `painelixc/` | Plugin **Painel IXC** para GLPI 11 (autor SCDell, GPLv3+). Copie para `glpi/plugins/painelixc` | tags `painelixc-vX.Y.Z` |
 | `painelixc/n8n/` | Modelos e scripts de geração dos workflows do painel | junto com o plugin |
 | `n8n/` | Cópia limpa dos workflows **ativos** na produção ([detalhes](n8n/README.md)) | tags `n8n-AAAA-MM-DD` |
-| `n8n/ativar-contrato/` | Fonte do workflow **Ativar contrato RESOLUTTO (espelho)**: ativação nas bases de origem → ativa o pré-contrato na RESOLUTTO ([detalhes](n8n/ativar-contrato/README.md)) | tags `ativar-contrato-vX.Y.Z` + Release com o JSON |
-| `painelbot/` | Plugin **Painel do Bot** para GLPI 11 (SCDell, GPLv3+): gerencia o bot do `whatsapp-ixc` — escala, contatos, mensagens e perguntas ([detalhes](painelbot/README.md)) | tags `painelbot-vX.Y.Z` + Release com o zip |
-| `whatsapp-ixc/` | Notificações de chamados IXC no WhatsApp (WAHA) — no particular do técnico desde a 0.6.0: 4 workflows + schema `ixc` no PostgreSQL ([detalhes](whatsapp-ixc/README.md)) | tags `whatsapp-ixc-vX.Y.Z` + Release com o zip |
+| `n8n/ativar-contrato/` | Fonte do workflow **Ativar contrato RESOLUTTO (espelho)**: ativação nas bases de origem → ativa o pré-contrato na RESOLUTTO ([detalhes](n8n/ativar-contrato/README.md)) | tags `ativar-contrato-vX.Y.Z` |
+| `painelbot/` | Plugin **Painel do Bot** para GLPI 11 (SCDell, GPLv3+): gerencia o bot do `whatsapp-ixc` — escala, contatos, mensagens e perguntas ([detalhes](painelbot/README.md)) | tags `painelbot-vX.Y.Z` |
+| `whatsapp-ixc/` | Notificações de chamados IXC no WhatsApp (WAHA) — no particular do técnico desde a 0.6.0: 4 workflows + schema `ixc` no PostgreSQL ([detalhes](whatsapp-ixc/README.md)) | tags `whatsapp-ixc-vX.Y.Z` |
+
+## Versões
+
+Cada versão é publicada como **tag anotada** (`<componente>-vX.Y.Z`) no commit dela, sem Release no GitHub: o código da versão é o da tag.
 
 ## Plugin: instalar / atualizar
 
