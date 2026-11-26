@@ -1,4 +1,4 @@
--- Painel do Bot 0.5.1 — tabelas de MENSAGENS, PERGUNTAS, APELIDOS e AUDITORIA do painel (schema ixc, Postgres do whatsapp-ixc).
+-- Painel do Bot 0.5.2 — tabelas de MENSAGENS, PERGUNTAS, APELIDOS, AUDITORIA e ALERTAS do painel (schema ixc, Postgres do whatsapp-ixc).
 -- Rodar como o dono do banco (usuário ixc). Idempotente: pode rodar de novo; NÃO sobrescreve textos já editados.
 --   docker exec -i n8n-compose-postgres-ixc-1 psql -U ixc -d ixc -v ON_ERROR_STOP=1 < 01-mensagens-perguntas.sql
 -- O whatsapp-ixc 0.3.0 em diante lê estas tabelas (texto editado, perguntas, apelidos; 0.5.0: mensagens desativadas e novas). Rodar ANTES de importar os workflows.
@@ -434,6 +434,73 @@ VALUES ('painel_rodar_chave', md5(random()::text || clock_timestamp()::text) || 
         'painelbot 0.5.1: chave do Rodar agora do painel (nao mostrar, nao editar)')
 ON CONFLICT (chave) DO NOTHING;
 
+-- 0.5.2 (F2a do roadmap de acoes): ALERTAS = regras dos avisos de chamado no banco, para o painel criar/editar/pausar.
+-- Nesta versao nenhum workflow le estas tabelas: o WF 01 continua mandando como hoje. O motor novo (whatsapp-ixc 0.7.0)
+-- roda em SOMBRA (calcula e grava em ixc.alertas_sombra, sem enviar) ate bater 100% com o WF 01; so depois assume.
+CREATE TABLE IF NOT EXISTS ixc.alertas (
+  id             serial PRIMARY KEY,
+  chave          text UNIQUE,                      -- padrao.<nome> nas linhas que vieram com o bot; nulo nas criadas no painel
+  nome           text NOT NULL,
+  descricao      text,
+  quando         text NOT NULL CHECK (quando IN ('aberto', 'transferido', 'assumido', 'sem_tecnico', 'segue_sem_tecnico', 'escalado', 'infra')),
+  quando_min     integer CHECK (quando_min IS NULL OR quando_min BETWEEN 1 AND 10080),  -- sem tecnico ha X min, escalado com X min; nulo = parametro atual
+  filtros        jsonb NOT NULL DEFAULT '{}'::jsonb,  -- {bases, shoppings, assuntos, assuntos_excluir, dias (1=seg..7=dom), hora_ini, hora_fim}; vazio = tudo
+  destino        text NOT NULL CHECK (destino IN ('tecnico', 'grupo_shopping', 'numero', 'parametro')),
+  destino_valor  text,                             -- numero (55 + DDD + numero) ou nome do parametro (ex.: infra_fone)
+  marcar         text NOT NULL DEFAULT 'nenhum' CHECK (marcar IN ('nenhum', 'tecnico', 'marcar_sem_tec', 'marcar_escalar')),
+  texto_chave    text REFERENCES ixc.mensagens(chave) ON UPDATE CASCADE ON DELETE SET NULL,  -- nulo = texto montado pelo bot
+  repeticao      text NOT NULL DEFAULT 'uma_vez' CHECK (repeticao IN ('uma_vez', 'horarios', 'a_cada_min')),
+  repeticao_valor text,                            -- 'HH:MM,HH:MM' ou minutos; nulo = parametro atual
+  situacao       text NOT NULL DEFAULT 'teste' CHECK (situacao IN ('teste', 'ativo', 'pausado')),  -- teste = so para envio_teste_para
+  padrao         boolean NOT NULL DEFAULT false,   -- veio com o bot: edita e pausa, nao exclui
+  ordem          integer NOT NULL DEFAULT 0,
+  criado_por     text,
+  criado_em      timestamptz NOT NULL DEFAULT now(),
+  atualizado     timestamptz,
+  atualizado_por text,
+  CHECK (destino NOT IN ('numero', 'parametro') OR coalesce(destino_valor, '') <> '')
+);
+
+-- O que o motor novo mandaria x o que o WF 01 mandou, por evento (whatsapp-ixc 0.7.0 grava; o painel so le).
+CREATE TABLE IF NOT EXISTS ixc.alertas_sombra (
+  id             bigserial PRIMARY KEY,
+  ts             timestamptz NOT NULL DEFAULT now(),
+  empresa        text,
+  id_chamado     text,
+  protocolo      text,
+  quando         text,                             -- evento como em ixc.alertas.quando
+  alerta_id      integer,                          -- alerta que casou (nulo = nenhum)
+  destino_motor  text,                             -- chatId que o motor novo usaria (nulo = nao mandaria)
+  destino_wf01   text,                             -- chatId que o WF 01 usou (nulo = ignorado)
+  status_wf01    text,                             -- enviado / simulado / ignorado / falha
+  bate           boolean,
+  detalhe        text
+);
+CREATE INDEX IF NOT EXISTS alertas_sombra_ts ON ixc.alertas_sombra (ts DESC);
+
+-- Avisos de hoje como linhas pre-cadastradas. Com aviso_privado = sim (producao desde a 0.6.0) saem no particular:
+-- aberto, transferido e pedido de infra (ATIVOS). Os do modo grupo (aviso_privado = nao) nascem PAUSADOS.
+-- ON CONFLICT DO NOTHING: rodar de novo nao desfaz o que foi editado no painel.
+INSERT INTO ixc.alertas (chave, nome, descricao, quando, destino, destino_valor, marcar, texto_chave, repeticao, situacao, padrao, ordem, criado_por) VALUES
+ ('padrao.aberto', 'Chamado aberto', 'Particular do técnico atribuído', 'aberto', 'tecnico', NULL, 'nenhum', 'aviso.novo', 'uma_vez', 'ativo', true, 10, 'bot (padrão)'),
+ ('padrao.transferido', 'Chamado transferido', 'Particular do técnico que recebeu', 'transferido', 'tecnico', NULL, 'nenhum', 'aviso.transferido', 'uma_vez', 'ativo', true, 20, 'bot (padrão)'),
+ ('padrao.infra', 'Pedido de infra', 'Particular do responsável pela infra (parâmetro infra_fone)', 'infra', 'parametro', 'infra_fone', 'nenhum', NULL, 'uma_vez', 'ativo', true, 30, 'bot (padrão)'),
+ ('padrao.aberto_grupo', 'Chamado aberto (grupo)', 'Modo grupo: grupo do shopping marcando o técnico', 'aberto', 'grupo_shopping', NULL, 'tecnico', 'aviso.novo', 'uma_vez', 'pausado', true, 110, 'bot (padrão)'),
+ ('padrao.transferido_grupo', 'Chamado transferido (grupo)', 'Modo grupo: grupo do shopping marcando o técnico', 'transferido', 'grupo_shopping', NULL, 'tecnico', 'aviso.transferido', 'uma_vez', 'pausado', true, 120, 'bot (padrão)'),
+ ('padrao.assumido_grupo', 'Chamado assumido (grupo)', 'Modo grupo: grupo do shopping marcando o técnico', 'assumido', 'grupo_shopping', NULL, 'tecnico', 'aviso.assumido', 'uma_vez', 'pausado', true, 130, 'bot (padrão)'),
+ ('padrao.sem_tecnico', 'Sem técnico', 'Modo grupo: chamado sem técnico há X min (parâmetro semtec_min)', 'sem_tecnico', 'grupo_shopping', NULL, 'marcar_sem_tec', 'aviso.sem_tecnico', 'uma_vez', 'pausado', true, 140, 'bot (padrão)'),
+ ('padrao.segue_sem_tecnico', 'Segue sem técnico', 'Modo grupo: reaviso nos horários do parâmetro realerta_horarios', 'segue_sem_tecnico', 'grupo_shopping', NULL, 'marcar_sem_tec', 'aviso.segue_sem_tecnico', 'horarios', 'pausado', true, 150, 'bot (padrão)'),
+ ('padrao.escalado', 'Escalado', 'Modo grupo: sem técnico há X min (parâmetro escalar_min), marca supervisão/coordenação', 'escalado', 'grupo_shopping', NULL, 'marcar_escalar', 'aviso.escalado', 'uma_vez', 'pausado', true, 160, 'bot (padrão)')
+ON CONFLICT (chave) DO NOTHING;
+
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'painel_glpi') THEN
+    GRANT SELECT, INSERT, UPDATE, DELETE ON ixc.alertas TO painel_glpi;
+    GRANT USAGE ON SEQUENCE ixc.alertas_id_seq TO painel_glpi;
+    GRANT SELECT ON ixc.alertas_sombra TO painel_glpi;
+  END IF;
+END $$;
+
 COMMIT;
 
 -- conferência
@@ -441,3 +508,4 @@ SELECT grupo, count(*) AS mensagens, count(*) FILTER (WHERE texto IS NOT NULL) A
 SELECT alvo, count(*) AS perguntas, count(*) FILTER (WHERE NOT padrao) AS criadas_no_painel FROM ixc.perguntas GROUP BY alvo ORDER BY alvo;
 SELECT count(*) AS apelidos, count(*) FILTER (WHERE NOT padrao) AS criados_no_painel FROM ixc.apelidos;
 SELECT count(*) AS alteracoes_auditadas FROM ixc.painel_auditoria;
+SELECT situacao, count(*) AS alertas, count(*) FILTER (WHERE padrao) AS padrao FROM ixc.alertas GROUP BY situacao ORDER BY situacao;

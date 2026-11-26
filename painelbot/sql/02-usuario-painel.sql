@@ -1,8 +1,9 @@
--- Painel do Bot 0.5.1 — usuário do Postgres do bot (schema ixc) usado pelo GLPI.
+-- Painel do Bot 0.5.2 — usuário do Postgres do bot (schema ixc) usado pelo GLPI.
 -- Lê o schema (SEM a coluna ixc.empresas.auth, tokens do IXC). Grava: texto das mensagens (+ histórico), perguntas,
 -- apelidos, desde a 0.3.0 os cadastros (shoppings, escala base, técnicos, contatos de setor) e, desde a 0.4.0,
 -- mensagens novas (resp.N) e ligar/desligar qualquer mensagem; desde a 0.5.0 o VALOR dos parâmetros e os dados das bases
--- (inclusive TROCAR o token do IXC: grava a coluna auth, mas continua sem poder LÊ-la) e a auditoria dessas mudanças.
+-- (inclusive TROCAR o token do IXC: grava a coluna auth, mas continua sem poder LÊ-la) e a auditoria dessas mudanças;
+-- desde a 0.5.2 os alertas (ixc.alertas: criar, editar, pausar, excluir os criados no painel) e lê a sombra do motor novo.
 -- Não altera eventos, escala do dia (planilha) nem o texto padrão das mensagens do bot
 -- (o painel só grava texto_padrao nas mensagens criadas nele, resp.N). Não cria nem apaga parâmetros; cria bases (0.5.1, inativas) mas não apaga.
 -- Rodar como o dono do banco (usuário ixc), DEPOIS do 01-mensagens-perguntas.sql, trocando a senha (pode ser a mesma):
@@ -46,8 +47,12 @@ GRANT UPDATE (nome, base_url, ativo, ignorar_assuntos, assuntos_financeiros, sem
 GRANT INSERT (id, nome, base_url, auth, last_evento_id, dono_id, ignorar_assuntos, semtec_sem_local, ativo, assuntos_financeiros) ON ixc.empresas TO painel_glpi;
 GRANT SELECT, INSERT ON ixc.painel_auditoria TO painel_glpi;
 GRANT USAGE ON SEQUENCE ixc.painel_auditoria_id_seq TO painel_glpi;
+-- 0.5.2: alertas (F2) — o painel grava as regras; a sombra é do motor (n8n), o painel só lê
+GRANT SELECT, INSERT, UPDATE, DELETE ON ixc.alertas TO painel_glpi;
+GRANT USAGE ON SEQUENCE ixc.alertas_id_seq TO painel_glpi;
+GRANT SELECT ON ixc.alertas_sombra TO painel_glpi;
 
--- conferência: t | t | t | f | t | t | f | t | t
+-- conferência: t | t | t | f | t | t | f | t | t | t | f
 SELECT has_table_privilege('painel_glpi', 'ixc.mensagens', 'SELECT') AS le_mensagens,
        has_column_privilege('painel_glpi', 'ixc.mensagens', 'texto', 'UPDATE') AS edita_texto,
        has_table_privilege('painel_glpi', 'ixc.mensagens', 'INSERT') AS cria_mensagem,          -- 0.4.0 (resp.N)
@@ -56,4 +61,6 @@ SELECT has_table_privilege('painel_glpi', 'ixc.mensagens', 'SELECT') AS le_mensa
        has_column_privilege('painel_glpi', 'ixc.parametros', 'valor', 'UPDATE') AS muda_parametros,   -- 0.5.0
        has_column_privilege('painel_glpi', 'ixc.empresas', 'auth', 'SELECT') AS le_tokens,              -- sempre f
        has_column_privilege('painel_glpi', 'ixc.empresas', 'auth', 'UPDATE') AS troca_token,            -- 0.5.0
-       has_table_privilege('painel_glpi', 'ixc.painel_auditoria', 'INSERT') AS audita;                 -- 0.5.0
+       has_table_privilege('painel_glpi', 'ixc.painel_auditoria', 'INSERT') AS audita,                 -- 0.5.0
+       has_table_privilege('painel_glpi', 'ixc.alertas', 'UPDATE') AS edita_alertas,                  -- 0.5.2
+       has_table_privilege('painel_glpi', 'ixc.alertas_sombra', 'INSERT') AS grava_sombra;             -- sempre f
