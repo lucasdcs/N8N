@@ -144,6 +144,35 @@ for (let i = 0; i < items.length; i++) {
   e.chamado = chamado; e.cliente = cliente; e.emp = emp;
   porChamado.set(key, e);
 }
+// 0.6.6: pedido de infra pelo encaminhamento, com ou sem responsavel (particular de infra_fone; so com aviso_privado):
+//  - O.S. aberta ou transferida para o dono do numero (responsavel pela infra, empresas.dono_id);
+//  - O.S. aberta com assunto de infra (infra_assuntos = 'EMPRESA:id,...');
+//  - O.S. aberta ou transferida estando no setor de infra (infra_setores = 'EMPRESA:id,...').
+// 1 pedido por O.S. a cada 6 h, a mesma trava do pedido escrito (Processar Eventos). O.S. ja finalizada nao avisa.
+const listaEmp_ = s => new Set(String(s || '').split(',').map(x => x.replace(/\s+/g, '')).filter(Boolean));
+const INFRA_ASS_ = listaEmp_(C.param.infra_assuntos), INFRA_SET_ = listaEmp_(C.param.infra_setores);
+const stI_ = $getWorkflowStaticData('global'); stI_.infra = stI_.infra || {};
+function infraPeloChamado_(e, base, loc, pid) {
+  const { chamado, emp, ev, msg } = e, E = C.empresas[emp] || {};
+  if (!(e.novo || ev === '4')) return;  // so aberto ou transferido (assumido nao)
+  const dono = !!(pid && E.dono_id && pid === String(E.dono_id));
+  const porAssunto = e.novo && INFRA_ASS_.has(emp + ':' + chamado.id_assunto);
+  const porSetor = INFRA_SET_.has(emp + ':' + chamado.setor);
+  if (!dono && !porAssunto && !porSetor) return;
+  const ki = emp + ':' + chamado.id;
+  if (agoraMs - (stI_.infra[ki] || 0) < 6 * 3600000) return;  // ja avisado (texto, dono, assunto ou setor) nas ultimas 6 h
+  const j = Object.assign({}, base, { evento: 'INFRA' });
+  const foneI = String(C.param.infra_fone || '').replace(/\D/g, '');
+  if (String(chamado.status) === 'F') { out.push({ pairedItem: { item: e.i }, json: Object.assign(j, { ignorado: true, motivo: 'pedido de infra: O.S. já finalizada' }) }); return; }
+  if (foneI.length < 12) { out.push({ pairedItem: { item: e.i }, json: Object.assign(j, { ignorado: true, motivo: 'pedido de infra: infra_fone não cadastrado' }) }); return; }
+  stI_.infra[ki] = agoraMs;
+  out.push({ pairedItem: { item: e.i }, json: Object.assign(j, {
+    ignorado: false, chamado, cliente: e.cliente, mensagem: (e.novo && e.textoAbertura) || msg.mensagem || '', grupo_jid: foneI + '@c.us', marcar: [],
+    nome: null, shopping: loc ? loc.nome : 'Local não identificado', sem_tecnico: false, evento_emoji: '🏗️',
+    evento_label: 'Pedido de infra' + (pid && !dono ? ' — ' + nomePessoa(C, emp, pid) : ''), folga: null, evento_chave: null, tempo: null, folga_v: null,
+    primeira: false,
+  }) });
+}
 for (const e of porChamado.values()) {
   const { msg, chamado, cliente, ev, emp } = e;
   const E = C.empresas[emp] || {};
@@ -161,7 +190,8 @@ for (const e of porChamado.values()) {
   const tecEvento = String(msg.id_tecnico || '0') !== '0' ? String(msg.id_tecnico) : null;
   let rota, emoji, label, semTec = false, folga = null, chave = null, tempo = null, folgaV = null;  // 0.3.0: chave/tempo/folgaV = mensagens do painel
   if (ev === 'INFRA') {
-    if (tecChamado && tecChamado === String(E.dono_id)) continue; // ja esta com o responsável pela infra: o aviso normal cobre
+    if (tecChamado && tecChamado === String(E.dono_id) && !PRIVADO_) continue; // ja esta com o responsável pela infra: o aviso normal (grupo dele) cobre; 0.6.6: no particular o aviso do dono nao sai, entao o pedido sai
+    if (String(chamado.status) === 'F') { out.push({ pairedItem: { item: e.i }, json: Object.assign(base, { ignorado: true, motivo: 'pedido de infra: O.S. já finalizada' }) }); continue; }  // 0.6.6
     emoji = '🏗️'; label = 'Pedido de infra' + (msg.autor && msg.autor !== '0' ? ' — ' + nomePessoa(C, emp, msg.autor) : '');
     rota = { grupo: C.param.grupo_dono, marcar: [], nome: null, shopping: loc ? loc.nome : 'Local não identificado' };
   } else if (ev === 'SEMTEC') {
@@ -177,6 +207,7 @@ for (const e of porChamado.values()) {
     } else { emoji = '⚠️'; label = 'Chamado sem técnico há 10+ min'; chave = 'aviso.sem_tecnico'; }
   } else {
     const pid = tecEvento || tecChamado;
+    if (PRIVADO_) infraPeloChamado_(e, base, loc, pid);  // 0.6.6: pedido de infra pelo encaminhamento (dono, assunto ou setor de infra)
     if (!pid) continue; // aberto sem ninguem: espera o aviso SEMTEC
     const idade = chamado.data_abertura ? (agoraMs - paraData(chamado.data_abertura)) / 60000 : 9999;
     if (e.novo || (ev === '4' && idade < 15)) { emoji = '🆕'; label = 'Novo chamado'; chave = 'aviso.novo'; }

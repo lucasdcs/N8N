@@ -72,7 +72,7 @@ const RX_INFRA = (() => {
     'aguardando\\s+(?:a\\s+)?' + I,
   ].join('|'), 'i');
 })();
-const RX_INFRA_NAO = /n[ãa]o\s+(?:necessita|precisa|iremos\s+encaminhar|vamos\s+encaminhar|h[aá]\s+necessidade)|^\s*Processo:/i;
+const RX_INFRA_NAO = /n[ãa]o\s+(?:necessita|precisa|iremos\s+encaminhar|vamos\s+encaminhar|h[aá]\s+necessidade)|^\s*Processo:|\bo\.?\s?s\.?\s+d[aeo]\s+(?:execu\S*|vistoria|avalia\S*|pend\S*)\s+d[aeo]\s+infra/i;  // 0.6.6: "O.S de execucao de infra" cita outra O.S., nao e pedido
 function pedeInfra(txt) { const t = String(txt || ''); return RX_INFRA.test(t) && !RX_INFRA_NAO.test(t); }
 
 // Junta os eventos novos de todas as empresas e cria eventos sinteticos 'SEMTEC' para chamado aberto sem ninguem:
